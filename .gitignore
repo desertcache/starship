@@ -4,3 +4,5 @@ dist/
 .DS_Store
 verify/capture/
 verify/refs-v08/
+verify/shots/
+verify/report.json
