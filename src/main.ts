@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { PMREMGenerator } from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { initPerf, recordFrame, installPerfGlobal } from './core/perf.js';
 import {
   getRegisteredCamNames,
@@ -28,6 +30,11 @@ import type { ScanData } from './fx/space/types.js';
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
+// Filmic grade: ACES gives deep blacks + rolling highlights, exposure lifts
+// interior contrast without blowing emissives.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 // QUALITY_HIGH (?quality=high) enables soft shadow maps. Default (verify) is a
 // strict no-op so the shipped budget is unaffected.
 if (QUALITY_HIGH) {
@@ -39,6 +46,18 @@ document.body.appendChild(renderer.domElement);
 // ── Scene / Camera ────────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0b10);
+
+// ── Environment map (PMREM RoomEnvironment) ───────────────────────────────────
+// Bake once, dispose the generator; environmentIntensity 0.4 supports specular
+// without dominating hand-placed lights.
+{
+  const pmrem = new PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  const envTexture = pmrem.fromScene(new RoomEnvironment()).texture;
+  scene.environment = envTexture;
+  scene.environmentIntensity = 0.4;
+  pmrem.dispose();
+}
 
 const camera = new THREE.PerspectiveCamera(
   75,

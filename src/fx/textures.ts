@@ -125,6 +125,84 @@ export function makeGunmetalFloorTexture(): THREE.CanvasTexture {
 }
 
 /**
+ * Floor roughness variation map — streaky worn-deck variation.
+ * Encodes roughness in the red channel: bright = rough (0.55-0.6),
+ * dark = smooth (0.28-0.35), producing light-panel reflections as worn streaks.
+ * 512×512, grayscale.
+ */
+export function makeFloorRoughnessMapTexture(): THREE.CanvasTexture {
+  return cached('floor-roughness-map', () => {
+    const S = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = S;
+    canvas.height = S;
+    const ctx = canvas.getContext('2d')!;
+
+    // Base: mid roughness (~0.50 in linear → #80 grey)
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, S, S);
+
+    const rand = rng(42);
+
+    // Long worn streaks along the walk path (vertical in texture = fore-aft on floor)
+    // Smooth streaks: dark value = lower roughness = specular gloss
+    const streakCount = 18;
+    for (let i = 0; i < streakCount; i++) {
+      const x = rand() * S;
+      const w = 4 + rand() * 22;
+      const len = S * (0.4 + rand() * 0.6);
+      const yStart = rand() * S;
+      // Smooth centre (low roughness = dark = ~0x48)
+      const smoothVal = Math.floor(0x40 + rand() * 0x28);
+      const grad = ctx.createLinearGradient(x - w, yStart, x + w, yStart);
+      grad.addColorStop(0, '#808080');
+      grad.addColorStop(0.3, `rgb(${smoothVal},${smoothVal},${smoothVal})`);
+      grad.addColorStop(0.5, `rgb(${smoothVal},${smoothVal},${smoothVal})`);
+      grad.addColorStop(0.7, `rgb(${smoothVal},${smoothVal},${smoothVal})`);
+      grad.addColorStop(1, '#808080');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x - w, yStart, w * 2, len);
+    }
+
+    // Rough patches (scuffs / scratches — raised roughness = bright = ~0xB0)
+    const scuffCount = 35;
+    for (let i = 0; i < scuffCount; i++) {
+      const x = rand() * S;
+      const y = rand() * S;
+      const r = 3 + rand() * 14;
+      const roughVal = Math.floor(0x90 + rand() * 0x30);
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * (0.3 + rand() * 0.4), rand() * Math.PI, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${roughVal},${roughVal},${roughVal},0.6)`;
+      ctx.fill();
+    }
+
+    // Tile seam lines — slightly rough edges
+    for (let x = 128; x < S; x += 128) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, S);
+      ctx.strokeStyle = 'rgba(160,160,160,0.5)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    for (let y = 128; y < S; y += 128) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(S, y);
+      ctx.strokeStyle = 'rgba(160,160,160,0.5)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  });
+}
+
+/**
  * Gunmetal ceiling texture (#25282e) — slightly lighter than floor,
  * with a rectangular panel grid and alternating inset highlights.
  * 512×512.

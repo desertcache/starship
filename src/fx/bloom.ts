@@ -28,6 +28,7 @@ import { EffectComposer }  from 'three/examples/jsm/postprocessing/EffectCompose
 import { RenderPass }      from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass }      from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass }      from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { SSAOPass }        from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { QUALITY_HIGH }    from '../core/perf.js';
 
@@ -36,6 +37,44 @@ import { QUALITY_HIGH }    from '../core/perf.js';
 const BLOOM_THRESHOLD = 0.90;
 const BLOOM_STRENGTH  = 0.45;
 const BLOOM_RADIUS    = 0.55;
+
+// ── Vignette shader ────────────────────────────────────────────────────────────
+//
+// Darkens screen corners ~18% with a smooth radial falloff.
+// One fullscreen quad — negligible GPU cost.
+// Applied BEFORE OutputPass so it composites into the tone-mapped result.
+
+const VignetteShader = {
+  name: 'VignetteShader',
+  uniforms: {
+    tDiffuse:   { value: null as THREE.Texture | null },
+    /** Falloff power — higher = tighter vignette edge (2.0 = cosine-like). */
+    uFalloff:   { value: 2.0 },
+    /** Darkness at the very corners (0 = none, 1 = black). */
+    uStrength:  { value: 0.18 },
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float uFalloff;
+    uniform float uStrength;
+    varying vec2 vUv;
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      // Distance from centre in UV space, normalised so corner = 1.0
+      vec2 uv = vUv - 0.5;
+      float dist = length(uv) * 1.4142; // scale so corner touches 1.0
+      float vignette = 1.0 - uStrength * pow(dist, uFalloff);
+      gl_FragColor = vec4(color.rgb * vignette, color.a);
+    }
+  `,
+};
 
 // ── SSAO tuning (room scale ≈3m) ──────────────────────────────────────────────
 //
@@ -107,7 +146,12 @@ export function initBloom(
     composer.addPass(bloomPass);
   }
 
-  // 4. OutputPass — tone-mapping + sRGB conversion, always last
+  // 4. Vignette — subtle corner darkening (~18%), active whenever composer runs.
+  //    Off when ?bloom=0 (no composer path) keeps plain render unaffected.
+  const vigPass = new ShaderPass(VignetteShader);
+  composer.addPass(vigPass);
+
+  // 5. OutputPass — tone-mapping + sRGB conversion, always last
   composer.addPass(new OutputPass());
 
   return {

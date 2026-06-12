@@ -1,11 +1,11 @@
 {
   "avgFps": 131.3,
   "p95FrameTime": 8.3,
-  "drawCalls": 101,
-  "triangles": 2930,
-  "geometries": 484,
-  "textures": 55,
-  "sampleDurationMs": 5004.399999991059,
+  "drawCalls": 136,
+  "triangles": 4921,
+  "geometries": 485,
+  "textures": 57,
+  "sampleDurationMs": 5004.5,
   "headless": false,
   "cameras": [
     "cockpit",
@@ -18,6 +18,6 @@
     "cargo-bay",
     "porthole-space"
   ],
-  "perfCamera": "quarters-a",
-  "timestamp": "2026-06-12T07:45:03.855Z"
+  "perfCamera": "galley",
+  "timestamp": "2026-06-12T07:54:33.215Z"
 }
