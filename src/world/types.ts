@@ -23,6 +23,17 @@ export interface Interactable {
   /** World-space centre of the interactable mesh. */
   position: THREE.Vector3;
   onInteract(ctx: InteractContext): void;
+  /**
+   * Optional dynamic prompt override. When present, tickInteract() calls this
+   * instead of reading `prompt` directly, allowing context-sensitive labels
+   * like "Open Door" / "Close Door".
+   */
+  getPrompt?(): string;
+  /**
+   * Optional per-interactable state bag for things like animation progress,
+   * toggle flags, etc. Typed as Record to avoid any.
+   */
+  state?: Record<string, boolean | number | string>;
 }
 
 export interface RoomModule {

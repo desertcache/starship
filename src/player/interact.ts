@@ -96,7 +96,8 @@ export function tickInteract(): void {
   state.current = found;
 
   if (found) {
-    showPrompt(`[E]  ${found.prompt}`);
+    const label = found.getPrompt ? found.getPrompt() : found.prompt;
+    showPrompt(`[E]  ${label}`);
   } else {
     clearPrompt();
   }

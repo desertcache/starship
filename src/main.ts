@@ -15,6 +15,8 @@ import { initInteract, registerInteractables, tickInteract, headlessInteract } f
 import { tickSway } from './fx/sway.js';
 import { initAudio, getRoomForPosition, playOneShot } from './fx/audio.js';
 import type { RoomName } from './fx/audio.js';
+import { buildAllInteractables } from './world/interactWiring.js';
+import { isDoorOpen } from './world/doors.js';
 import { initBloom } from './fx/bloom.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
@@ -82,6 +84,11 @@ for (const ia of ship.interactables) {
 
 registerInteractables(ship.interactables);
 
+// Register all v0.2 interactables (doors, seats, console, lore, items, save)
+// doorRecords are populated by buildDoors() inside assembleShip(), so this is safe.
+const v02Interactables = buildAllInteractables();
+registerInteractables(v02Interactables);
+
 // ── Start at corridor camera ──────────────────────────────────────────────────
 const camNames = getRegisteredCamNames();
 (window as unknown as Record<string, unknown>)['__camNames'] = camNames;
@@ -112,6 +119,7 @@ interface TestAPI {
   teleport(x: number, y: number, z: number): void;
   interact(): boolean;
   getState(): { clock: number; energy: number; hunger: number; clockString: string };
+  getDoorOpen(id: string): boolean;
 }
 
 const EYE_HEIGHT_MAIN = 1.7;
@@ -134,6 +142,9 @@ const testAPI: TestAPI = {
       clockString: `${String(Math.floor(s.shipMinutes / 60) % 24).padStart(2, '0')}:${String(Math.floor(s.shipMinutes) % 60).padStart(2, '0')}`,
     };
   },
+  getDoorOpen(id: string): boolean {
+    return isDoorOpen(id);
+  },
 };
 
 (window as unknown as Record<string, unknown>)['__test'] = testAPI;
@@ -144,6 +155,7 @@ let lastRoom: RoomName = 'corridor';
 const ROOM_LABELS: Record<RoomName, string> = {
   cockpit:     'COCKPIT',
   corridor:    'CORRIDOR',
+  quarters:    'CREW QUARTERS',
   galley:      'GALLEY',
   engineering: 'ENGINEERING',
   cargo:       'CARGO',
@@ -181,7 +193,7 @@ function animate(now: number): void {
   audio.tick(isMoving());
 
   // Room ambient crossfade + toast on room change
-  const currentRoom = getRoomForPosition(camera.position.z);
+  const currentRoom = getRoomForPosition(camera.position.x, camera.position.z);
   if (currentRoom !== lastRoom) {
     audio.setRoom(currentRoom);
     showRoomToast(ROOM_LABELS[currentRoom]);

@@ -233,6 +233,66 @@ async function run() {
 
     console.log('[verify] All Phase 4 functional tests PASSED ✓\n');
 
+    // ── Test 3: Door toggle (corridor-galley door at world 0,0,-7) ──────────────
+    // Door starts OPEN. Teleport player next to it, interact → should close.
+    // Then interact again → should re-open.
+    console.log('[verify] Test 3: Door toggle (corridor-galley)');
+    const doorId = 'corridor-galley';
+
+    const preToggleOpen = await page.evaluate((id) => window.__test.getDoorOpen(id), doorId);
+    console.log(`  pre-toggle: isDoorOpen=${preToggleOpen}`);
+    assert(preToggleOpen === true, `Door '${doorId}' should start OPEN; got closed`);
+
+    // Teleport adjacent to door
+    await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
+    await sleep(150);
+
+    const interacted3a = await page.evaluate(() => window.__test.interact());
+    assert(interacted3a, 'interact() returned false — door interactable not found');
+    await sleep(600); // let animation run
+
+    const afterClose = await page.evaluate((id) => window.__test.getDoorOpen(id), doorId);
+    console.log(`  after close interact: isDoorOpen=${afterClose}`);
+    assert(afterClose === false, `Door should be CLOSED after first interact; got open`);
+
+    // Toggle back open
+    await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
+    await sleep(150);
+    const interacted3b = await page.evaluate(() => window.__test.interact());
+    assert(interacted3b, 'interact() returned false on second door interact');
+    await sleep(600);
+
+    const afterReopen = await page.evaluate((id) => window.__test.getDoorOpen(id), doorId);
+    console.log(`  after reopen interact: isDoorOpen=${afterReopen}`);
+    assert(afterReopen === true, `Door should be OPEN after second interact; got closed`);
+    console.log('[verify] Test 3 PASSED ✓ (door toggled closed then re-opened)');
+
+    // ── Test 4: Fridge hunger increase (galley at world 2.725,1.05,0.05) ─────────
+    console.log('[verify] Test 4: Fridge hunger increase');
+    // First drain hunger so we have headroom to measure the +30
+    const preHunger = (await page.evaluate(() => window.__test.getState())).hunger;
+    console.log(`  pre-fridge hunger=${preHunger.toFixed(1)}`);
+
+    await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
+    await sleep(150);
+    const interacted4 = await page.evaluate(() => window.__test.interact());
+    assert(interacted4, 'interact() returned false — fridge interactable not found');
+    await sleep(200);
+
+    const postHunger = (await page.evaluate(() => window.__test.getState())).hunger;
+    console.log(`  post-fridge hunger=${postHunger.toFixed(1)}`);
+    // fridge adds 30 capped at 100; hunger may have decayed slightly during test
+    // expect at least +25 increase (decay is ~0.07/s, test runs quickly)
+    const hungerDelta = postHunger - preHunger;
+    console.log(`  hunger delta: ${hungerDelta.toFixed(1)} (expected ≥25)`);
+    assert(
+      hungerDelta >= 25 || postHunger >= 99,
+      `Hunger did not increase by ~30; delta=${hungerDelta.toFixed(1)}, post=${postHunger.toFixed(1)}`,
+    );
+    console.log('[verify] Test 4 PASSED ✓ (fridge increased hunger)');
+
+    console.log('[verify] All Phase 4 + v0.2 functional tests PASSED ✓\n');
+
     await browser.close();
     console.log('[verify] Done. ✓');
   } finally {

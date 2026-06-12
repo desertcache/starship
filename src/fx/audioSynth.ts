@@ -7,7 +7,7 @@
  */
 
 export type OneShotType = 'ui' | 'door' | 'eat' | 'sip' | 'vent' | 'save';
-export type RoomName    = 'cockpit' | 'corridor' | 'galley' | 'engineering' | 'cargo';
+export type RoomName    = 'cockpit' | 'corridor' | 'quarters' | 'galley' | 'engineering' | 'cargo';
 export type SurfaceType = 'soft' | 'tile' | 'metal';
 
 // ── Constants ─────────────────────────────────────────────────────────────────

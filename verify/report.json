@@ -5,7 +5,7 @@
   "triangles": 4868,
   "geometries": 539,
   "textures": 52,
-  "sampleDurationMs": 5143.100000008941,
+  "sampleDurationMs": 5125.9000000059605,
   "headless": true,
   "cameras": [
     "cockpit",
@@ -17,5 +17,5 @@
     "engineering",
     "cargo-bay"
   ],
-  "timestamp": "2026-06-12T04:33:05.689Z"
+  "timestamp": "2026-06-12T04:50:06.891Z"
 }

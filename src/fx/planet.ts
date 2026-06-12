@@ -112,7 +112,7 @@ export function buildPlanet(): PlanetResult {
 
   // Drift state — planet moves slowly across the cockpit FOV
   let driftAngle = 0;
-  const DRIFT_RADIUS = 80;   // how far it swings laterally (world units)
+  const DRIFT_RADIUS = 35;   // how far it swings laterally (world units)
   const DRIFT_SPEED = 0.004; // radians per second
   const SPIN_SPEED  = 0.015; // self-rotation radians per second
 

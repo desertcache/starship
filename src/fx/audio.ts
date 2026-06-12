@@ -33,13 +33,20 @@ export interface AudioSystem {
 // ── Room Z-range helper ───────────────────────────────────────────────────────
 
 /**
- * Map a world-space Z position to a room name.
- * cockpit Z < -18, corridor -18..-7, galley -7..-1, engineering -1..9, cargo > 9.
+ * Map a world-space (x, z) position to a room name.
+ * Geometry-accurate zone map:
+ *   cockpit:     Z < -20
+ *   quarters:    |X| > 1.5  AND  Z in [-18.5, -13.5]  (port & starboard alcoves)
+ *   corridor:    Z in [-20, -4]  (fallback after quarters check)
+ *   galley:      Z in [-4, +2]
+ *   engineering: Z in [+2, +9]
+ *   cargo:       Z > +9
  */
-export function getRoomForPosition(z: number): RoomName {
-  if (z < -18) return 'cockpit';
-  if (z < -7)  return 'corridor';
-  if (z < -1)  return 'galley';
+export function getRoomForPosition(x: number, z: number): RoomName {
+  if (z < -20) return 'cockpit';
+  if (Math.abs(x) > 1.5 && z >= -18.5 && z <= -13.5) return 'quarters';
+  if (z < -4)  return 'corridor';
+  if (z < 2)   return 'galley';
   if (z <= 9)  return 'engineering';
   return 'cargo';
 }
@@ -47,6 +54,7 @@ export function getRoomForPosition(z: number): RoomName {
 function surfaceForRoom(room: RoomName): SurfaceType {
   if (room === 'engineering' || room === 'cargo') return 'metal';
   if (room === 'galley') return 'tile';
+  if (room === 'quarters') return 'soft';
   return 'soft';
 }
 
@@ -100,6 +108,7 @@ function initAudioContext(): void {
   roomBranches['engineering'] = buildEngineeringBed(ctx, masterGain);
   roomBranches['galley']      = buildGalleyBed(ctx, masterGain);
   roomBranches['corridor']    = buildCorridorBed(ctx, masterGain);
+  roomBranches['quarters']    = buildCorridorBed(ctx, masterGain); // reuse corridor ambient bed
   roomBranches['cargo']       = buildCorridorBed(ctx, masterGain);
 
   // Corridor starts at full gain

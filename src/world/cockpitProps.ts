@@ -504,9 +504,9 @@ export function dustMoteTick(): void {
 
 function buildAccents(group: THREE.Group): void {
   // Canopy surround decals
-  // 'COCKPIT' plaque above center canopy
+  // 'COCKPIT' plaque on the canopy surround header (above the opening, Y>2.6)
   addDecal(group, 'COCKPIT', 0.80, 0.08,
-    new THREE.Vector3(0, 2.60, -2.49),
+    new THREE.Vector3(0, 2.78, -2.49),
     0, 0,
     { font: '14px monospace', textColor: '#C7641E', bgAlpha: 0.6, texW: 256, texH: 48 });
 
