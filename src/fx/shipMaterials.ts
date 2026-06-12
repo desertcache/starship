@@ -5,6 +5,9 @@
  *
  * v0.5: MeshStandardMaterial is now the DEFAULT.
  * Flag: ?materials=flat → Lambert fallback (performance / debug).
+ *
+ * v0.8 B1: updated wall roughness/metalness to painted-metal, added normal map.
+ *          Kill switch: set WALL_NORMAL_MAP = false to disable normal map wiring.
  */
 import * as THREE from 'three';
 import {
@@ -13,6 +16,7 @@ import {
   makeGunmetalFloorTexture,
   makeGunmetalCeilingTexture,
   makeFloorRoughnessMapTexture,
+  makeWallNormalMapTexture,
 } from './textures.js';
 import {
   makeHazardStripingTexture,
@@ -22,6 +26,9 @@ import {
   makeCeilingLightTexture,
   makeOrangeFrameTexture,
 } from './texturesEmissive.js';
+
+// ── Kill switch — set false to disable wall normal maps ───────────────────────
+const WALL_NORMAL_MAP = true;
 
 // ── PBR flag — PBR is DEFAULT; ?materials=flat forces Lambert ────────────────
 
@@ -43,59 +50,80 @@ function setRepeat(tex: THREE.CanvasTexture, rx: number, ry: number): THREE.Canv
 
 /**
  * Standard cream seamed wall panel.
- * repeat(2,2) → 1 seam panel ≈ 0.5 m of wall.
- * PBR: painted surface — high roughness, near-zero metalness, low envMap pickup.
+ * v0.8: world UVs carry tiling — repeat(1,1). Painted metal: rough 0.80, metal 0.08.
  */
 export const matShipWall: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial =
   PBR_ENABLED
-    ? new THREE.MeshStandardMaterial({
-        map: setRepeat(makeCreamWallTexture(), 2, 2),
-        roughness: 0.88,
-        metalness: 0.0,
-        envMapIntensity: 0.2,
-        side: THREE.FrontSide,
-      })
+    ? (() => {
+        const wallTex = makeCreamWallTexture();
+        wallTex.repeat.set(1, 1);
+        const mat = new THREE.MeshStandardMaterial({
+          map: wallTex,
+          roughness: 0.80,
+          metalness: 0.08,
+          envMapIntensity: 0.2,
+          side: THREE.FrontSide,
+        });
+        if (WALL_NORMAL_MAP) {
+          const nMap = makeWallNormalMapTexture();
+          nMap.repeat.set(1, 1);
+          mat.normalMap       = nMap;
+          mat.normalScale.set(0.35, 0.35);
+        }
+        return mat;
+      })()
     : new THREE.MeshLambertMaterial({
-        map: setRepeat(makeCreamWallTexture(), 2, 2),
+        map: setRepeat(makeCreamWallTexture(), 1, 1),
         side: THREE.FrontSide,
       });
 
 /**
  * Cream wall with burnt-orange waist band.
- * repeat(2,1) keeps band proportion; use for corridor + feature walls.
+ * v0.8: world UVs — repeat(1,1).
  */
 export const matShipWallBand: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial =
   PBR_ENABLED
-    ? new THREE.MeshStandardMaterial({
-        map: setRepeat(makeCreamOrangeBandTexture(), 2, 1),
-        roughness: 0.88,
-        metalness: 0.0,
-        envMapIntensity: 0.2,
-        side: THREE.FrontSide,
-      })
+    ? (() => {
+        const wallTex = makeCreamOrangeBandTexture();
+        wallTex.repeat.set(1, 1);
+        const mat = new THREE.MeshStandardMaterial({
+          map: wallTex,
+          roughness: 0.80,
+          metalness: 0.08,
+          envMapIntensity: 0.2,
+          side: THREE.FrontSide,
+        });
+        if (WALL_NORMAL_MAP) {
+          const nMap = makeWallNormalMapTexture();
+          nMap.repeat.set(1, 1);
+          mat.normalMap       = nMap;
+          mat.normalScale.set(0.35, 0.35);
+        }
+        return mat;
+      })()
     : new THREE.MeshLambertMaterial({
-        map: setRepeat(makeCreamOrangeBandTexture(), 2, 1),
+        map: setRepeat(makeCreamOrangeBandTexture(), 1, 1),
         side: THREE.FrontSide,
       });
 
 // ── Floor / ceiling materials ──────────────────────────────────────────────────
 
 /** Dark gunmetal floor — worn metal deck plates.
- * roughnessMap adds streaky variation 0.3-0.6 so light panels reflect in streaks.
- * High envMapIntensity so the floor picks up the room environment specular.
+ * v0.8: world UVs (2m×2m plate grid), repeat(1,1).
+ * roughness 0.45, metalness 0.50, envMapIntensity 0.9.
  */
 export const matShipFloor: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial =
   PBR_ENABLED
     ? new THREE.MeshStandardMaterial({
-        map: setRepeat(makeGunmetalFloorTexture(), 2, 2),
-        roughnessMap: setRepeat(makeFloorRoughnessMapTexture(), 2, 2),
-        roughness: 0.42,
-        metalness: 0.55,
+        map:           setRepeat(makeGunmetalFloorTexture(), 1, 1),
+        roughnessMap:  setRepeat(makeFloorRoughnessMapTexture(), 1, 1),
+        roughness:     0.45,
+        metalness:     0.50,
         envMapIntensity: 0.9,
         side: THREE.FrontSide,
       })
     : new THREE.MeshLambertMaterial({
-        map: setRepeat(makeGunmetalFloorTexture(), 2, 2),
+        map: setRepeat(makeGunmetalFloorTexture(), 1, 1),
         side: THREE.FrontSide,
       });
 
@@ -168,14 +196,14 @@ export const matCeilingLight: THREE.MeshBasicMaterial = new THREE.MeshBasicMater
 // ── Door frame ─────────────────────────────────────────────────────────────────
 
 /** Burnt-orange door frame — anodised metal channel.
- * Low roughness + high metalness + high envMap = clear specular highlight.
+ * v0.8: roughness 0.30, metalness 0.78 (sharper specular highlight).
  */
 export const matDoorFrame: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial =
   PBR_ENABLED
     ? new THREE.MeshStandardMaterial({
         map: setRepeat(makeOrangeFrameTexture(), 1, 4),
-        roughness: 0.35,
-        metalness: 0.7,
+        roughness: 0.30,
+        metalness: 0.78,
         envMapIntensity: 0.8,
         side: THREE.FrontSide,
       })

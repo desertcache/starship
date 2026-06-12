@@ -1,12 +1,12 @@
 {
-  "avgFps": 144,
-  "p95FrameTime": 7.1,
-  "drawCalls": 389,
-  "triangles": 19469,
-  "geometries": 577,
+  "avgFps": 3.2,
+  "p95FrameTime": 333.3,
+  "drawCalls": 511,
+  "triangles": 17519,
+  "geometries": 576,
   "textures": 76,
-  "sampleDurationMs": 5002.399999976158,
-  "headless": false,
+  "sampleDurationMs": 5316.5,
+  "headless": true,
   "qualityHigh": false,
   "cameras": [
     "cockpit",
@@ -23,6 +23,6 @@
     "qa-jitter-a",
     "qa-jitter-b"
   ],
-  "perfCamera": "cockpit",
-  "timestamp": "2026-06-12T18:02:47.508Z"
+  "perfCamera": "engineering",
+  "timestamp": "2026-06-12T18:25:01.560Z"
 }
