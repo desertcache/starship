@@ -110,13 +110,24 @@ export function initController(
   return controls;
 }
 
+/** True while the player is actively pressing a movement key AND is locked. */
+let _isMoving = false;
+
+/** Returns true when the player is walking this frame (pointer-locked + key held). */
+export function isMoving(): boolean {
+  return _isMoving;
+}
+
 export function tickController(now: number): void {
   if (!controls) return;
 
   const dt = Math.min((now - lastTime) / 1000, 0.05); // cap dt at 50ms
   lastTime = now;
 
-  if (!controls.isLocked) return;
+  if (!controls.isLocked) {
+    _isMoving = false;
+    return;
+  }
 
   const camera = controls.camera as THREE.PerspectiveCamera;
   const move = new THREE.Vector3();
@@ -126,7 +137,9 @@ export function tickController(now: number): void {
   if (keys.left)     move.x -= 1;
   if (keys.right)    move.x += 1;
 
-  if (move.lengthSq() > 0) {
+  _isMoving = move.lengthSq() > 0;
+
+  if (_isMoving) {
     move.normalize().multiplyScalar(WALK_SPEED * dt);
     move.applyEuler(new THREE.Euler(0, camera.rotation.y, 0, 'YXZ'));
     tryMove(camera.position, move.x, move.z);

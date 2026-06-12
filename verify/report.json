@@ -1,11 +1,11 @@
 {
   "avgFps": 144,
-  "p95FrameTime": 7.1,
-  "drawCalls": 63,
-  "triangles": 4256,
-  "geometries": 302,
-  "textures": 12,
-  "sampleDurationMs": 5000.5,
+  "p95FrameTime": 7,
+  "drawCalls": 77,
+  "triangles": 4270,
+  "geometries": 303,
+  "textures": 25,
+  "sampleDurationMs": 5004.79999999702,
   "headless": false,
   "cameras": [
     "cockpit",
@@ -16,5 +16,5 @@
     "galley",
     "engineering"
   ],
-  "timestamp": "2026-06-12T03:09:03.778Z"
+  "timestamp": "2026-06-12T03:20:52.920Z"
 }

@@ -10,9 +10,11 @@ import { tickState, getState } from './core/state.js';
 import { initDebug, tickDebug } from './ui/debug.js';
 import { initHud, tickHud } from './ui/hud.js';
 import { assembleShip } from './world/assembly.js';
-import { initController, tickController } from './player/controller.js';
+import { initController, tickController, isMoving } from './player/controller.js';
 import { initInteract, registerInteractables, tickInteract, headlessInteract } from './player/interact.js';
 import { tickSway } from './fx/sway.js';
+import { initAudio } from './fx/audio.js';
+import { initBloom } from './fx/bloom.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -39,8 +41,17 @@ initPerf(renderer);
 initDebug(renderer, camera);
 initHud();
 
+// ── Audio (Phase 5) ───────────────────────────────────────────────────────────
+// initAudio attaches gesture listeners; the AudioContext starts suspended and
+// only resumes on the first user click/keydown. Safe if audio is blocked.
+const audio = initAudio();
+
 // ── Assemble ship ─────────────────────────────────────────────────────────────
 const ship = assembleShip(scene);
+
+// ── Bloom (Phase 5, optional) ─────────────────────────────────────────────────
+// ?bloom=0 disables it. Falls back to renderer.render() when off.
+const bloom = initBloom(renderer, scene, camera);
 
 // ── Player controller ─────────────────────────────────────────────────────────
 initController(camera, renderer, ship.colliders);
@@ -63,6 +74,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  bloom.resize(window.innerWidth, window.innerHeight);
 });
 
 // ── __ready promise ───────────────────────────────────────────────────────────
@@ -108,8 +120,14 @@ const testAPI: TestAPI = {
 let firstFrame = true;
 let lastFrameTime = performance.now();
 
+// With the bloom EffectComposer, each pass resets renderer.info, so perf
+// sampling would only see the final fullscreen quad (1 draw call). Accumulate
+// across the whole frame instead and reset manually at frame start.
+renderer.info.autoReset = false;
+
 function animate(now: number): void {
   requestAnimationFrame(animate);
+  renderer.info.reset();
   recordFrame(now);
 
   const dtSeconds = Math.min((now - lastFrameTime) / 1000, 0.05);
@@ -123,11 +141,12 @@ function animate(now: number): void {
   tickSway(camera, elapsed);
   ship.planet.tick(elapsed);
   tickDebug(now);
+  audio.tick(isMoving());
 
   const s = getState();
   tickHud(s.shipMinutes, s.energy, s.hunger);
 
-  renderer.render(scene, camera);
+  bloom.render();
   if (firstFrame) {
     firstFrame = false;
     readyResolve();
