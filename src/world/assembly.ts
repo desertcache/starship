@@ -230,12 +230,14 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
 
   // 3a. Dedicated quarters port — intimate, tucked low so the bunk side glows
   //     and the far corners fall into shadow (moody crew bunk, not a lit cell).
-  const qPortPt = new THREE.PointLight(WARM, 2.0, 4.4, 2);
+  //     0xffd9b0: warmer amber-tungsten vs corridor WARM (0xffe2c0) — domestic/cozy
+  //     identity. Intensity unchanged so overall level is unaffected.
+  const qPortPt = new THREE.PointLight(0xffd9b0, 2.0, 4.4, 2);
   qPortPt.position.set(-4, 2.2, -16);
   scene.add(qPortPt);
 
-  // 3b. Dedicated quarters starboard.
-  const qStbdPt = new THREE.PointLight(WARM, 2.0, 4.4, 2);
+  // 3b. Dedicated quarters starboard — same warmer tint for consistent bedroom identity.
+  const qStbdPt = new THREE.PointLight(0xffd9b0, 2.0, 4.4, 2);
   qStbdPt.position.set(4, 2.2, -16);
   scene.add(qStbdPt);
 
@@ -284,9 +286,11 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
 
   // (engineering.ts stray reactor glow = light #8 — counted in ship total)
 
-  // 9. Cargo bay — single high warm pool (5H room), dark corners.
+  // 9. Cargo bay — single high pool (5H room), dark corners.
   // v0.6 P1: intensity 6.0→4.5 so wall bases fall to shadow.
-  const cargoPt = new THREE.PointLight(0xffe0c0, 4.5, 9.5, 2);
+  // 0xe8eef2: cool/neutral blue-white vs corridor tungsten — industrial/utilitarian
+  // identity. Intensity unchanged; just the temperature shifts.
+  const cargoPt = new THREE.PointLight(0xe8eef2, 4.5, 9.5, 2);
   cargoPt.position.set(0, 4.2, 13.5);
   scene.add(cargoPt);
 

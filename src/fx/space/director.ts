@@ -216,6 +216,9 @@ export function createSpaceDirector(
     // looking -Z; X≈-165 swings it ~13° left so its disc clears the central
     // COCKPIT roundel decal, Y≈+30 lifts it a touch, Z≈-710 keeps it a readable
     // distance. Slow drift so it lingers in the opening shot.
+    // lightU=0.25 pins the terminator: sub-solar at left quarter → clear vertical
+    // terminator near disc center (lit left limb, shadow on right), fully visible
+    // from the cockpit cam looking -Z. Seeded bodies keep random directions.
     addEntry(
       spawnHero(rng, {
         kind: 'GAS_GIANT',
@@ -225,6 +228,7 @@ export function createSpaceDirector(
         driftSpeed: 6,
         vx: 0,
         vy: 0,
+        lightU: 0.25,
       }),
     );
 
@@ -232,6 +236,7 @@ export function createSpaceDirector(
     // visible through the starboard porthole (porthole cam at (5.8,1.6,-16) looks
     // toward +X). RINGED matches ref-08's signature porthole body. Drifts slowly
     // +Z so it stays in frame for the first ~30s.
+    // lightU=0.25 same pinned sun direction for consistent look (lit left, shadow right).
     addEntry(
       spawnHero(rng, {
         kind: 'RINGED',
@@ -240,6 +245,7 @@ export function createSpaceDirector(
         driftSpeed: 4,
         vx: 0,
         vy: 0,
+        lightU: 0.25,
       }),
     );
     signatureDone = true;

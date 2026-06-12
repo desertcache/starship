@@ -87,13 +87,19 @@ export interface HeroOpts {
   /** Override lateral/vertical drift (else seeded jitter). */
   vx?: number;
   vy?: number;
+  /**
+   * Pin the terminator direction for GAS_GIANT/RINGED bodies (0..1 sub-solar U).
+   * 0.25 = sub-solar at left quarter → terminator near disc center, lit left limb.
+   * Omit for seeded (random) direction used by scheduled/ambient bodies.
+   */
+  lightU?: number;
 }
 
 /** Spawn a hero body (radius 60-140). */
 export function spawnHero(rng: Rng, o: HeroOpts = {}): BodyEntry {
   const k = o.kind ?? HERO_KINDS[rng.pick(HERO_WEIGHTS)];
   const r = o.radius ?? rng.range(60, 140);
-  const body = createBody(rng, k, r, o.familyIndex);
+  const body = createBody(rng, k, r, o.familyIndex, o.lightU);
   if (o.at) body.group.position.copy(o.at);
   else placeSpawn(body.group, rng);
   return {

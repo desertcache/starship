@@ -86,12 +86,15 @@ function addAtmosphere(group: THREE.Group, radius: number, accent: number, d: Di
  * Create a procedural body. `kind` selects the look; `radius` is world units.
  * hero/ambient texture sizing is inferred from radius (>=50 → hero detail).
  * `familyIndex` optionally forces a gas-giant hue family (0..3); else seeded.
+ * `pinnedLightU` overrides the seeded terminator direction for GAS_GIANT/RINGED
+ * bodies; use 0.25 for a clearly visible terminator across the visible disc.
  */
 export function createBody(
   rng: Rng,
   kind: BodyKind,
   radius: number,
   familyIndex?: number,
+  pinnedLightU?: number,
 ): Body {
   const group = new THREE.Group();
   group.name = `body-${kind}`;
@@ -108,7 +111,7 @@ export function createBody(
   if (kind === 'GAS_GIANT' || kind === 'RINGED') {
     const fi = familyIndex ?? rng.int(0, HUE_FAMILIES.length - 1);
     const family = HUE_FAMILIES[fi];
-    const tex = gasGiantTexture(rng, family, texSize);
+    const tex = gasGiantTexture(rng, family, texSize, pinnedLightU);
     const mat = new THREE.MeshBasicMaterial({ map: tex });
     const mesh = new THREE.Mesh(mainGeo, mat);
     mesh.name = 'body-core';

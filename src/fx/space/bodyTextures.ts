@@ -75,10 +75,20 @@ function seedLightU(rng: Rng): number {
 
 // ── Gas giant — wavy sin-noise latitude bands ──────────────────────────────────
 
-/** Banded gas-giant face in a seeded hue family; optional oval great-spot storm. */
-export function gasGiantTexture(rng: Rng, family: HueFamily, size: number): THREE.CanvasTexture {
+/**
+ * Banded gas-giant face in a seeded hue family; optional oval great-spot storm.
+ * `pinnedLightU` overrides the seeded terminator direction — pass 0.25 to lock
+ * the sub-solar point at the left quarter of the disc (terminator near center,
+ * lit side toward the left limb) for signature-cast bodies.
+ */
+export function gasGiantTexture(
+  rng: Rng,
+  family: HueFamily,
+  size: number,
+  pinnedLightU?: number,
+): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(size);
-  const lightU = seedLightU(rng);
+  const lightU = pinnedLightU !== undefined ? pinnedLightU : seedLightU(rng);
 
   const bg = ctx.createLinearGradient(0, 0, 0, size);
   bg.addColorStop(0, family.base[0]);
