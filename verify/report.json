@@ -1,12 +1,12 @@
 {
-  "avgFps": 144,
-  "p95FrameTime": 7,
-  "drawCalls": 91,
-  "triangles": 8564,
+  "avgFps": 11,
+  "p95FrameTime": 100.1,
+  "drawCalls": 149,
+  "triangles": 4778,
   "geometries": 520,
   "textures": 53,
-  "sampleDurationMs": 5005.4000000059605,
-  "headless": false,
+  "sampleDurationMs": 5131.0999999940395,
+  "headless": true,
   "cameras": [
     "cockpit",
     "cockpit-canopy",
@@ -17,6 +17,6 @@
     "engineering",
     "cargo-bay"
   ],
-  "perfCamera": "cockpit",
-  "timestamp": "2026-06-12T05:42:16.250Z"
+  "perfCamera": "engineering",
+  "timestamp": "2026-06-12T05:49:54.644Z"
 }

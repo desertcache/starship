@@ -288,43 +288,42 @@ async function run() {
     assert(afterReopen === true, `Door should be OPEN after second interact; got closed`);
     console.log('[verify] Test 3 PASSED ✓ (door toggled closed then re-opened)');
 
-    // ── Test 4: Fridge hunger increase (galley at world 2.725,1.05,0.05) ─────────
-    console.log('[verify] Test 4: Fridge hunger increase');
-    // First drain hunger so we have headroom to measure the +30
+    // ── Test 4: Fridge ration restores DRAINED hunger (strict) ───────────────────
+    // Hunger sits near 100 after Test 2, which made a delta assertion vacuous.
+    // Drain to 50 via the test hook so the +30 ration effect is actually measured.
+    console.log('[verify] Test 4: Fridge ration restores drained hunger');
+    await page.evaluate(() => window.__test.resetFridge());
+    await page.evaluate(() => window.__test.setHunger(50));
     const preHunger = (await page.evaluate(() => window.__test.getState())).hunger;
-    console.log(`  pre-fridge hunger=${preHunger.toFixed(1)}`);
+    console.log(`  pre-fridge hunger=${preHunger.toFixed(1)} (drained via test hook)`);
 
     await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
     await sleep(150);
-    const interacted4 = await page.evaluate(() => window.__test.interact());
-    assert(interacted4, 'interact() returned false — fridge interactable not found');
+    const opened4 = await page.evaluate(() => window.__test.interact()); // opens the door
+    assert(opened4, 'interact() returned false — fridge interactable not found');
+    await sleep(500); // door tween
+    await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
+    await sleep(150);
+    const took4 = await page.evaluate(() => window.__test.interact()); // takes a ration
+    assert(took4, 'interact() returned false — take-ration step failed');
     await sleep(200);
 
     const postHunger = (await page.evaluate(() => window.__test.getState())).hunger;
-    console.log(`  post-fridge hunger=${postHunger.toFixed(1)}`);
-    // fridge adds 30 capped at 100; hunger may have decayed slightly during test
-    // expect at least +25 increase (decay is ~0.07/s, test runs quickly)
     const hungerDelta = postHunger - preHunger;
-    console.log(`  hunger delta: ${hungerDelta.toFixed(1)} (expected ≥25)`);
-    assert(
-      hungerDelta >= 25 || postHunger >= 99,
-      `Hunger did not increase by ~30; delta=${hungerDelta.toFixed(1)}, post=${postHunger.toFixed(1)}`,
-    );
-    console.log('[verify] Test 4 PASSED ✓ (fridge increased hunger)');
+    console.log(`  post-fridge hunger=${postHunger.toFixed(1)} delta=${hungerDelta.toFixed(1)} (strict ≥25)`);
+    assert(hungerDelta >= 25, `Ration did not restore hunger; delta=${hungerDelta.toFixed(1)}`);
+    console.log('[verify] Test 4 PASSED ✓ (ration restored ~+30 hunger from a drained state)');
 
     console.log('[verify] All Phase 4 + v0.2 functional tests PASSED ✓\n');
 
     // ── Test 5: Fridge door open → take ration → assert hunger + door state ─────
     // Galley worldPos (0,0,-1). Fridge interact pos ≈ (2.45, 1.05, 0.05) world.
     console.log('[verify] Test 5: Fridge door state machine');
-    // Reset fridge to known closed+full state (Test 4 may have left it open)
+    // Reset fridge to known closed+full state (Test 4 left it open, stock 2)
     await page.evaluate(() => window.__test.resetFridge());
+    await page.evaluate(() => window.__test.setHunger(60));
     await sleep(100);
 
-    // Drain hunger to 50 so +30 is measurable (hunger was ~100 after Test 2)
-    // We do this by waiting — decay is 0.07/s so 50/0.07 ≈ 714s — too slow.
-    // Instead we'll just assert that hunger EITHER increased by ≥25 OR hunger hits ≥99.
-    // First check the pre-open state.
     // Step 5a: teleport near fridge and interact (should OPEN, no hunger change)
     await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
     await sleep(150);
@@ -353,7 +352,7 @@ async function run() {
     const hungerDelta5 = postRation.hunger - preOpenFridge.hunger;
     console.log(`  hunger delta: ${hungerDelta5.toFixed(1)} (expected ~+30)`);
     assert(
-      hungerDelta5 >= 25 || postRation.hunger >= 99,
+      hungerDelta5 >= 25,
       `Hunger did not increase by ~30 after taking ration; delta=${hungerDelta5.toFixed(1)}`,
     );
 

@@ -6,7 +6,7 @@ import {
   setActiveCamera,
   teleportToCamera,
 } from './core/cameras.js';
-import { tickState, getState, loadState } from './core/state.js';
+import { tickState, getState, loadState, setHunger } from './core/state.js';
 import { initDebug, tickDebug } from './ui/debug.js';
 import { initHud, tickHud, showRoomToast } from './ui/hud.js';
 import { assembleShip } from './world/assembly.js';
@@ -124,6 +124,7 @@ interface TestAPI {
   getDoorOpen(id: string): boolean;
   getFridgeState(): { state: string; stock: number };
   resetFridge(): void;
+  setHunger(v: number): void;
 }
 
 const EYE_HEIGHT_MAIN = 1.7;
@@ -154,6 +155,9 @@ const testAPI: TestAPI = {
   },
   resetFridge(): void {
     resetFridgeForTest();
+  },
+  setHunger(v: number): void {
+    setHunger(v);
   },
 };
 
