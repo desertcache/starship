@@ -1,0 +1,28 @@
+{
+  "avgFps": 3.1,
+  "p95FrameTime": 350,
+  "drawCalls": 1027,
+  "triangles": 50073,
+  "geometries": 584,
+  "textures": 78,
+  "sampleDurationMs": 5481.799999982119,
+  "headless": true,
+  "qualityHigh": false,
+  "cameras": [
+    "cockpit",
+    "cockpit-canopy",
+    "corridor",
+    "quarters-a",
+    "quarters-b",
+    "galley",
+    "engineering",
+    "cargo-bay",
+    "porthole-space",
+    "qa-doorway",
+    "qa-porthole-oblique",
+    "qa-jitter-a",
+    "qa-jitter-b"
+  ],
+  "perfCamera": "corridor",
+  "timestamp": "2026-06-12T18:35:57.090Z"
+}

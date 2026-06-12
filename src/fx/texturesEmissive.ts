@@ -77,20 +77,74 @@ export function makeCeilingLightTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Burnt-orange door frame texture (#C7641E) with grime.
- * 256×256.
+ * Burnt-orange door frame — anodized brushed metal.
+ * Vertical 1px streaks ±8% luminance, edge-wear highlights, gunmetal chip
+ * flecks, bottom-grounding gradient, grime 0.15. 256×256, repeat 1×4.
  */
 export function makeOrangeFrameTexture(): THREE.CanvasTexture {
   return cached('orange-frame', () => {
-    const S = 256;
+    const W = 256;
+    const H = 256;
     const canvas = document.createElement('canvas');
-    canvas.width = S;
-    canvas.height = S;
+    canvas.width = W;
+    canvas.height = H;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = PAL.orange;
-    ctx.fillRect(0, 0, S, S);
-    addGrime(ctx, S, S, 88, 0.20);
+    // 1. Base anodized orange
+    ctx.fillStyle = '#C7641E';
+    ctx.fillRect(0, 0, W, H);
+
+    // 2. Vertical brushed micro-streaks — 1px columns, seeded ±8% luminance
+    const streakRand = rng(1127);
+    for (let x = 0; x < W; x++) {
+      const delta = (streakRand() - 0.5) * 2 * 0.08; // -0.08..+0.08
+      const alpha = 0.18 + streakRand() * 0.22;
+      ctx.fillStyle = delta > 0
+        ? `rgba(255,255,255,${(alpha * delta / 0.08).toFixed(3)})`
+        : `rgba(0,0,0,${(alpha * (-delta) / 0.08).toFixed(3)})`;
+      const yStart = Math.floor(streakRand() * 4);
+      ctx.fillRect(x, yStart, 1, H - yStart - Math.floor(streakRand() * 4));
+    }
+
+    // 3. Edge-wear — brighter along both vertical edges (anodizing worn off)
+    const edgeW = Math.floor(W * 0.10);
+    const leftGrad = ctx.createLinearGradient(0, 0, edgeW, 0);
+    leftGrad.addColorStop(0.0, 'rgba(255,210,160,0.50)');
+    leftGrad.addColorStop(0.4, 'rgba(255,190,130,0.22)');
+    leftGrad.addColorStop(1.0, 'rgba(255,190,130,0.00)');
+    ctx.fillStyle = leftGrad;
+    ctx.fillRect(0, 0, edgeW, H);
+    const rightGrad = ctx.createLinearGradient(W, 0, W - edgeW, 0);
+    rightGrad.addColorStop(0.0, 'rgba(255,210,160,0.50)');
+    rightGrad.addColorStop(0.4, 'rgba(255,190,130,0.22)');
+    rightGrad.addColorStop(1.0, 'rgba(255,190,130,0.00)');
+    ctx.fillStyle = rightGrad;
+    ctx.fillRect(W - edgeW, 0, edgeW, H);
+
+    // 4. Chip flecks revealing gunmetal (#1C1E22)
+    const chipRand = rng(2251);
+    for (let i = 0; i < 18; i++) {
+      const cx = Math.floor(chipRand() * W);
+      const cy = Math.floor(chipRand() * H);
+      const cw = Math.ceil(2 + chipRand() * 5);
+      const ch = Math.ceil(1 + chipRand() * 3);
+      ctx.fillStyle = `rgba(28,30,34,${(0.55 + chipRand() * 0.35).toFixed(3)})`;
+      ctx.fillRect(cx, cy, cw, ch);
+      if (chipRand() > 0.4) { // bare metal gleam above chip
+        ctx.fillStyle = 'rgba(220,180,140,0.45)';
+        ctx.fillRect(cx, cy - 1, cw, 1);
+      }
+    }
+
+    // 5. Bottom grounding — darker/redder near floor
+    const groundGrad = ctx.createLinearGradient(0, H * 0.55, 0, H);
+    groundGrad.addColorStop(0.0, 'rgba(0,0,0,0.00)');
+    groundGrad.addColorStop(1.0, 'rgba(30,0,0,0.28)');
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // 6. Grime
+    addGrime(ctx, W, H, 88, 0.15);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
