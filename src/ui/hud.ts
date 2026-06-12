@@ -30,6 +30,7 @@ let hungerFill: HTMLDivElement | null = null;
 let promptEl: HTMLDivElement | null = null;
 let crosshairEl: HTMLDivElement | null = null;
 let fadeEl: HTMLDivElement | null = null;
+let flightStripEl: HTMLDivElement | null = null;
 
 const TEAL   = '#46E0D8';
 const BAR_BG = 'rgba(10,11,16,0.85)';
@@ -107,6 +108,29 @@ export function initHud(): void {
   hungerFill = makeBar('HUNGER');
   document.body.appendChild(wrapper);
 
+  // ── Flight status HUD strip (top-center) — "STREL-7 · T+HH:MM · CRUISE" ──
+  // Matches existing HUD language: monospace, cream, letter-spaced, dark backing.
+  flightStripEl = makeDiv([
+    'position:fixed',
+    'top:14px',
+    'left:50%',
+    'transform:translateX(-50%)',
+    'font-family:monospace',
+    'font-size:13px',
+    'letter-spacing:0.12em',
+    'color:#E8E2D4',
+    `background:${BAR_BG}`,
+    'padding:3px 12px',
+    'border-radius:3px',
+    'border:1px solid rgba(232,226,212,0.15)',
+    'pointer-events:none',
+    'z-index:500',
+    'white-space:nowrap',
+    'text-shadow:0 0 6px rgba(232,226,212,0.3)',
+  ].join(';'));
+  flightStripEl.textContent = 'STREL-7 · T+07:00 · CRUISE';
+  document.body.appendChild(flightStripEl);
+
   // ── Crosshair (fixed center) ────────────────────────────────────────────────
   crosshairEl = makeDiv([
     'position:fixed',
@@ -169,6 +193,9 @@ export function tickHud(shipMinutes: number, energy: number, hunger: number): vo
   if (clockEl) clockEl.textContent = formatShipClock(shipMinutes);
   if (energyFill) energyFill.style.width = `${Math.round(energy)}%`;
   if (hungerFill)  hungerFill.style.width  = `${Math.round(hunger)}%`;
+  if (flightStripEl) {
+    flightStripEl.textContent = `STREL-7 · T+${formatShipClock(shipMinutes)} · CRUISE`;
+  }
 }
 
 // ── Prompt visibility ─────────────────────────────────────────────────────────

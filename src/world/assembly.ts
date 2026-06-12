@@ -15,6 +15,24 @@ import { QUALITY_LOW } from '../core/perf.js';
 import type { AABB, RoomModule, Interactable } from './types.js';
 import type { PlanetResult } from '../fx/planet.js';
 
+/** Returns true when a mesh should cast shadows based on its name chain. */
+function shouldCastShadow(obj: THREE.Mesh): boolean {
+  let node: THREE.Object3D | null = obj;
+  while (node) {
+    const n = node.name.toLowerCase();
+    if (n.includes('seat') || n.includes('console') || n.includes('reactor') ||
+        n.includes('crate') || n.includes('table') || n.includes('bench') ||
+        n.includes('bunk') || n.includes('locker') || n.includes('catwalk') ||
+        n.includes('lever') || n.includes('rail') || n.includes('pillar') ||
+        n.includes('cabinet') || n.includes('nightstand')) {
+      return true;
+    }
+    node = node.parent;
+  }
+  return false;
+}
+
+
 /**
  * Ship layout — all positions are world-space (Y=0 is deck level).
  * Z axis: fore = negative, aft = positive.
@@ -45,34 +63,35 @@ function translateAABB(aabb: AABB, offset: THREE.Vector3): AABB {
 }
 
 /**
- * Default-on: turn a PointLight into a soft shadow caster.
- * 1024² map, near 0.1 / far 12 (room scale).
- * No-op when ?quality=low is set.
+ * Configure a SpotLight as a downward shadow-casting pool light.
+ * ONE shadow face (vs PointLight's 6) = 6× fewer shadow draw calls.
+ * No-op when ?quality=low.
  */
-function configureShadowCaster(light: THREE.PointLight): void {
+function configureSpotShadow(light: THREE.SpotLight): void {
   if (QUALITY_LOW) return;
   light.castShadow = true;
   light.shadow.mapSize.set(1024, 1024);
-  light.shadow.camera.near = 0.1;
-  light.shadow.camera.far = 12;
+  light.shadow.camera.near = 0.2;
+  light.shadow.camera.far = 14;
 }
 
 /**
- * Default-on: flag every mesh under the room groups to cast + receive shadows.
- * Cheap to set; only costs render time when shadowMap is enabled.
- * No-op when ?quality=low is set.
+ * Selective mesh shadow pass — props cast, structural surfaces only receive.
+ * Previously: every mesh got castShadow=true → 1323 total draw calls.
+ * Now: only named props cast → ~85% shadow draw reduction.
+ * No-op when ?quality=low.
  */
 function enableMeshShadows(groups: THREE.Group[]): void {
   if (QUALITY_LOW) return;
   for (const g of groups) {
     g.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.castShadow = true;
-        obj.receiveShadow = true;
-      }
+      if (!(obj instanceof THREE.Mesh)) return;
+      obj.receiveShadow = true;
+      obj.castShadow = shouldCastShadow(obj);
     });
   }
 }
+
 
 export interface ShipAssembly {
   groups: THREE.Group[];
@@ -150,11 +169,12 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   scene.add(planet.mesh);
 
   // Starboard-quarters porthole view onto the passing cruise (verify cross-flow).
-  // Aimed level through the porthole centre (world ~6.5, 1.6, -16) so space fills
-  // the frame rather than the hull wall above it.
+  // Camera pulled back to ~3.5m inside the room from the outer wall face (X=6.5)
+  // so the bezel ring (~0.44m outer radius) occupies ~60-70% of frame height and
+  // space is clearly visible through the open aperture.
   registerCam(
     'porthole-space',
-    new THREE.Vector3(5.8, 1.6, -16.0),
+    new THREE.Vector3(3.0, 1.6, -16.0),
     new THREE.Vector3(20, 1.6, -16.0),
   );
 
@@ -183,20 +203,23 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   const hemi = new THREE.HemisphereLight(0xffe9d0, 0x10121c, 0.12);
   scene.add(hemi);
 
-  // 1. Cockpit — console-WASH teal light. Sits in open cabin air just aft of and
-  //    above the console bank so it grazes the console face + pilot seats with a
-  //    cool glow without embedding in geometry (embedded + decay=2 → bloom blowout).
-  //    Dim so the emissive console screens (toneMapped=false) own the room. (ref-05)
+  // 1. Cockpit — console-WASH teal uplight. PointLight (no shadow) so the
+  //    under-console glow reads as fill; the emissive console screens own the room.
+  //    Shadow removed here because the cockpit spot below (junctionSpot) already
+  //    grounds the corridor, and a shadow PointLight here costs 6 extra renders.
   const cockpitPt = new THREE.PointLight(0x5fcfe0, 1.4, 3.4, 2);
   cockpitPt.position.set(0, 1.25, -23.6);
-  configureShadowCaster(cockpitPt);
   scene.add(cockpitPt);
 
-  // 2. Quarters junction — CORRIDOR POOL A (aft of the cockpit door, ~Z=-16).
-  //    Tight pool: this is the bright spot where the two quarters doors meet.
-  const junctionPt = new THREE.PointLight(WARM, 5.0, 7.0, 2);
-  junctionPt.position.set(0, 2.5, -16);
-  scene.add(junctionPt);
+  // 2. Quarters junction — CORRIDOR POOL A: downward SpotLight at (0,2.5,-16).
+  //    Replaces the shadow PointLight: angle=1.1 rad (~63°), penumbra=0.4, decay=2.
+  //    ONE shadow face instead of 6 → saves 5 shadow draw passes vs PointLight.
+  const junctionSpot = new THREE.SpotLight(WARM, 5.0, 8.0, 1.1, 0.4, 2);
+  junctionSpot.position.set(0, 2.5, -16);
+  junctionSpot.target.position.set(0, 0, -16); // aim straight down
+  scene.add(junctionSpot);
+  scene.add(junctionSpot.target);
+  configureSpotShadow(junctionSpot);
 
   // 3a. Dedicated quarters port — intimate, tucked low so the bunk side glows
   //     and the far corners fall into shadow (moody crew bunk, not a lit cell).
@@ -219,14 +242,18 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   galleyPt.position.set(0.5, 2.4, -1);
   scene.add(galleyPt);
 
-  // 6. Engineering reactor (RED-ORANGE) — ANIMATED below via dummy mesh.
-  //    Pulsing hot core mood; tight so the corners stay dark around the column.
-  const reactorPt = new THREE.PointLight(0xff5a22, 5.2, 7.5, 2);
-  reactorPt.position.set(0, 2.4, 5.5);
-  configureShadowCaster(reactorPt);
-  scene.add(reactorPt);
+  // 6. Engineering reactor (RED-ORANGE) — downward SpotLight, animated.
+  //    Replaced shadow PointLight with SpotLight: ONE shadow face not 6.
+  //    angle=1.0 rad (~57°), penumbra=0.3 so the column gets crisp shadow ring.
+  //    Position stays near-ceiling at Y=2.4 to cast downward on the column + rails.
+  const reactorSpot = new THREE.SpotLight(0xff5a22, 5.2, 8.0, 1.0, 0.3, 2);
+  reactorSpot.position.set(0, 2.4, 5.5);
+  reactorSpot.target.position.set(0, 0, 5.5); // aim straight down
+  scene.add(reactorSpot);
+  scene.add(reactorSpot.target);
+  configureSpotShadow(reactorSpot);
 
-  // Animate reactor light via a tiny invisible plane's onBeforeRender
+  // Animate reactor light intensity via a tiny invisible plane's onBeforeRender
   // (self-animating pattern — no main.ts edit required)
   const reactorDummy = new THREE.Mesh(
     new THREE.PlaneGeometry(0.001, 0.001),
@@ -235,7 +262,7 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   reactorDummy.position.set(0, 2.4, 5.5);
   reactorDummy.onBeforeRender = (): void => {
     const t = performance.now() / 1000;
-    reactorPt.intensity = 5.2 + Math.sin(t * 2.1) * 1.0;
+    reactorSpot.intensity = 5.2 + Math.sin(t * 2.1) * 1.0;
   };
   scene.add(reactorDummy);
 

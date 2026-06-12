@@ -16,6 +16,89 @@ import { buildCorridorProps } from './corridorProps.js';
 import { addBaseboardsAndCrowns, addVerticalRibs, addQuartersJunction } from './corridorDensity.js';
 import type { AABB, RoomModule } from './types.js';
 
+// ── Corridor porthole bezel materials (gunmetal PBR) ─────────────────────────
+const matCorridorBezel = new THREE.MeshStandardMaterial({
+  color: 0x3a3e44, roughness: 0.30, metalness: 0.75, envMapIntensity: 1.0,
+});
+const matCorridorTube = new THREE.MeshStandardMaterial({
+  color: 0x1a1c20, roughness: 0.7, metalness: 0.4, side: THREE.BackSide,
+});
+const matCorridorBolt = new THREE.MeshStandardMaterial({
+  color: 0x4a5058, roughness: 0.35, metalness: 0.85, envMapIntensity: 1.0,
+});
+const matCorridorCorner = new THREE.MeshStandardMaterial({
+  color: 0x0d0e11, roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide,
+});
+
+/**
+ * Round porthole bezel for corridor side-walls.
+ * Porthole opening is W×H rectangular; the bezel frames it with a ring + bolts.
+ * The corner mask uses RingGeometry (open centre) so the circular aperture is
+ * never occluded — only the square corners outside the circle are covered.
+ * @param group  room group to add to
+ * @param wX     wall X position (positive = starboard, negative = port)
+ * @param pZ     local Z of porthole centre
+ * @param pY     local Y of porthole centre
+ * @param pW     porthole opening width
+ * @param pH     porthole opening height
+ */
+function buildCorridorPortholeBezel(
+  group: THREE.Group,
+  wX: number, pZ: number, pY: number, pW: number, pH: number,
+): void {
+  const sign   = wX < 0 ? -1 : 1;  // which side the face is on
+  const faceX  = wX + sign * 0.001; // exterior face of wall
+
+  // Inscribed circle radius — clears the rectangular opening
+  const WIN_R  = Math.min(pW, pH) / 2 * 0.88;
+
+  // Torus center radius ≈ half cutout diagonal; tube thickness 0.05
+  // Capped per spec: P1 outer ≤ 0.58, P2 outer ≤ 0.45
+  const TUBE_R   = 0.05;
+  const diagHalf = Math.sqrt(pW * pW + pH * pH) / 2;
+  const torusR   = Math.min(diagHalf + 0.06, pW > 0.7 ? 0.53 : 0.40);
+
+  // Annulus outerR = just past the cutout corner diagonal (no excess)
+  // Stays flush behind the torus ring so the dark backing isn't visible
+  const outerR = diagHalf + 0.02;
+
+  // Corner-masking annulus — RingGeometry has an open centre so the circular
+  // aperture stays fully transparent. Covers square corners outside the circle.
+  const cornerGeo = new THREE.RingGeometry(WIN_R, outerR, 48);
+  const cornerMask = new THREE.Mesh(cornerGeo, matCorridorCorner);
+  cornerMask.rotation.y = Math.PI / 2;
+  cornerMask.position.set(faceX - sign * 0.001, pY, pZ);
+  group.add(cornerMask);
+
+  // Cylindrical reveal tube — open-ended, short depth toward exterior
+  const tubeGeo = new THREE.CylinderGeometry(WIN_R, WIN_R, 0.08, 28, 1, true);
+  const tube = new THREE.Mesh(tubeGeo, matCorridorTube);
+  tube.rotation.z = Math.PI / 2;
+  tube.position.set(faceX + sign * 0.04, pY, pZ);
+  group.add(tube);
+
+  // Torus ring rim — center radius = torusR, tube thickness = TUBE_R
+  const ringGeo = new THREE.TorusGeometry(torusR, TUBE_R, 10, 40);
+  const ring = new THREE.Mesh(ringGeo, matCorridorBezel);
+  ring.rotation.y = Math.PI / 2;
+  ring.position.set(faceX + sign * 0.001, pY, pZ);
+  group.add(ring);
+
+  // 8 bolt cylinders placed on the ring outer edge
+  const boltGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.032, 7);
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const bolt = new THREE.Mesh(boltGeo, matCorridorBolt);
+    bolt.rotation.z = Math.PI / 2;
+    bolt.position.set(
+      faceX + sign * 0.028,
+      pY + Math.sin(angle) * torusR,
+      pZ + Math.cos(angle) * torusR,
+    );
+    group.add(bolt);
+  }
+}
+
 export function buildCorridor(): RoomModule {
   const W = 3;
   const H = 3;
@@ -152,6 +235,13 @@ export function buildCorridor(): RoomModule {
       const g = new THREE.BoxGeometry(STRIP_W, STRIP_H, asl);
       g.translate(sX, STRIP_H / 2, DOOR_AFT_EDGE + asl / 2); stripGeos.push(g);
     }
+  }
+
+  // ── Round porthole bezels (ref-08 model: thick ring + bolts + reveal tube) ──
+  // Both sides get bezels on both portholes; corridor is 3W so port=-1.5, stbd=+1.5
+  for (const bX of [-halfW, halfW]) {
+    buildCorridorPortholeBezel(group, bX, P1_Z, P1_SILL + P1_H / 2, P1_W, P1_H);
+    buildCorridorPortholeBezel(group, bX, P2_Z, P2_SILL + P2_H / 2, P2_W, P2_H);
   }
 
   // ── Merge collected side-door frames + floor strips (2 draw calls total) ────

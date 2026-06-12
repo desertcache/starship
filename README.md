@@ -1,8 +1,8 @@
 # Starship Explorer
 
-A first-person walkable starship built entirely in Three.js — no external assets, no frameworks. Every surface is procedurally generated at runtime: panel textures, grime overlays, emissive teal strips, animated console screens. The aesthetic is a worn industrial freighter lifted from *Alien* (1979) and rendered with a flat cel-shaded comic finish.
+A first-person walkable starship built entirely in Three.js — no external assets, no frameworks. Every surface is procedurally generated at runtime: panel textures, grime overlays, emissive teal strips, animated console screens. The aesthetic is a worn industrial freighter lifted from *Alien* (1979) and rendered with ACES filmic tone-mapping, PBR materials, SSAO contact shadows, and cinematic pooled lighting.
 
-Outside the windows the ship is on a **Living Cruise**: a seeded encounter director streams a two-layer parallax starfield past the hull and schedules a rolling cast of procedurally-painted planets, moons, asteroid fields, and rare events (comets, nebulae, derelicts) — all named, all scannable from the cockpit console.
+Outside the windows the ship is on a **Living Cruise**: a seeded encounter director streams a two-layer parallax starfield past the hull and schedules a rolling cast of procedurally-painted planets, moons, asteroid fields, and rare events (comets, nebulae, derelicts) — all named, all scannable from the cockpit console. Two persistent deep-field **nebula sprites** (teal and rust-red, additive, opacity 0.07-0.09) give space permanent color depth. Portholes are framed by thick **round bezels** — PBR gunmetal torus rings with bolt heads and cylindrical reveal tubes, matching the reference ship's porthole design.
 
 ---
 
@@ -45,7 +45,8 @@ Open `http://localhost:5173` in a browser. Click the canvas to capture the mouse
 URL flags:
 
 - `?bloom=0` — disable post-processing bloom (maximum performance).
-- `?quality=high` — enable the high-quality path: SSAO contact shadows plus PCF-soft point-light shadow maps on the cockpit and reactor lights. Costs a few ms; **off by default and a strict no-op when absent** (the verify budget is unaffected).
+- `?quality=high` — enable the high-quality path: SSAO contact shadows plus PCF-soft SpotLight shadow maps on the corridor junction and reactor lights. Costs a few ms; **off by default and a strict no-op when absent** (the verify budget is unaffected).
+- `?quality=low` — disable all shadow casting entirely (maximum compatibility / battery mode).
 
 ---
 
@@ -140,7 +141,7 @@ Everything below is on `E` (prompts appear when you look at something within rea
 - **Save Log** — the corridor save terminal persists your clock/energy/hunger to localStorage.
 - And one crate in engineering that the maintenance log says you should *not* move.
 
-The ship clock runs at 1 real-second = 1 ship-minute and is displayed in the top-left HUD, along with energy/hunger bars. Walking changes footstep sound by deck surface, each room has its own ambient bed, and the room name toasts as you cross thresholds.
+The ship clock runs at 1 real-second = 1 ship-minute and is displayed in the top-left HUD, along with energy/hunger bars. A **flight status strip** at the top-center shows `STREL-7 · T+HH:MM · CRUISE` in the HUD visual language (monospace, cream, letter-spaced), updating live from the ship clock. Walking changes footstep sound by deck surface, each room has its own ambient bed, and the room name toasts as you cross thresholds.
 
 ---
 

@@ -82,6 +82,79 @@ export function createSpaceDirector(
   far.name = 'starfield-far';
   scene.add(far);
 
+  // ── Persistent nebula depth sprites ──────────────────────────────────────────
+  // Two huge ultra-soft additive billboards at r1300-1600, giving deep-field color.
+  // They slowly parallax-drift with the far layer (25% cruise speed, same as FAR).
+  // Palette: teal family (deep teal/cyan) at bearing ~+X and rust-red at bearing ~-X.
+  // opacity 0.06-0.12 so they tint space without overpowering the starfield.
+  const nebulaSprites: THREE.Sprite[] = [];
+  const nebulaMats: THREE.SpriteMaterial[] = [];
+  const nebulaDrift = { scroll: 0 }; // accumulated far scroll, mutated in tick()
+
+  function makeNebulaCanvas(colors: [string, string]): HTMLCanvasElement {
+    const S = 512;
+    const cv = document.createElement('canvas'); cv.width = S; cv.height = S;
+    const ctx = cv.getContext('2d')!;
+    // Two overlapping soft radial blobs
+    for (const [cx, cy, r, c, a] of [
+      [S * 0.45, S * 0.5, S * 0.46, colors[0], 0.85],
+      [S * 0.58, S * 0.45, S * 0.38, colors[1], 0.70],
+    ] as [number, number, number, string, number][]) {
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, c);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = a;
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    return cv;
+  }
+
+  // Nebula A — deep teal/cyan, port bearing (−X), very far
+  {
+    const cv = makeNebulaCanvas(['rgba(0,90,110,1)', 'rgba(30,180,200,1)']);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      opacity: 0.09,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(1800, 1400, 1);
+    sprite.position.set(-900, 200, -1350);
+    sprite.name = 'nebula-persistent-a';
+    scene.add(sprite);
+    nebulaSprites.push(sprite);
+    nebulaMats.push(mat);
+  }
+
+  // Nebula B — rust-red, starboard bearing (+X), slightly closer
+  {
+    const cv = makeNebulaCanvas(['rgba(100,30,10,1)', 'rgba(180,70,20,1)']);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      opacity: 0.07,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(1600, 1200, 1);
+    sprite.position.set(1100, -100, -1550);
+    sprite.name = 'nebula-persistent-b';
+    scene.add(sprite);
+    nebulaSprites.push(sprite);
+    nebulaMats.push(mat);
+  }
+
   // ── Rolling cast ─────────────────────────────────────────────────────────────
   const cast: CastEntry[] = [];
   let signatureDone = false;
@@ -221,6 +294,15 @@ export function createSpaceDirector(
     farScroll += CRUISE_SPEED_NEAR * FAR_SCROLL_FACTOR * dt;
     setStarUniforms(far, elapsed, farScroll);
 
+    // Persistent nebulae drift at the same FAR parallax rate so they feel locked
+    // to the deep background. Wrap at ±2000 to stay perpetually in view.
+    const nebDrift = CRUISE_SPEED_NEAR * FAR_SCROLL_FACTOR * dt;
+    nebulaDrift.scroll += nebDrift;
+    for (const s of nebulaSprites) {
+      s.position.z += nebDrift;
+      if (s.position.z > 500) s.position.z -= 3500;
+    }
+
     // Advance + despawn cast (iterate backwards for safe splice).
     for (let i = cast.length - 1; i >= 0; i--) {
       const dead = tickEntry(cast[i], dt);
@@ -261,6 +343,8 @@ export function createSpaceDirector(
     scene.remove(group);
     scene.remove(far);
     disposeStarLayer(far);
+    for (const s of nebulaSprites) scene.remove(s);
+    for (const m of nebulaMats) { m.map?.dispose(); m.dispose(); }
   }
 
   return { tick, getScanData, dispose, group };

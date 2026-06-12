@@ -107,10 +107,95 @@ export function buildBunkSurround(roomGroup: THREE.Group, bunkXCenter: number, _
   roomGroup.add(strip);
 }
 
-// ── Porthole reveal ────────────────────────────────────────────────────────────
+// ── Porthole reveal + round bezel ─────────────────────────────────────────────
+
+/** Gunmetal PBR material for the bezel ring — warm-dark tint, catches room light. */
+const matBezelRing = new THREE.MeshStandardMaterial({
+  color: 0x3a3e44,
+  roughness: 0.30,
+  metalness: 0.75,
+  envMapIntensity: 1.0,
+});
 
 /**
- * 4 gunmetal reveal panels + orange rim flange + cream sill around porthole.
+ * Round porthole bezel overlay (ref-08 model):
+ *  - Thick TorusGeometry ring rim (gunmetal PBR, metalness 0.75)
+ *  - 9 small bolt cylinders arranged around the ring
+ *  - Short cylindrical reveal tube (depth tube inset toward space)
+ *  - Corner-masking annulus (RingGeometry) to cover square-cutout corners ONLY —
+ *    open centre keeps the circular aperture fully transparent to space beyond.
+ *
+ * Sits at the exterior face of the wall. The rectangular structural opening is
+ * unchanged; this bezel VISUALLY frames it as a real ship porthole.
+ * Window: 1.0W × 0.8H centred at Y=1.6 in outer wall.
+ */
+function buildPortholeBezel(roomGroup: THREE.Group, xWall: number): void {
+  const WIN_Y   = 1.60;
+  const WIN_Z   = 0.00;
+  const WIN_R   = 0.38;   // inscribed circle radius (< half-height 0.4 for clearance)
+  const sign    = xWall < 0 ? 1 : -1;
+  const faceX   = xWall + sign * 0.001; // just outside the wall face
+
+  // Corner-masking annulus — RingGeometry has an open centre so the circular
+  // aperture is NOT occluded. Inner radius = WIN_R (clears the full aperture),
+  // outer radius covers the diagonal of the 1.0×0.8 rect (≈0.64) with margin.
+  const backMat = new THREE.MeshStandardMaterial({
+    color: 0x0d0e11,
+    roughness: 0.9,
+    metalness: 0.1,
+    side: THREE.DoubleSide,
+  });
+  const ringCornerGeo = new THREE.RingGeometry(WIN_R, 0.68, 48);
+  const cornerMask = new THREE.Mesh(ringCornerGeo, backMat);
+  cornerMask.rotation.y = Math.PI / 2; // face along X axis
+  cornerMask.position.set(faceX - sign * 0.001, WIN_Y, WIN_Z);
+  roomGroup.add(cornerMask);
+
+  // Cylindrical reveal tube — short depth toward space (interior side).
+  // open-ended (openEnded: true already set by passing true to CylinderGeometry).
+  const tubeGeo = new THREE.CylinderGeometry(WIN_R, WIN_R, 0.08, 32, 1, true);
+  const tubeMat = new THREE.MeshStandardMaterial({
+    color: 0x1a1c20,
+    roughness: 0.7,
+    metalness: 0.4,
+    side: THREE.BackSide,
+  });
+  const tube = new THREE.Mesh(tubeGeo, tubeMat);
+  tube.rotation.z = Math.PI / 2; // cylinder axis → X
+  tube.position.set(faceX + sign * 0.04, WIN_Y, WIN_Z);
+  roomGroup.add(tube);
+
+  // Torus ring rim — thick beveled ring, gunmetal PBR
+  // TorusGeometry(outerR, tubeR, radialSeg, tubularSeg)
+  const ringGeo = new THREE.TorusGeometry(WIN_R, 0.058, 12, 48);
+  const ring = new THREE.Mesh(ringGeo, matBezelRing);
+  ring.rotation.y = Math.PI / 2; // face along X axis
+  ring.position.set(faceX + sign * 0.002, WIN_Y, WIN_Z);
+  roomGroup.add(ring);
+
+  // 9 bolt cylinders evenly spaced around the ring
+  const BOLT_COUNT  = 9;
+  const BOLT_INSET  = WIN_R + 0.058; // ring outer edge
+  const boltMat = new THREE.MeshStandardMaterial({
+    color: 0x4a5058,
+    roughness: 0.35,
+    metalness: 0.85,
+    envMapIntensity: 1.0,
+  });
+  const boltGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.040, 8);
+  for (let i = 0; i < BOLT_COUNT; i++) {
+    const angle = (i / BOLT_COUNT) * Math.PI * 2;
+    const by = WIN_Y + Math.sin(angle) * BOLT_INSET;
+    const bz = WIN_Z + Math.cos(angle) * BOLT_INSET;
+    const bolt = new THREE.Mesh(boltGeo, boltMat);
+    bolt.rotation.z = Math.PI / 2; // bolt axis along X
+    bolt.position.set(faceX + sign * 0.035, by, bz);
+    roomGroup.add(bolt);
+  }
+}
+
+/**
+ * 4 gunmetal reveal panels + orange rim flange + cream sill + round bezel overlay.
  * Window: 1.0W × 0.8H centred at Y=1.6, Z=0 in outer wall (X=±2.5).
  */
 export function buildPortholeReveal(roomGroup: THREE.Group, xWall: number): void {
@@ -144,6 +229,9 @@ export function buildPortholeReveal(roomGroup: THREE.Group, xWall: number): void
   const sill = bx(new THREE.BoxGeometry(DEPTH, 0.05, 0.70), matCream);
   sill.position.set(revX, WIN_Y - WIN_H / 2 - 0.025 + 0.03, WIN_Z);
   roomGroup.add(sill);
+
+  // Round bezel overlay on the exterior face (ref-08 model: thick ring + bolts)
+  buildPortholeBezel(roomGroup, xWall);
 }
 
 // ── Overhead storage cabinet ───────────────────────────────────────────────────

@@ -136,6 +136,27 @@ export function buildConsoleBank(group: THREE.Group): ConsoleBankResult {
   strip.position.set(0, 0.08, FZ + BD - 0.01);
   group.add(strip);
 
+  // ── Console screen underglow planes (ref-05 / Task 5) ─────────────────────
+  // Three thin emissive planes angled to wash the console body + seat-fronts
+  // with teal screen-light. toneMapped=false, additive, no new lights.
+  // One below each screen bezel, tilted toward the console face.
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: 0x1ac8d8,        // slightly desaturated teal, not full 0x46e0d8
+    transparent: true,
+    opacity: 0.28,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+    side: THREE.DoubleSide,
+  });
+  for (const sx of [-1.45, 0, 1.45]) {
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(SW * 0.9, 0.18), glowMat);
+    // Position just below the screen, tilted down ~25° to wash the console face
+    glow.position.set(sx, SY - SH / 2 - 0.06, SZ + 0.02);
+    glow.rotation.x = -Math.PI * 0.14; // ~25° tilt downward toward console
+    group.add(glow);
+  }
+
   // Decals on center console
   addDecal(group, 'COCKPIT', 0.70, 0.10,
     new THREE.Vector3(0, BH + TH + 0.05, SZ + 0.02),
