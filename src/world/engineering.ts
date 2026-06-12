@@ -21,6 +21,13 @@ export function buildEngineering(): RoomModule {
   const H = 3;
   const D = 7;
 
+  // Cargo bay hatch dimensions (from cargoBay.ts: DOOR_GAP_W=1.34, DOOR_GAP_H=2.08).
+  // The aft wall of engineering (Z = +halfD = +3.5 local, world Z=9) is back-to-back
+  // with the cargo bay fore wall (world Z=13.5 - 4.5 = 9). Gap dimensions MUST match
+  // the cargo bay's hatch gap exactly so the openings align on both sides.
+  const CARGO_GAP_W = 1.34;
+  const CARGO_GAP_H = 2.08;
+
   const { group, colliders } = buildRoom({
     width: W,
     height: H,
@@ -28,6 +35,8 @@ export function buildEngineering(): RoomModule {
     doors: [
       // Fore wall connects to galley
       { wall: 'fore', gapW: 1.4, gapH: 2.2, offset: 0 },
+      // Aft wall connects to cargo bay — gap mirrors cargo bay's hatch opening
+      { wall: 'aft',  gapW: CARGO_GAP_W, gapH: CARGO_GAP_H, offset: 0 },
     ],
   });
 

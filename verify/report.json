@@ -1,12 +1,12 @@
 {
-  "avgFps": 3.2,
-  "p95FrameTime": 333.3,
-  "drawCalls": 505,
-  "triangles": 17463,
-  "geometries": 540,
-  "textures": 72,
-  "sampleDurationMs": 5017.4000000059605,
-  "headless": true,
+  "avgFps": 144,
+  "p95FrameTime": 7.1,
+  "drawCalls": 389,
+  "triangles": 19469,
+  "geometries": 577,
+  "textures": 76,
+  "sampleDurationMs": 5002.399999976158,
+  "headless": false,
   "qualityHigh": false,
   "cameras": [
     "cockpit",
@@ -17,8 +17,12 @@
     "galley",
     "engineering",
     "cargo-bay",
-    "porthole-space"
+    "porthole-space",
+    "qa-doorway",
+    "qa-porthole-oblique",
+    "qa-jitter-a",
+    "qa-jitter-b"
   ],
-  "perfCamera": "engineering",
-  "timestamp": "2026-06-12T10:21:35.455Z"
+  "perfCamera": "cockpit",
+  "timestamp": "2026-06-12T18:02:47.508Z"
 }

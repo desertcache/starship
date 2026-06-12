@@ -23,7 +23,7 @@ import { isDoorOpen, forceDoorAutoCloseCheck } from './world/doors.js';
 import { initBloom } from './fx/bloom.js';
 import { tickStarfield } from './fx/starfield.js';
 import { setScanProvider } from './world/interactConsole.js';
-import { QUALITY_LOW } from './core/perf.js';
+import { QUALITY_LOW, SHADOWS_OFF } from './core/perf.js';
 import type { ScanData } from './fx/space/types.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
@@ -38,8 +38,8 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 // Shadow maps: DEFAULT ON (promoted in v0.5 Stage 3 after headed measurement
-// showed negligible cost). Disable with ?quality=low for low-end hardware.
-if (!QUALITY_LOW) {
+// showed negligible cost). Disable with ?quality=low or ?shadows=0 (isolation).
+if (!QUALITY_LOW && !SHADOWS_OFF) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 }

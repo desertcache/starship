@@ -27,11 +27,19 @@ let BASE_URL = `http://localhost:${PREVIEW_PORT}`;
 const headed  = process.argv.includes('--headed');
 /** When true, appends ?quality=high to every URL opened by the harness. */
 const quality = process.argv.includes('--quality');
+/** Extra URL params passed via --flags=key=val&key2=val2 (isolation matrix runs).
+ *  e.g. node scripts/verify.mjs --flags=ssao=0
+ *       node scripts/verify.mjs "--flags=ssao=0&shadows=0"
+ *  Appended AFTER the standard params. Defaults unchanged when omitted. */
+const flagsArg = process.argv.find((a) => a.startsWith('--flags='));
+const extraFlags = flagsArg ? flagsArg.slice('--flags='.length) : '';
 /** Build the full page URL, always suppressing room toasts (?toasts=0) and
  *  optionally appending the quality param. Toasts are suppressed so screenshots
- *  never capture mid-display "COCKPIT" / "CREW QUARTERS" labels over subjects. */
+ *  never capture mid-display "COCKPIT" / "CREW QUARTERS" labels over subjects.
+ *  --flags= extra params are appended last for isolation matrix runs. */
 function pageUrl(base) {
-  const params = quality ? 'toasts=0&quality=high' : 'toasts=0';
+  let params = quality ? 'toasts=0&quality=high' : 'toasts=0';
+  if (extraFlags) params += '&' + extraFlags;
   return `${base}/?${params}`;
 }
 

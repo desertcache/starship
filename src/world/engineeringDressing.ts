@@ -173,6 +173,14 @@ export function buildBaseWallDressing(g: THREE.Group, W: number, H: number, D: n
   hz.position.set(0, 0.002, -0.25); g.add(hz);
   const whz = new THREE.Mesh(new THREE.BoxGeometry(T*0.5, 0.18, D*0.3), matHazardStriping);
   whz.position.set(-hw + 0.02, 0.09, 0); g.add(whz);
-  const aft = new THREE.Mesh(new THREE.BoxGeometry(W*0.60, H*0.45, T), matShipWall);
-  aft.position.set(0, H*0.55, hd - T/2); g.add(aft);
+  // Aft wall dressing: two flanking panels, each 1.2W, centred at X=±1.6.
+  // The new aft doorway (CARGO_GAP_W=1.34) occupies |X|<0.67 — flanking panels
+  // sit at |X|=1.6 ± 0.6 = [1.0, 2.2], clear of the 0.67m half-gap on each side.
+  // Depth (T=0.06) sits 5mm proud of the aft wall face (hd - T/2 + 0.005)
+  // so the back face is never coplanar with the structural wall plane.
+  const AFT_PANEL_Z = hd - T / 2 + 0.005; // 5mm proud — clears z-fight
+  const aftL = new THREE.Mesh(new THREE.BoxGeometry(1.2, H*0.45, T), matShipWall);
+  aftL.position.set(-1.6, H*0.55, AFT_PANEL_Z); g.add(aftL);
+  const aftR = new THREE.Mesh(new THREE.BoxGeometry(1.2, H*0.45, T), matShipWall);
+  aftR.position.set( 1.6, H*0.55, AFT_PANEL_Z); g.add(aftR);
 }

@@ -11,7 +11,7 @@ import type { DoorEntry } from './doors.js';
 import { buildStarfield } from '../fx/starfield.js';
 import { wrapDirectorAsPlanetResult } from '../fx/planet.js';
 import { createSpaceDirector } from '../fx/space/director.js';
-import { QUALITY_LOW } from '../core/perf.js';
+import { QUALITY_LOW, SHADOWS_OFF } from '../core/perf.js';
 import type { AABB, RoomModule, Interactable } from './types.js';
 import type { PlanetResult } from '../fx/planet.js';
 
@@ -65,14 +65,18 @@ function translateAABB(aabb: AABB, offset: THREE.Vector3): AABB {
 /**
  * Configure a SpotLight as a downward shadow-casting pool light.
  * ONE shadow face (vs PointLight's 6) = 6× fewer shadow draw calls.
- * No-op when ?quality=low.
+ * No-op when ?quality=low or ?shadows=0.
+ * bias/normalBias prevent self-shadow acne on props. near/far tightened to the
+ * actual room depth so the shadow frustum doesn't span empty space.
  */
 function configureSpotShadow(light: THREE.SpotLight): void {
-  if (QUALITY_LOW) return;
+  if (QUALITY_LOW || SHADOWS_OFF) return;
   light.castShadow = true;
   light.shadow.mapSize.set(1024, 1024);
-  light.shadow.camera.near = 0.2;
-  light.shadow.camera.far = 14;
+  light.shadow.camera.near = 0.5;
+  light.shadow.camera.far  = 8;
+  light.shadow.bias        = -0.0003;
+  light.shadow.normalBias  = 0.02;
 }
 
 /**
@@ -142,10 +146,12 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   const doorSpecs: DoorEntry[] = [
     // (a) cockpit-aft / corridor-fore at world (0, 0, -20), facing Z
     { id: 'cockpit-aft',         position: new THREE.Vector3(0,   0, -20), facing: 'Z' },
-    // (b) corridor → quarters-a at (-2.5, 0, -16), facing X
-    { id: 'corridor-quarters-a', position: new THREE.Vector3(-2.5, 0, -16), facing: 'X' },
-    // (c) corridor → quarters-b at (2.5, 0, -16), facing X
-    { id: 'corridor-quarters-b', position: new THREE.Vector3(2.5,  0, -16), facing: 'X' },
+    // (b) corridor → quarters-a at (-1.5, 0, -16), facing X
+    // doorway frame plane is at X=-1.5 (corridor halfW=1.5); was -2.5 which placed
+    // slabs 1m inside the quarters room instead of at the threshold.
+    { id: 'corridor-quarters-a', position: new THREE.Vector3(-1.5, 0, -16), facing: 'X' },
+    // (c) corridor → quarters-b at (1.5, 0, -16), facing X
+    { id: 'corridor-quarters-b', position: new THREE.Vector3(1.5,  0, -16), facing: 'X' },
     // (d) corridor-aft → galley-fore at (0, 0, -7), facing Z
     { id: 'corridor-galley',     position: new THREE.Vector3(0,   0, -7),  facing: 'Z' },
     // (e) galley-aft → engineering-fore at (0, 0, -1), facing Z
@@ -176,6 +182,31 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
     'porthole-space',
     new THREE.Vector3(5.8, 1.6, -16.0),
     new THREE.Vector3(20, 1.6, -16.0),
+  );
+
+  // ── QA cameras (v0.8 glitch-kill) ────────────────────────────────────────
+  // qa-doorway: frames the corridor→galley doorway header — a known artifact zone.
+  registerCam(
+    'qa-doorway',
+    new THREE.Vector3(0, 1.7, -10),
+    new THREE.Vector3(0, 2.6, -7),
+  );
+  // qa-porthole-oblique: grazing view of a corridor porthole — checks z-fight flicker.
+  registerCam(
+    'qa-porthole-oblique',
+    new THREE.Vector3(0.8, 1.5, -10.8),
+    new THREE.Vector3(-1.5, 1.45, -9),
+  );
+  // qa-jitter-a / qa-jitter-b: 2cm lateral pair — expose depth-tie flips between shots.
+  registerCam(
+    'qa-jitter-a',
+    new THREE.Vector3(0, 1.6, -11),
+    new THREE.Vector3(0, 1.9, -7),
+  );
+  registerCam(
+    'qa-jitter-b',
+    new THREE.Vector3(0.02, 1.6, -11),
+    new THREE.Vector3(0, 1.9, -7),
   );
 
   // ── Lighting ─────────────────────────────────────────────────────────────

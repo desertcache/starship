@@ -30,6 +30,14 @@ export const QUALITY_HIGH: boolean = _qParams.get('quality') === 'high';
  */
 export const QUALITY_LOW: boolean = _qParams.get('quality') === 'low';
 
+/**
+ * True when ?shadows=0 is in the URL.
+ * Disables shadow maps entirely regardless of quality setting — isolation flag
+ * for the glitch-kill isolation matrix (Step 2). Honored in main.ts renderer
+ * setup and assembly.ts configureSpotShadow().
+ */
+export const SHADOWS_OFF: boolean = _qParams.get('shadows') === '0';
+
 export interface PerfReport {
   avgFps: number;
   p95FrameTime: number;

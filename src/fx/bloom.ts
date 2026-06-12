@@ -4,14 +4,25 @@
  * Kill switch: URL param ?bloom=0 disables bloom entirely.
  *   e.g. http://localhost:5173/?bloom=0
  *
- * SSAO: DEFAULT ON (v0.5 Stage 3 promotion — headed measurement showed negligible
- *   cost at 132fps/8.2ms p95). Disable with ?quality=low.
- *   kernelRadius 8, minDistance 0.002, maxDistance 0.08 — subtle contact/corner
- *   darkening without haloing. Expected cost: ~0ms measured at 1280×720.
+ * SSAO debug flags:
+ *   ?ssao=0      — skip SSAOPass entirely (isolation run)
+ *   ?ssao=only   — render SSAO buffer directly (tuning view; no bloom/vignette)
+ *   ?ssao=1      — opt-in to SSAO when quality=low would otherwise skip it
  *
- * Composer is built when (bloomEnabled || !QUALITY_LOW):
+ * SSAO: DEFAULT ON (v0.5 Stage 3 promotion). Disable with ?quality=low or ?ssao=0.
+ *   v0.8 retune: kernelRadius/minDistance/maxDistance are FRACTIONS of the
+ *   camera near→far depth range (camera.far=2000). Previous values
+ *   (radius=8, min=0.002, max=0.08) mapped to kernel 8 view-space-metres and
+ *   occluder range 4–160m in a 3m room → giant black wedges at every depth
+ *   discontinuity (doorway headers vs far-room walls), shimmering on movement.
+ *   Corrected values produce soft contact darkening only, no large silhouettes:
+ *     kernelRadius 0.3  — ~0.6m view-space kernel, fits a 3m room
+ *     minDistance  0.00005 — ignore micro-occluders (avoids self-shadow acne)
+ *     maxDistance  0.0006  — ~1.2m occluder search; clamps well inside rooms
+ *
+ * Composer is built when (bloomEnabled || ssaoEnabled):
  *   - Always: RenderPass, OutputPass
- *   - Unless ?quality=low: SSAOPass (before bloom, subtle corner darkening)
+ *   - Unless ?quality=low or ?ssao=0: SSAOPass (before bloom, contact darkening)
  *   - If bloom enabled: UnrealBloomPass
  *
  * Bloom tuning constants (left AS-IS per v0.4 brief; re-tune post space-lane merge):
@@ -74,16 +85,22 @@ const VignetteShader = {
   `,
 };
 
-// ── SSAO tuning (room scale ≈3m) ──────────────────────────────────────────────
+// ── SSAO tuning (room scale ≈3m, camera.far=2000) ─────────────────────────────
 //
-// kernelRadius 8 — moderate sampling radius for ~3m room scale
-// minDistance  0.002 — ignore very close occluders (avoids self-occlusion)
-// maxDistance  0.08  — subtle contact/corner darkening only (not full haloing)
+// three.js SSAOPass treats minDistance/maxDistance as FRACTIONS of the camera
+// near→far depth range, NOT absolute view-space distances. With camera.far=2000:
+//   minDistance 0.00005 → 0.1m  (micro-occluder cutoff, avoids self-shadow acne)
+//   maxDistance 0.0006  → 1.2m  (max occluder search; stays well inside 3m rooms)
+//   kernelRadius 0.3    → ~0.6m view-space sampling kernel (fits a 3m corridor)
+//
+// Prior values (radius=8, min=0.002→4m, max=0.08→160m) created giant black wedges
+// at depth discontinuities (e.g. doorway header vs far wall) that shimmered on
+// camera movement — the dominant visible artifact in v0.7. Now corrected.
 // Full resolution (no half-res). Expected cost: +2-4ms @1280x720.
 
-const SSAO_KERNEL_RADIUS  = 8;
-const SSAO_MIN_DISTANCE   = 0.002;
-const SSAO_MAX_DISTANCE   = 0.08;
+const SSAO_KERNEL_RADIUS  = 0.3;
+const SSAO_MIN_DISTANCE   = 0.00005;
+const SSAO_MAX_DISTANCE   = 0.0006;
 
 // ── BloomSystem interface ──────────────────────────────────────────────────────
 
@@ -106,8 +123,11 @@ export function initBloom(
 ): BloomSystem {
   const params       = new URLSearchParams(window.location.search);
   const bloomEnabled = params.get('bloom') !== '0';
-  // SSAO is default-on; composer needed whenever bloom is on OR SSAO is on.
-  const ssaoEnabled  = !QUALITY_LOW;
+  // SSAO debug flags: ?ssao=0 skips SSAOPass; ?ssao=only renders SSAO buffer only
+  // (useful for tuning — confirms kernel/distance values show soft contact shadow).
+  const ssaoParam    = params.get('ssao');
+  const ssaoEnabled  = !QUALITY_LOW && ssaoParam !== '0';
+  const ssaoOnly     = ssaoParam === 'only';
   const needComposer = bloomEnabled || ssaoEnabled;
 
   // ── Fast-path: no composer needed ─────────────────────────────────────────
@@ -136,6 +156,11 @@ export function initBloom(
     ssaoPass.kernelRadius  = SSAO_KERNEL_RADIUS;
     ssaoPass.minDistance   = SSAO_MIN_DISTANCE;
     ssaoPass.maxDistance   = SSAO_MAX_DISTANCE;
+    // ?ssao=only: render raw SSAO buffer for tuning. Should show soft grey
+    // contact darkening near corners/baseboards ONLY — no large wedges.
+    if (ssaoOnly) {
+      ssaoPass.output = SSAOPass.OUTPUT.SSAO;
+    }
     composer.addPass(ssaoPass);
   }
 

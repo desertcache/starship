@@ -47,7 +47,7 @@ function buildCorridorPortholeBezel(
   wX: number, pZ: number, pY: number, pW: number, pH: number,
 ): void {
   const sign   = wX < 0 ? -1 : 1;  // which side the face is on
-  const faceX  = wX + sign * 0.001; // exterior face of wall
+  const faceX  = wX + sign * 0.005; // exterior face of wall (5mm proud — clears z-fight)
 
   // Inscribed circle radius — clears the rectangular opening
   const WIN_R  = Math.min(pW, pH) / 2 * 0.88;
@@ -67,7 +67,9 @@ function buildCorridorPortholeBezel(
   const cornerGeo = new THREE.RingGeometry(WIN_R, outerR, 48);
   const cornerMask = new THREE.Mesh(cornerGeo, matCorridorCorner);
   cornerMask.rotation.y = Math.PI / 2;
-  cornerMask.position.set(faceX - sign * 0.001, pY, pZ);
+  // Position AT faceX (already 5mm proud of the wall plane) — no pullback needed.
+  // Previously sat exactly at the wall plane (faceX - sign*0.001 ≈ wX) → z-fight.
+  cornerMask.position.set(faceX, pY, pZ);
   group.add(cornerMask);
 
   // Cylindrical reveal tube — open-ended, short depth toward exterior
