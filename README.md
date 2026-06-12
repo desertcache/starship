@@ -57,8 +57,9 @@ URL flags:
 | `npm run dev` | Vite dev server with HMR |
 | `npm run build` | Production build to `dist/` |
 | `npm run typecheck` | `tsc --noEmit` — must be clean before verify |
-| `npm run verify` | Headless Playwright: build, screenshot every camera, write `verify/report.json` |
+| `npm run verify` | Headless Playwright: build, screenshot every camera, run all functional tests, write `verify/report.json` |
 | `npm run verify:headed` | Same harness, headed Chromium with GPU — fps numbers here are authoritative |
+| `node scripts/capture.mjs` | Records a ~40s showcase video tour to `verify/capture/showcase.webm` |
 
 ---
 
