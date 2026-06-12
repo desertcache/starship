@@ -10,6 +10,8 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { buildCargoBayDensity } from './cargoBayDensity.js';
+import type { AABB } from './types.js';
 
 const COL_GUNMETAL = 0x1C1E22;
 const COL_ORANGE   = 0xC7641E;
@@ -250,16 +252,24 @@ function buildManifestSigns(group: THREE.Group, D: number): void {
 
 /**
  * Dress the cargo bay room group with all props. Mutates `group`.
- * Draw call budget: catwalk(4) + pads(1) + pips(6) + crates(6) + signs(2) = 19 total.
+ * Draw call budget:
+ *   Phase 1: catwalk(4) + pads(1) + pips(6) + crates(6) + signs(2) = 19
+ *   Density: mid-floor crates(4) + conduits(6) + hook(2) + decals(3) = 15 (≤14 net added)
+ *
+ * Returns AABB colliders for density-pass additions.
  */
 export function buildCargoBayProps(
   group: THREE.Group,
   W: number,
   _H: number,
   D: number,
-): void {
+): AABB[] {
   buildCatwalk(group, W);
   buildMagClamps(group);
   buildCrateColumns(group, D);
   buildManifestSigns(group, D);
+
+  // Density pass — sparse zones fill
+  const { colliders } = buildCargoBayDensity(group, W, D);
+  return colliders;
 }

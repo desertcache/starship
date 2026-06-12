@@ -288,9 +288,11 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
 
   // 9. Cargo bay — single high pool (5H room), dark corners.
   // v0.6 P1: intensity 6.0→4.5 so wall bases fall to shadow.
+  // Density pass: intensity 4.5→5.2 — new mid-floor crates and wall conduits absorb
+  // extra light; nudge restores mid-bay brightness lost to added geometry.
   // 0xe8eef2: cool/neutral blue-white vs corridor tungsten — industrial/utilitarian
   // identity. Intensity unchanged; just the temperature shifts.
-  const cargoPt = new THREE.PointLight(0xe8eef2, 4.5, 9.5, 2);
+  const cargoPt = new THREE.PointLight(0xe8eef2, 5.2, 9.5, 2);
   cargoPt.position.set(0, 4.2, 13.5);
   scene.add(cargoPt);
 

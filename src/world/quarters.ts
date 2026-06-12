@@ -43,6 +43,7 @@ import {
   buildPottedPlant,
   buildLightSwitchPlate,
 } from './quartersDressing.js';
+import { buildFoldDownDesk, buildDeskWallDressing } from './quartersRightWall.js';
 import { advanceShipClock, setEnergy } from '../core/state.js';
 import { fadeTransition } from '../ui/hud.js';
 import { restockFridge } from './interactItems.js';
@@ -245,6 +246,13 @@ export function buildQuartersB(): RoomModule {
 
   // ── Room-B: teal potted plant on nightstand side ──────────────────────────
   buildPottedPlant(group, -1.65, -1.50);
+
+  // ── Room-B: fold-down desk on aft portion of starboard wall ───────────────
+  // Starboard outer wall = X=+2.5. Porthole is at Z=0, cabinet at Z≈-1.98.
+  // Desk placed at Z=+1.5 (aft end, clear of porthole and cabinet).
+  const deskCollider = buildFoldDownDesk(group, 2.5, 1.5);
+  propColliders.push(deskCollider);
+  buildDeskWallDressing(group, 2.5, 1.5);
 
   // ── Light switch plate near door ──────────────────────────────────────────
   buildLightSwitchPlate(group, -2.5, 0.9);

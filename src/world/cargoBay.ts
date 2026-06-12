@@ -80,8 +80,9 @@ export function buildCargoBay(): RoomModule {
   // cargo bay uses the same matFloor/matCeiling which are singletons (no extra
   // material cost). The 5m ceiling is handled by H=5 in buildRoom automatically.
 
-  // Props
-  buildCargoBayProps(group, W, H, D);
+  // Props (density pass returns extra colliders for new crate cluster + breaker box)
+  const densityColliders = buildCargoBayProps(group, W, H, D);
+  for (const c of densityColliders) colliders.push(c);
 
   // Cargo bay camera: stand fore, looking aft across the full 5H volume.
   // Eye height 1.7, position at Z=-3 (fore third), look toward catwalk area.
