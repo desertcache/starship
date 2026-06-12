@@ -6,7 +6,7 @@ import {
   setActiveCamera,
   teleportToCamera,
 } from './core/cameras.js';
-import { tickState, getState, loadState, setHunger } from './core/state.js';
+import { tickState, getState, loadState, setHunger, getQuestStep } from './core/state.js';
 import { initDebug, tickDebug } from './ui/debug.js';
 import { initHud, tickHud, showRoomToast } from './ui/hud.js';
 import { assembleShip } from './world/assembly.js';
@@ -15,16 +15,25 @@ import { initInteract, registerInteractables, tickInteract, headlessInteract } f
 import { tickSway } from './fx/sway.js';
 import { initAudio, getRoomForPosition, playOneShot } from './fx/audio.js';
 import type { RoomName } from './fx/audio.js';
-import { buildAllInteractables } from './world/interactWiring.js';
-import { getFridgeStateForTest, resetFridgeForTest } from './world/interactItems.js';
-import { isDoorOpen } from './world/doors.js';
+import { buildAllInteractables, questRevealAndReadPanel } from './world/interactWiring.js';
+import { getFridgeStateForTest, resetFridgeForTest, questAdvanceViaBreaker } from './world/interactItems.js';
+import { isDoorOpen, forceDoorAutoCloseCheck } from './world/doors.js';
 import { initBloom } from './fx/bloom.js';
 import { tickStarfield } from './fx/starfield.js';
+import { setScanProvider } from './world/interactConsole.js';
+import { QUALITY_HIGH } from './core/perf.js';
+import type { ScanData } from './fx/space/types.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
+// QUALITY_HIGH (?quality=high) enables soft shadow maps. Default (verify) is a
+// strict no-op so the shipped budget is unaffected.
+if (QUALITY_HIGH) {
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+}
 document.body.appendChild(renderer.domElement);
 
 // ── Scene / Camera ────────────────────────────────────────────────────────────
@@ -56,6 +65,10 @@ const audio = initAudio();
 
 // ── Assemble ship ─────────────────────────────────────────────────────────────
 const ship = assembleShip(scene);
+
+// Wire the live scan source into the PLANET SCAN console mode now that the
+// director (ship.planet) exists. Returns the nearest visible hero, or null.
+setScanProvider((): ScanData | null => ship.planet.getScanData?.() ?? null);
 
 // ── Bloom (Phase 5, optional) ─────────────────────────────────────────────────
 // ?bloom=0 disables it. Falls back to renderer.render() when off.
@@ -120,11 +133,15 @@ const startTime = performance.now();
 interface TestAPI {
   teleport(x: number, y: number, z: number): void;
   interact(): boolean;
-  getState(): { clock: number; energy: number; hunger: number; clockString: string };
+  getState(): { clock: number; energy: number; hunger: number; clockString: string; questStep: number };
   getDoorOpen(id: string): boolean;
   getFridgeState(): { state: string; stock: number };
   resetFridge(): void;
   setHunger(v: number): void;
+  getScan(): ScanData | null;
+  forceDoorAutoCloseCheck(): string[];
+  questRevealAndReadPanel(): number;
+  questAdvanceViaBreaker(): number;
 }
 
 const EYE_HEIGHT_MAIN = 1.7;
@@ -138,13 +155,14 @@ const testAPI: TestAPI = {
   interact(): boolean {
     return headlessInteract();
   },
-  getState(): { clock: number; energy: number; hunger: number; clockString: string } {
+  getState(): { clock: number; energy: number; hunger: number; clockString: string; questStep: number } {
     const s = getState();
     return {
       clock: s.shipMinutes,
       energy: s.energy,
       hunger: s.hunger,
       clockString: `${String(Math.floor(s.shipMinutes / 60) % 24).padStart(2, '0')}:${String(Math.floor(s.shipMinutes) % 60).padStart(2, '0')}`,
+      questStep: getQuestStep(),
     };
   },
   getDoorOpen(id: string): boolean {
@@ -158,6 +176,18 @@ const testAPI: TestAPI = {
   },
   setHunger(v: number): void {
     setHunger(v);
+  },
+  getScan(): ScanData | null {
+    return ship.planet.getScanData?.() ?? null;
+  },
+  forceDoorAutoCloseCheck(): string[] {
+    return forceDoorAutoCloseCheck();
+  },
+  questRevealAndReadPanel(): number {
+    return questRevealAndReadPanel();
+  },
+  questAdvanceViaBreaker(): number {
+    return questAdvanceViaBreaker();
   },
 };
 

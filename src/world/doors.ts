@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three';
 import type { AABB } from './types.js';
+import { playOneShot } from '../fx/audio.js';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -68,10 +69,38 @@ interface DoorRecord {
   open: boolean;
   animT: number;   // 0=fully closed, 1=fully open
   animDir: number; // +1=opening, -1=closing, 0=idle
+  /** performance.now() timestamp when the door last became open (animT reached 1). */
+  openedAt: number;
+  /** True once the player has manually interacted — enables auto-close timer. */
+  autoCloseArmed: boolean;
+  /** World XZ of the door slab center (captured at build; closed position). */
+  worldX: number;
+  worldZ: number;
 }
 
 // Module-level registry so the post-merge integration agent can wire E-interaction
 export const doorRecords: DoorRecord[] = [];
+
+// ── Player position threading (set from interact.ts each frame) ────────────────
+
+let _playerPos: THREE.Vector3 = new THREE.Vector3(0, 1.7, -19);
+
+/**
+ * Store the player's current world-space position for auto-close logic.
+ * Called each frame from tickInteract() in interact.ts.
+ */
+export function setPlayerPosForDoors(p: THREE.Vector3): void {
+  _playerPos.copy(p);
+}
+
+/**
+ * Arm auto-close on a door after the player has manually interacted with it.
+ * Called from interactWiring.ts door onInteract after toggling.
+ */
+export function armDoorAutoClose(id: string): void {
+  const rec = doorRecords.find((r) => r.id === id);
+  if (rec) rec.autoCloseArmed = true;
+}
 
 // ── Helper: easeInOutQuad ──────────────────────────────────────────────────────
 
@@ -107,15 +136,71 @@ export function isDoorOpen(id: string): boolean {
  * @param dt - delta time in seconds
  */
 export function tickDoors(dt: number): void {
-  for (const rec of doorRecords) {
-    if (rec.animDir === 0) continue;
-    rec.animT += rec.animDir * (dt / ANIM_DURATION);
-    rec.animT = Math.max(0, Math.min(1, rec.animT));
-    if (rec.animT <= 0 || rec.animT >= 1) rec.animDir = 0;
+  const now = performance.now();
 
-    const eased = easeInOutQuad(rec.animT);
-    rec.mesh.position.y = rec.pivotY + eased * OPEN_TRAVEL_Y;
+  for (const rec of doorRecords) {
+    // ── Animation step ─────────────────────────────────────────────────────────
+    if (rec.animDir !== 0) {
+      rec.animT += rec.animDir * (dt / ANIM_DURATION);
+      rec.animT = Math.max(0, Math.min(1, rec.animT));
+
+      if (rec.animT >= 1) {
+        rec.animDir = 0;
+        // Record when door finished opening
+        if (rec.open) rec.openedAt = performance.now();
+      } else if (rec.animT <= 0) {
+        rec.animDir = 0;
+      }
+
+      const eased = easeInOutQuad(rec.animT);
+      rec.mesh.position.y = rec.pivotY + eased * OPEN_TRAVEL_Y;
+    }
+
+    // ── Auto-close check ───────────────────────────────────────────────────────
+    // Only for armed doors that are fully open and idle
+    if (
+      rec.autoCloseArmed &&
+      rec.open &&
+      rec.animDir === 0 &&
+      rec.animT >= 1
+    ) {
+      const elapsed = now - rec.openedAt;
+      if (elapsed > 8000) {
+        const dx = _playerPos.x - rec.worldX;
+        const dz = _playerPos.z - rec.worldZ;
+        const distSq = dx * dx + dz * dz;
+        if (distSq > 9.0) { // 3.0^2
+          setDoorOpen(rec.id, false);
+          playOneShot('door-auto');
+        }
+      }
+    }
   }
+}
+
+/**
+ * Test hook: run the auto-close check immediately, with the 8s dwell timer
+ * overridden so it fires this frame. Any armed, fully-open door whose player
+ * distance exceeds the 3m threshold is closed at once. Mirrors the production
+ * logic in tickDoors() minus the elapsed-time gate. Returns the ids it closed.
+ */
+export function forceDoorAutoCloseCheck(): string[] {
+  const closed: string[] = [];
+  for (const rec of doorRecords) {
+    // Fully-open + armed is the trigger condition. We intentionally do NOT
+    // require animDir===0 (as tickDoors does): animT>=1 already means the slab
+    // is visually open, and the reset-to-idle frame may not have run yet when
+    // the camera-facing dummy that drives tickDoors is frustum-culled.
+    if (!(rec.autoCloseArmed && rec.open && rec.animT >= 1)) continue;
+    const dx = _playerPos.x - rec.worldX;
+    const dz = _playerPos.z - rec.worldZ;
+    if (dx * dx + dz * dz > 9.0) { // 3.0^2
+      setDoorOpen(rec.id, false);
+      playOneShot('door-auto');
+      closed.push(rec.id);
+    }
+  }
+  return closed;
 }
 
 /**
@@ -204,6 +289,10 @@ export function buildDoors(scene: THREE.Scene, specs: DoorEntry[]): void {
       open:     true,
       animT,
       animDir:  0,
+      openedAt:        0,    // not yet opened by player; auto-close not armed
+      autoCloseArmed:  false, // armed only after first manual interaction
+      worldX:          spec.position.x,
+      worldZ:          spec.position.z,
     };
     doorRecords.push(record);
     scene.add(grp);

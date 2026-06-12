@@ -9,7 +9,9 @@ import { buildCargoBay } from './cargoBay.js';
 import { buildDoors, tickDoors } from './doors.js';
 import type { DoorEntry } from './doors.js';
 import { buildStarfield } from '../fx/starfield.js';
-import { buildPlanet } from '../fx/planet.js';
+import { wrapDirectorAsPlanetResult } from '../fx/planet.js';
+import { createSpaceDirector } from '../fx/space/director.js';
+import { QUALITY_HIGH } from '../core/perf.js';
 import type { AABB, RoomModule, Interactable } from './types.js';
 import type { PlanetResult } from '../fx/planet.js';
 
@@ -40,6 +42,35 @@ function translateAABB(aabb: AABB, offset: THREE.Vector3): AABB {
     maxY: aabb.maxY + offset.y,
     maxZ: aabb.maxZ + offset.z,
   };
+}
+
+/**
+ * QUALITY_HIGH-only: turn a PointLight into a soft shadow caster.
+ * 1024² map, near 0.1 / far 12 (room scale). No-op when quality is default.
+ */
+function configureShadowCaster(light: THREE.PointLight): void {
+  if (!QUALITY_HIGH) return;
+  light.castShadow = true;
+  light.shadow.mapSize.set(1024, 1024);
+  light.shadow.camera.near = 0.1;
+  light.shadow.camera.far = 12;
+}
+
+/**
+ * QUALITY_HIGH-only: flag every mesh under the room groups to cast + receive
+ * shadows. Cheap to set; only costs render time when shadowMap is enabled, which
+ * is itself gated on QUALITY_HIGH. No-op for the shipped/verify default.
+ */
+function enableMeshShadows(groups: THREE.Group[]): void {
+  if (!QUALITY_HIGH) return;
+  for (const g of groups) {
+    g.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+  }
 }
 
 export interface ShipAssembly {
@@ -106,11 +137,25 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   buildDoors(scene, doorSpecs);
 
   // ── Space environment ──────────────────────────────────────────────────────
+  // NEAR streaming starfield — driven by main's tickStarfield(ship.starfield).
   const starfield = buildStarfield();
   scene.add(starfield);
 
-  const planet = buildPlanet();
+  // 'Living Cruise' encounter director — drives the WHOLE space system through
+  // planet.tick(elapsed). Wrapped as a PlanetResult so the main.ts call site
+  // (ship.planet.tick) is unchanged. director.group is added as planet.mesh.
+  const director = createSpaceDirector(scene, { seed: 0x5747 });
+  const planet = wrapDirectorAsPlanetResult(director);
   scene.add(planet.mesh);
+
+  // Starboard-quarters porthole view onto the passing cruise (verify cross-flow).
+  // Aimed level through the porthole centre (world ~6.5, 1.6, -16) so space fills
+  // the frame rather than the hull wall above it.
+  registerCam(
+    'porthole-space',
+    new THREE.Vector3(5.8, 1.6, -16.0),
+    new THREE.Vector3(20, 1.6, -16.0),
+  );
 
   // ── Lighting ─────────────────────────────────────────────────────────────
   // Ship total: 10 PointLights
@@ -131,6 +176,7 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   // 1. Cockpit
   const cockpitPt = new THREE.PointLight(0xfff4e0, 1.8, 18);
   cockpitPt.position.set(0, 2.8, -22.5);
+  configureShadowCaster(cockpitPt);
   scene.add(cockpitPt);
 
   // 2. Quarters junction — RETARGETED (was int3.5 dist24)
@@ -161,6 +207,7 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   // 6. Engineering reactor (warm orange) — ANIMATED below via dummy mesh
   const reactorPt = new THREE.PointLight(0xff7733, 1.6, 18);
   reactorPt.position.set(0, 2.8, 5.5);
+  configureShadowCaster(reactorPt);
   scene.add(reactorPt);
 
   // Animate reactor light via a tiny invisible plane's onBeforeRender
@@ -206,6 +253,9 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   // Ambient fill
   const ambient = new THREE.AmbientLight(0xffffff, 0.20);
   scene.add(ambient);
+
+  // QUALITY_HIGH: flag room meshes to cast/receive shadows (no-op by default).
+  enableMeshShadows(groups);
 
   return { groups, colliders: allColliders, interactables: allInteractables, planet, starfield };
 }

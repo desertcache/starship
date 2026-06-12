@@ -6,12 +6,11 @@
 
 import * as THREE from 'three';
 import type { Interactable, InteractContext } from './types.js';
-import { doorRecords, isDoorOpen } from './doors.js';
 import {
   getState, setHunger, setEnergy, advanceShipClock,
-  formatShipClock, saveState,
+  formatShipClock, getQuestStep, advanceQuest, setQuestFlag,
 } from '../core/state.js';
-import { showOverlay, hideOverlay, showSaveToast } from '../ui/hud.js';
+import { showOverlay, hideOverlay } from '../ui/hud.js';
 import { playOneShot } from '../fx/audio.js';
 import {
   getFridgeHingeGroup, getFridgeRationMeshes, getFridgeTween,
@@ -100,6 +99,25 @@ export function buildLoreInteractables(): Interactable[] {
 
 let _breakerKeyHandler: ((e: KeyboardEvent) => void) | null = null;
 
+/**
+ * Test hook: drive the breaker [2] "Boost Reactor" path headlessly (the real
+ * path needs an overlay + Digit2 keypress that headlessInteract can't reach).
+ * Mirrors the Digit2 branch: boosts energy, advances the ship clock, and — when
+ * the player is on quest step 1 — sets the breakerSet flag and advances 1→2.
+ * Returns the quest step after running.
+ */
+export function questAdvanceViaBreaker(): number {
+  const s = getState();
+  setEnergy(s.energy + 30);
+  advanceShipClock(15);
+  if (getQuestStep() === 1) {
+    setQuestFlag('breakerSet');
+    advanceQuest(); // 1 -> 2
+    playOneShot('quest-step');
+  }
+  return getQuestStep();
+}
+
 export function buildBreakerCabinetInteractable(): Interactable {
   return {
     id: 'breaker-cabinet',
@@ -139,18 +157,41 @@ export function buildBreakerCabinetInteractable(): Interactable {
           const s = getState();
           setEnergy(s.energy + 30);
           advanceShipClock(15);
-          playOneShot('ui');
-          showOverlay('BREAKER PANEL', [
-            'REACTOR BOOST — EXECUTED',
-            '',
-            `Energy now: ${Math.round(getState().energy)}%`,
-            `Ship time:  ${formatShipClock(getState().shipMinutes)}`,
-            '',
-            '[1]  Vent Coolant   — energy -20',
-            '[2]  Boost Reactor  — energy +30, clock +15 min',
-            '',
-            'Press [ESC] to close.',
-          ]);
+
+          // Quest step 2: breaker boost while investigating anomaly
+          const qs = getQuestStep();
+          if (qs === 1) {
+            setQuestFlag('breakerSet');
+            advanceQuest(); // 1 -> 2
+            playOneShot('quest-step');
+            showOverlay('BREAKER PANEL', [
+              'REACTOR BOOST — EXECUTED',
+              '',
+              `Energy now: ${Math.round(getState().energy)}%`,
+              `Ship time:  ${formatShipClock(getState().shipMinutes)}`,
+              '',
+              '[ANOMALY] Reactor signature stabilized.',
+              'Record findings at the crew log terminal.',
+              '',
+              '[1]  Vent Coolant   — energy -20',
+              '[2]  Boost Reactor  — energy +30, clock +15 min',
+              '',
+              'Press [ESC] to close.',
+            ]);
+          } else {
+            playOneShot('ui');
+            showOverlay('BREAKER PANEL', [
+              'REACTOR BOOST — EXECUTED',
+              '',
+              `Energy now: ${Math.round(getState().energy)}%`,
+              `Ship time:  ${formatShipClock(getState().shipMinutes)}`,
+              '',
+              '[1]  Vent Coolant   — energy -20',
+              '[2]  Boost Reactor  — energy +30, clock +15 min',
+              '',
+              'Press [ESC] to close.',
+            ]);
+          }
         } else if (e.code === 'Escape') {
           hideOverlay();
           if (_breakerKeyHandler) {
@@ -242,58 +283,12 @@ export function buildCoffeeCupInteractable(): Interactable {
   };
 }
 
-// ── 5. Save Terminal ───────────────────────────────────────────────────────────
+// ── 5. Save Terminal + console helpers ─────────────────────────────────────────
+// Moved to interactConsole.ts (300-line budget). Re-exported for callers.
 
-export function buildSaveTerminalInteractable(): Interactable {
-  return {
-    id: 'save-terminal-shell',
-    prompt: 'Save Log',
-    radius: 2.0,
-    position: v3(-1.44, 1.55, -16),
-    onInteract(_ctx: InteractContext): void {
-      saveState();
-      showSaveToast();
-      playOneShot('save');
-    },
-  };
-}
-
-// ── 6. Console overlay helpers (shared with interactWiring.ts) ─────────────────
-
-export function buildConsolePlanetLines(): string[] {
-  return [
-    'GAS GIANT — CLASS III',
-    '',
-    'Diameter: ~1.4 AU equivalent',
-    'Storm bands: active (visible from canopy)',
-    'Magnetic flux: elevated — instruments nominal',
-    '',
-    'No landing capability. Maintain safe orbit.',
-    '',
-    'Press [E] or [ESC] to close.',
-  ];
-}
-
-export function buildConsoleSystemsLines(): string[] {
-  const s = getState();
-  return [
-    `ENERGY:  ${Math.round(s.energy)}%`,
-    `HUNGER:  ${Math.round(s.hunger)}%`,
-    '',
-    'DOOR STATUS:',
-    ...doorRecords.map((r) => `  ${r.id}: ${isDoorOpen(r.id) ? 'OPEN' : 'CLOSED'}`),
-    '',
-    'Press [E] or [ESC] to close.',
-  ];
-}
-
-export function buildConsoleNavLines(): string[] {
-  const s = getState();
-  const heading = `${Math.round(s.heading).toString().padStart(3, '0')}°`;
-  return [
-    `HEADING:  ${heading}`,
-    `SHIP TIME: ${formatShipClock(s.shipMinutes)}`,
-    '',
-    'Press [E] or [ESC] to close.',
-  ];
-}
+export {
+  buildSaveTerminalInteractable,
+  buildConsolePlanetLines,
+  buildConsoleSystemsLines,
+  buildConsoleNavLines,
+} from './interactConsole.js';

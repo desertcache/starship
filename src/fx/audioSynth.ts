@@ -6,7 +6,7 @@
  *           one-shot SFX, and the quarters spatial personality.
  */
 
-export type OneShotType = 'ui' | 'door' | 'eat' | 'sip' | 'vent' | 'save';
+export type OneShotType = 'ui' | 'door' | 'door-auto' | 'eat' | 'sip' | 'vent' | 'save' | 'quest-start' | 'quest-step' | 'quest-complete';
 export type RoomName    = 'cockpit' | 'corridor' | 'quarters' | 'galley' | 'engineering' | 'cargo';
 export type SurfaceType = 'soft' | 'tile' | 'metal';
 
@@ -258,6 +258,53 @@ export function playOneShotInternal(
       g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.09 + 0.08);
       osc.connect(g); g.connect(outputGain);
       osc.start(now + i * 0.09); osc.stop(now + i * 0.09 + 0.09);
+    });
+
+  } else if (type === 'door-auto') {
+    // Softer/lower whoosh than 'door' — auto-close feels less abrupt
+    const thud = audioCtx.createOscillator();
+    thud.type = 'sine'; thud.frequency.setValueAtTime(120, now);
+    thud.frequency.exponentialRampToValueAtTime(40, now + 0.12);
+    const tg = audioCtx.createGain();
+    tg.gain.setValueAtTime(0.10, now); tg.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+    thud.connect(tg); tg.connect(outputGain); thud.start(now); thud.stop(now + 0.13);
+    const hsrc = audioCtx.createBufferSource(); hsrc.buffer = makeNoiseBuffer(audioCtx, 0.18);
+    const hpf = audioCtx.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = 1800;
+    const hg = audioCtx.createGain();
+    hg.gain.setValueAtTime(0.03, now); hg.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+    hsrc.connect(hpf); hpf.connect(hg); hg.connect(outputGain);
+    hsrc.start(now); hsrc.stop(now + 0.19);
+
+  } else if (type === 'quest-start') {
+    // Low rising two-tone — anomaly detected
+    [260, 340].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator(); osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq * 0.8, now + i * 0.18);
+      osc.frequency.linearRampToValueAtTime(freq, now + i * 0.18 + 0.22);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.09, now + i * 0.18);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.18 + 0.38);
+      osc.connect(g); g.connect(outputGain);
+      osc.start(now + i * 0.18); osc.stop(now + i * 0.18 + 0.40);
+    });
+
+  } else if (type === 'quest-step') {
+    // Confirming blip — task acknowledged
+    const osc = audioCtx.createOscillator(); osc.type = 'sine'; osc.frequency.value = 660;
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.11, now); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.10);
+    osc.connect(g); g.connect(outputGain); osc.start(now); osc.stop(now + 0.11);
+
+  } else if (type === 'quest-complete') {
+    // Triumphant 3-note arpeggio — C maj triad
+    [523, 659, 784].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq;
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.13, now + i * 0.12);
+      g.gain.linearRampToValueAtTime(0.10, now + i * 0.12 + 0.08);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.12 + 0.45);
+      osc.connect(g); g.connect(outputGain);
+      osc.start(now + i * 0.12); osc.stop(now + i * 0.12 + 0.46);
     });
   }
 }

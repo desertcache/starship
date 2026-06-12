@@ -5,6 +5,7 @@
  * Pressure-hatch framing: FRAME_DEPTH=0.5, JAMB=0.2 + orange threshold floor plate.
  */
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildRoom } from './roomBuilder.js';
 import { matWall, matFloor, matCeiling } from './materials.js';
 import { matDoorFrame } from '../fx/shipMaterials.js';
@@ -22,29 +23,25 @@ function addHatchFrame(group: THREE.Group, roomW: number, roomD: number): void {
   const halfD = roomD / 2;
   const wZ    = -halfD; // fore wall
 
-  // Left jamb
-  const lj = new THREE.Mesh(
-    new THREE.BoxGeometry(HATCH_JAMB_W, DOOR_GAP_H, HATCH_FRAME_DEPTH),
-    matDoorFrame,
-  );
-  lj.position.set(-DOOR_GAP_W / 2 - HATCH_JAMB_W / 2, DOOR_GAP_H / 2, wZ);
-  group.add(lj);
+  // Merge the 3 frame boxes (left jamb, right jamb, header) into ONE geometry /
+  // ONE draw call. Translate each in place, merge, dispose inputs (-2 draws).
+  const pieces: THREE.BufferGeometry[] = [];
 
-  // Right jamb
-  const rj = new THREE.Mesh(
-    new THREE.BoxGeometry(HATCH_JAMB_W, DOOR_GAP_H, HATCH_FRAME_DEPTH),
-    matDoorFrame,
-  );
-  rj.position.set(DOOR_GAP_W / 2 + HATCH_JAMB_W / 2, DOOR_GAP_H / 2, wZ);
-  group.add(rj);
+  const lj = new THREE.BoxGeometry(HATCH_JAMB_W, DOOR_GAP_H, HATCH_FRAME_DEPTH);
+  lj.translate(-DOOR_GAP_W / 2 - HATCH_JAMB_W / 2, DOOR_GAP_H / 2, wZ);
+  pieces.push(lj);
 
-  // Header
-  const hdr = new THREE.Mesh(
-    new THREE.BoxGeometry(DOOR_GAP_W + HATCH_JAMB_W * 2, HATCH_HEAD_H, HATCH_FRAME_DEPTH),
-    matDoorFrame,
-  );
-  hdr.position.set(0, DOOR_GAP_H + HATCH_HEAD_H / 2, wZ);
-  group.add(hdr);
+  const rj = new THREE.BoxGeometry(HATCH_JAMB_W, DOOR_GAP_H, HATCH_FRAME_DEPTH);
+  rj.translate(DOOR_GAP_W / 2 + HATCH_JAMB_W / 2, DOOR_GAP_H / 2, wZ);
+  pieces.push(rj);
+
+  const hdr = new THREE.BoxGeometry(DOOR_GAP_W + HATCH_JAMB_W * 2, HATCH_HEAD_H, HATCH_FRAME_DEPTH);
+  hdr.translate(0, DOOR_GAP_H + HATCH_HEAD_H / 2, wZ);
+  pieces.push(hdr);
+
+  const merged = mergeGeometries(pieces);
+  for (const g of pieces) g.dispose();
+  group.add(new THREE.Mesh(merged, matDoorFrame));
 
   // Orange floor threshold plate 1.7W x 0.05H x 0.5D
   const thresh = new THREE.Mesh(

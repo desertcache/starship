@@ -14,10 +14,10 @@
 
 import * as THREE from 'three';
 import type { Interactable, InteractContext } from './types.js';
-import { doorRecords, setDoorOpen, isDoorOpen } from './doors.js';
+import { doorRecords, setDoorOpen, isDoorOpen, armDoorAutoClose } from './doors.js';
 import { enterAnchor } from '../player/controller.js';
-import { getState, setConsoleMode } from '../core/state.js';
-import { showOverlay, hideOverlay } from '../ui/hud.js';
+import { getState, setConsoleMode, getQuestStep, advanceQuest, setQuestFlag } from '../core/state.js';
+import { showOverlay, hideOverlay, showRoomToast } from '../ui/hud.js';
 import { playOneShot } from '../fx/audio.js';
 import {
   buildLoreInteractables,
@@ -70,6 +70,8 @@ function buildDoorInteractables(): Interactable[] {
         const nowOpen = isDoorOpen(rec.id);
         setDoorOpen(rec.id, !nowOpen);
         playOneShot('door');
+        // Arm auto-close after first manual interaction
+        armDoorAutoClose(rec.id);
       },
     };
   });
@@ -186,6 +188,55 @@ const CRATE_B_SLIDE_DIST = 0.8; // metres, +X direction to reveal panel
 let _crateBSlid = false;
 let _panelRevealed = false;
 
+/**
+ * Inspect the hidden floor panel (shared by the interactable + the test hook).
+ * No-op until the crate has been slid (panel revealed). On quest step 0 this
+ * seeds the anomaly: sets panelRead and advances 0→1.
+ */
+function inspectHiddenPanel(): void {
+  if (!_panelRevealed) return;
+  playOneShot('ui');
+
+  const baseLines = [
+    'Cycle 1887. Deck plate 7-C replaced (stress fracture).',
+    'Previous patch: tape and hope. Not crew-rated.',
+    '',
+    'Note from prior shift: "If you are reading this,',
+    'the crate worked. Do not move the crate."',
+    '',
+    '— J. Okafor, Chief Engineer, STREL-7',
+  ];
+
+  if (getQuestStep() === 0) {
+    setQuestFlag('panelRead');
+    advanceQuest(); // 0 -> 1
+    playOneShot('quest-start');
+    showOverlay('MAINTENANCE LOG — STREL-7', [
+      ...baseLines,
+      '',
+      '[SYSTEM] Anomaly logged. Investigate reactor breaker — engineering.',
+    ]);
+    showRoomToast('ANOMALY DETECTED');
+  } else {
+    showOverlay('MAINTENANCE LOG — STREL-7', baseLines);
+  }
+}
+
+/**
+ * Test hook: slide the crate (reveal the panel) then inspect it, driving the
+ * quest 0→1. headlessInteract can't reach the panel because the crate sits at
+ * the same XZ and always wins the nearest-within-radius proximity check.
+ * Returns the quest step after running.
+ */
+export function questRevealAndReadPanel(): number {
+  _crateBSlid = true;
+  _panelRevealed = true;
+  const cg = getCrateBGroup();
+  if (cg) cg.position.x = CRATE_B_SLIDE_DIST; // reflect the slid state visually
+  inspectHiddenPanel();
+  return getQuestStep();
+}
+
 function buildCrateBInteractables(): Interactable[] {
   // Tween built lazily on first interact so getCrateBGroup() is populated
   let _crateTween: ReturnType<typeof createPropTween> | null = null;
@@ -220,17 +271,7 @@ function buildCrateBInteractables(): Interactable[] {
     position: new THREE.Vector3(-1.45, 0.01, 5.2),
     getPrompt(): string { return _panelRevealed ? 'Inspect Panel' : ''; },
     onInteract(_ctx: InteractContext): void {
-      if (!_panelRevealed) return;
-      playOneShot('ui');
-      showOverlay('MAINTENANCE LOG — STREL-7', [
-        'Cycle 1887. Deck plate 7-C replaced (stress fracture).',
-        'Previous patch: tape and hope. Not crew-rated.',
-        '',
-        'Note from prior shift: "If you are reading this,',
-        'the crate worked. Do not move the crate."',
-        '',
-        '— J. Okafor, Chief Engineer, STREL-7',
-      ]);
+      inspectHiddenPanel();
     },
   };
   return [crateIA, panelIA];

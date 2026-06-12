@@ -18,6 +18,7 @@ import type { Interactable } from '../world/types.js';
 import { showPrompt, clearPrompt } from '../ui/hud.js';
 import { getState } from '../core/state.js';
 import { exitAnchor } from './controller.js';
+import { setPlayerPosForDoors } from '../world/doors.js';
 
 const MAX_INTERACT_DIST = 2.5; // metres
 
@@ -76,6 +77,9 @@ function triggerCurrent(): void {
  */
 export function tickInteract(): void {
   if (!state.camera || !state.scene) return;
+
+  // Thread player position to doors.ts for auto-close distance check
+  setPlayerPosForDoors(state.camera.position);
 
   // Cast from camera centre
   state.raycaster.setFromCamera(new THREE.Vector2(0, 0), state.camera);

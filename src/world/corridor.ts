@@ -7,6 +7,7 @@
  * Density dressing (baseboards, crown, ribs, junction) delegated to corridorDensity.ts.
  */
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildRoom } from './roomBuilder.js';
 import { matWall } from './materials.js';
 import { matTealStrip, matDoorFrame } from '../fx/shipMaterials.js';
@@ -57,6 +58,12 @@ export function buildCorridor(): RoomModule {
   const p1Left = P1_Z - P1_W / 2;  const p1Right = P1_Z + P1_W / 2;  const p1Top = P1_SILL + P1_H;
   const p2Left = P2_Z - P2_W / 2;  const p2Right = P2_Z + P2_W / 2;  const p2Top = P2_SILL + P2_H;
 
+  // v0.4 defrag: collect side-door frame boxes (both sides) and teal floor strips
+  // into geometry arrays, then merge each into ONE draw call after the loop.
+  // Previously 6 frame meshes + 4 strip meshes → 2 merged meshes (~-8 draws).
+  const frameGeos: THREE.BufferGeometry[] = [];
+  const stripGeos: THREE.BufferGeometry[] = [];
+
   for (const side of ['port', 'starboard'] as const) {
     const wX   = side === 'port' ? -halfW : halfW;
     const rotY = side === 'port' ? Math.PI / 2 : -Math.PI / 2;
@@ -94,17 +101,17 @@ export function buildCorridor(): RoomModule {
       colliders.push({ minX: wX - WALL_T, minY: DOOR_GAP_H, minZ: DOOR_FORE_EDGE, maxX: wX + WALL_T, maxY: H, maxZ: DOOR_AFT_EDGE });
     }
 
-    // ── Side door frames ─────────────────────────────────────────────────────
+    // ── Side door frames (collected for a single merged draw call) ───────────
     const lJambZ = SIDE_DOOR_Z - DOOR_GAP_W / 2 - FRAME_JAMB_W / 2;
-    const lJamb  = new THREE.Mesh(new THREE.BoxGeometry(FRAME_TOTAL_DEPTH, DOOR_GAP_H, FRAME_JAMB_W), matDoorFrame);
-    lJamb.position.set(wX, DOOR_GAP_H / 2, lJambZ); group.add(lJamb);
+    const lJambGeo = new THREE.BoxGeometry(FRAME_TOTAL_DEPTH, DOOR_GAP_H, FRAME_JAMB_W);
+    lJambGeo.translate(wX, DOOR_GAP_H / 2, lJambZ); frameGeos.push(lJambGeo);
 
     const rJambZ = SIDE_DOOR_Z + DOOR_GAP_W / 2 + FRAME_JAMB_W / 2;
-    const rJamb  = new THREE.Mesh(new THREE.BoxGeometry(FRAME_TOTAL_DEPTH, DOOR_GAP_H, FRAME_JAMB_W), matDoorFrame);
-    rJamb.position.set(wX, DOOR_GAP_H / 2, rJambZ); group.add(rJamb);
+    const rJambGeo = new THREE.BoxGeometry(FRAME_TOTAL_DEPTH, DOOR_GAP_H, FRAME_JAMB_W);
+    rJambGeo.translate(wX, DOOR_GAP_H / 2, rJambZ); frameGeos.push(rJambGeo);
 
-    const header = new THREE.Mesh(new THREE.BoxGeometry(FRAME_TOTAL_DEPTH, FRAME_HEAD_H, DOOR_GAP_W + FRAME_JAMB_W * 2), matDoorFrame);
-    header.position.set(wX, DOOR_GAP_H + FRAME_HEAD_H / 2, SIDE_DOOR_Z); group.add(header);
+    const headerGeo = new THREE.BoxGeometry(FRAME_TOTAL_DEPTH, FRAME_HEAD_H, DOOR_GAP_W + FRAME_JAMB_W * 2);
+    headerGeo.translate(wX, DOOR_GAP_H + FRAME_HEAD_H / 2, SIDE_DOOR_Z); frameGeos.push(headerGeo);
 
     // ── Aft section (-3.3 to +8) with porthole 1 cutout ─────────────────────
     const aftL = p1Left - DOOR_AFT_EDGE;
@@ -132,19 +139,31 @@ export function buildCorridor(): RoomModule {
       colliders.push({ minX: wX - WALL_T, minY: P1_SILL + P1_H, minZ: p1Left, maxX: wX + WALL_T, maxY: H, maxZ: p1Right });
     }
 
-    // ── Teal floor strips (split around door gap) ─────────────────────────
+    // ── Teal floor strips (split around door gap, collected for one merge) ──
     const STRIP_H = 0.06; const STRIP_W = 0.04; const STRIP_OFF = 0.025;
     const sX = side === 'port' ? -halfW + STRIP_OFF : halfW - STRIP_OFF;
     const fsl = DOOR_FORE_EDGE - (-halfD);
     const asl = halfD - DOOR_AFT_EDGE;
     if (fsl > 0.05) {
-      const sm = new THREE.Mesh(new THREE.BoxGeometry(STRIP_W, STRIP_H, fsl), matTealStrip);
-      sm.position.set(sX, STRIP_H / 2, -halfD + fsl / 2); group.add(sm);
+      const g = new THREE.BoxGeometry(STRIP_W, STRIP_H, fsl);
+      g.translate(sX, STRIP_H / 2, -halfD + fsl / 2); stripGeos.push(g);
     }
     if (asl > 0.05) {
-      const sm = new THREE.Mesh(new THREE.BoxGeometry(STRIP_W, STRIP_H, asl), matTealStrip);
-      sm.position.set(sX, STRIP_H / 2, DOOR_AFT_EDGE + asl / 2); group.add(sm);
+      const g = new THREE.BoxGeometry(STRIP_W, STRIP_H, asl);
+      g.translate(sX, STRIP_H / 2, DOOR_AFT_EDGE + asl / 2); stripGeos.push(g);
     }
+  }
+
+  // ── Merge collected side-door frames + floor strips (2 draw calls total) ────
+  if (frameGeos.length > 0) {
+    const merged = mergeGeometries(frameGeos);
+    for (const g of frameGeos) g.dispose();
+    group.add(new THREE.Mesh(merged, matDoorFrame));
+  }
+  if (stripGeos.length > 0) {
+    const merged = mergeGeometries(stripGeos);
+    for (const g of stripGeos) g.dispose();
+    group.add(new THREE.Mesh(merged, matTealStrip));
   }
 
   // ── Orange waist bands ────────────────────────────────────────────────────

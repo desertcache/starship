@@ -93,11 +93,13 @@ export function initSaveToast(): void {
 }
 
 /**
- * Show a 1-second "-- SAVED --" toast at bottom center.
+ * Show a brief toast at bottom center.
+ * @param message - Text to display (default '-- SAVED --').
  */
-export function showSaveToast(): void {
+export function showSaveToast(message = '-- SAVED --'): void {
   if (!saveToastEl) return;
   if (_saveToastTimer !== null) { clearTimeout(_saveToastTimer); _saveToastTimer = null; }
+  saveToastEl.textContent = message;
   saveToastEl.style.transition = 'opacity 0.15s ease';
   saveToastEl.style.opacity = '1';
   _saveToastTimer = setTimeout(() => {

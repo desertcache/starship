@@ -1,5 +1,21 @@
 import type * as THREE from 'three';
 
+// ── Quality flag — default OFF, headed-gated ──────────────────────────────────
+//
+// ?quality=high enables SSAO post-processing (and documents shadow intent).
+// Default (no flag) is a strict no-op — zero added draws, zero cost.
+// Verify runs WITHOUT this flag, so the budget is unaffected by default.
+//
+const _qParams = new URLSearchParams(
+  typeof window !== 'undefined' ? window.location.search : '',
+);
+/**
+ * True when ?quality=high is in the URL.
+ * Gate all quality-mode enhancements behind this boolean.
+ * Default: false (shipped default, verify default).
+ */
+export const QUALITY_HIGH: boolean = _qParams.get('quality') === 'high';
+
 export interface PerfReport {
   avgFps: number;
   p95FrameTime: number;

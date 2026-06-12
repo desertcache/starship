@@ -51,10 +51,21 @@ let lastTime = performance.now();
 /** Current vertical bob offset applied on top of FLOOR_Y. */
 let bobOffset = 0;
 
+// ── FOV kick state ────────────────────────────────────────────────────────────
+
 /**
- * Tick the head-bob effect.
+ * Captured rest FOV — set on first tickBob call so we never hardcode 75.
+ * -1 means "not yet captured".
+ */
+let _restFov = -1;
+/** Current lerped FOV (tracks camera.fov). */
+let _currentFov = -1;
+
+/**
+ * Tick the head-bob effect + FOV walk kick.
  * When moving: y += sin(elapsed*5.5)*0.022 (≈4.4 cm peak-to-peak at walk pace).
  * When stopped: lerp offset back to 0 at 6 units/s.
+ * FOV lerps to restFov+2 when moving, back to restFov when stopped.
  * Applied AFTER collision resolution so it never pushes camera through geometry.
  *
  * @param camera  - active perspective camera
@@ -66,6 +77,12 @@ export function tickBob(
   elapsed: number,
   moving: boolean,
 ): void {
+  // Capture rest FOV on first call (main.ts sets camera.fov before calling us)
+  if (_restFov < 0) {
+    _restFov = camera.fov;
+    _currentFov = camera.fov;
+  }
+
   if (moving) {
     bobOffset = Math.sin(elapsed * 5.5) * 0.022;
   } else {
@@ -75,6 +92,22 @@ export function tickBob(
   }
   // Apply the offset on top of the already-clamped FLOOR_Y
   camera.position.y = FLOOR_Y + bobOffset;
+
+  // ── FOV kick: +2 when walking, back to rest when stopped ─────────────────
+  const st = getState();
+  // While seated force FOV to rest immediately (no kick from anchor anim)
+  const targetFov = (!moving || st.seated) ? _restFov : _restFov + 2;
+  const delta = targetFov - _currentFov;
+  if (Math.abs(delta) > 0.01) {
+    _currentFov += delta * Math.min(1, 8 * 0.016); // ~8 units/s lerp
+    camera.fov = _currentFov;
+    camera.updateProjectionMatrix();
+  } else if (camera.fov !== _restFov && !moving) {
+    // Snap to exact rest when converged to avoid permanent drift
+    _currentFov = _restFov;
+    camera.fov = _restFov;
+    camera.updateProjectionMatrix();
+  }
 }
 
 // ── Anchor (seat) API ─────────────────────────────────────────────────────────

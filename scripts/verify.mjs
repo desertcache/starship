@@ -382,6 +382,94 @@ async function run() {
     console.log('[verify] Test 5 PASSED ✓ (fridge open→ration+30→close cycle verified)');
     console.log('[verify] All 5 functional tests PASSED ✓\n');
 
+    // ── Test 6: Door auto-close regression (corridor-galley) ────────────────────
+    // Open + arm the door via interact, walk far away (cockpit), then run the
+    // auto-close check with the dwell-timer overridden and assert the door shut.
+    console.log('[verify] Test 6: Door auto-close regression (corridor-galley)');
+    const acDoorId = 'corridor-galley';
+
+    // Ensure the door is OPEN and ARMED. Interacting arms auto-close; after the
+    // prior tests the door is open, so toggle twice to land on open+armed.
+    await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
+    await sleep(150);
+    if (await page.evaluate((id) => window.__test.getDoorOpen(id), acDoorId)) {
+      // It's open — close then reopen so it ends open AND armed.
+      await page.evaluate(() => window.__test.interact()); // close + arm
+      await sleep(600);
+      await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
+      await sleep(150);
+      await page.evaluate(() => window.__test.interact()); // reopen (still armed)
+      await sleep(600);
+    } else {
+      await page.evaluate(() => window.__test.interact()); // open + arm
+      await sleep(600);
+    }
+    const acOpenBefore = await page.evaluate((id) => window.__test.getDoorOpen(id), acDoorId);
+    console.log(`  door open + armed before walk-away: isDoorOpen=${acOpenBefore}`);
+    assert(acOpenBefore === true, 'Test 6: door should be OPEN (and armed) before auto-close check');
+
+    // Walk far away (cockpit). Wait a couple frames so tickInteract threads the
+    // new player position into doors.ts before we force the check.
+    await page.evaluate(() => window.__test.teleport(0, 1.7, -22.5));
+    await sleep(250);
+
+    const acClosed = await page.evaluate(() => window.__test.forceDoorAutoCloseCheck());
+    console.log(`  forceDoorAutoCloseCheck() closed: [${acClosed.join(', ')}]`);
+    await sleep(600); // let the close animation run
+
+    const acOpenAfter = await page.evaluate((id) => window.__test.getDoorOpen(id), acDoorId);
+    console.log(`  after auto-close check: isDoorOpen=${acOpenAfter}`);
+    assert(acClosed.includes(acDoorId), `Test 6: ${acDoorId} should have auto-closed; closed=[${acClosed.join(', ')}]`);
+    assert(acOpenAfter === false, 'Test 6: door should be CLOSED after auto-close check');
+    console.log('[verify] Test 6 PASSED ✓ (armed door auto-closed when player walked away)');
+
+    // ── Test 7: Scan API smoke ──────────────────────────────────────────────────
+    // getScan() returns null or a well-formed ScanData. With the deterministic
+    // t=0 hero cast in view, it must be NON-null.
+    console.log('[verify] Test 7: Scan API smoke');
+    const scan = await page.evaluate(() => window.__test.getScan());
+    console.log(`  getScan() → ${scan ? JSON.stringify(scan) : 'null'}`);
+    assert(scan !== null, 'Test 7: getScan() should be NON-null with the deterministic t=0 hero in range');
+    assert(typeof scan.name === 'string' && scan.name.length > 0, 'Test 7: scan.name must be a non-empty string');
+    assert(typeof scan.class === 'string' && scan.class.length > 0, 'Test 7: scan.class must be a non-empty string');
+    assert(typeof scan.composition === 'string' && scan.composition.length > 0, 'Test 7: scan.composition must be a non-empty string');
+    assert(typeof scan.distanceKm === 'number' && scan.distanceKm > 0, 'Test 7: scan.distanceKm must be a positive number');
+    console.log(`[verify] Test 7 PASSED ✓ (scan locked onto '${scan.name}' — ${scan.class}, ${scan.distanceKm} km)`);
+
+    // ── Test 8: Quest progression 0→1→2→3 ───────────────────────────────────────
+    // Drive the 3-step quest: reveal+read hidden panel (0→1), boost reactor
+    // breaker (1→2), file the field report at the save terminal (2→3).
+    console.log('[verify] Test 8: Quest progression 0→1→2→3');
+    const q0 = (await page.evaluate(() => window.__test.getState())).questStep;
+    console.log(`  quest step (start): ${q0}`);
+    assert(q0 === 0, `Test 8: quest should start at 0; got ${q0}`);
+
+    // Step 0→1: slide crate (reveal panel) + read panel. The crate sits at the
+    // same XZ as the panel and always wins the proximity check headlessly, so
+    // this step is driven via the dedicated hook (same pattern as the breaker).
+    const q1 = await page.evaluate(() => window.__test.questRevealAndReadPanel());
+    console.log(`  after panel read: ${q1}`);
+    assert(q1 === 1, `Test 8: quest should be 1 after reading panel; got ${q1}`);
+
+    // Step 1→2: breaker [2] Boost Reactor (overlay + Digit2 path; headless hook).
+    const q2 = await page.evaluate(() => window.__test.questAdvanceViaBreaker());
+    console.log(`  after breaker boost: ${q2}`);
+    assert(q2 === 2, `Test 8: quest should be 2 after breaker boost; got ${q2}`);
+
+    // Step 2→3: file report at the save terminal (world -1.44,1.55,-16) via a
+    // real proximity interact — the terminal is alone within range here.
+    await page.evaluate(() => window.__test.teleport(-1.44, 1.7, -16));
+    await sleep(200);
+    const savedInteract = await page.evaluate(() => window.__test.interact());
+    assert(savedInteract, 'Test 8: interact() returned false near save terminal');
+    await sleep(200);
+    const q3 = (await page.evaluate(() => window.__test.getState())).questStep;
+    console.log(`  after save terminal: ${q3}`);
+    assert(q3 === 3, `Test 8: quest should be 3 (complete) after filing report; got ${q3}`);
+    console.log('[verify] Test 8 PASSED ✓ (quest advanced 0→1→2→3)');
+
+    console.log('[verify] All 8 functional tests PASSED ✓\n');
+
     await browser.close();
     console.log('[verify] Done. ✓');
   } finally {

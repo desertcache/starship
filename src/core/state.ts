@@ -24,6 +24,12 @@ export interface AnchorReturn {
   quaternion: THREE.Quaternion;
 }
 
+export interface QuestFlags {
+  panelRead: boolean;
+  breakerSet: boolean;
+  logged: boolean;
+}
+
 export interface ShipState {
   /** Ship time in minutes since epoch (0 = midnight ship-day 0). */
   shipMinutes: number;
@@ -39,6 +45,10 @@ export interface ShipState {
   consoleMode: 0 | 1 | 2;
   /** Player heading in degrees 0–360. */
   heading: number;
+  /** Quest step: 0=not started, 1=investigate breaker, 2=file report, 3=complete. */
+  questStep: 0 | 1 | 2 | 3;
+  /** Per-step achievement flags. */
+  questFlags: QuestFlags;
 }
 
 /** Real seconds → ship minutes conversion rate. */
@@ -51,6 +61,8 @@ interface SaveData {
   shipMinutes: number;
   energy: number;
   hunger: number;
+  questStep?: 0 | 1 | 2 | 3;
+  questFlags?: Partial<QuestFlags>;
 }
 
 const state: ShipState = {
@@ -61,6 +73,8 @@ const state: ShipState = {
   anchorReturn: null,
   consoleMode: 0,
   heading: 0,
+  questStep: 0,
+  questFlags: { panelRead: false, breakerSet: false, logged: false },
 };
 
 const ENERGY_DECAY = 0.10; // per real second
@@ -106,6 +120,21 @@ export function setHeading(degrees: number): void {
   state.heading = ((degrees % 360) + 360) % 360;
 }
 
+/** Return current quest step. */
+export function getQuestStep(): 0 | 1 | 2 | 3 {
+  return state.questStep;
+}
+
+/** Advance quest to the next step (clamped at 3). */
+export function advanceQuest(): void {
+  if (state.questStep < 3) state.questStep = (state.questStep + 1) as 0 | 1 | 2 | 3;
+}
+
+/** Set a single quest flag. */
+export function setQuestFlag(flag: keyof QuestFlags): void {
+  state.questFlags[flag] = true;
+}
+
 /** Format ship-minutes as "DD:HH:MM" clock string. */
 export function formatShipClock(minutes: number): string {
   const totalMin = Math.floor(minutes) % (24 * 60 * 100); // wrap after 100 days
@@ -126,6 +155,8 @@ export function saveState(): void {
       shipMinutes: state.shipMinutes,
       energy: state.energy,
       hunger: state.hunger,
+      questStep: state.questStep,
+      questFlags: { ...state.questFlags },
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -145,6 +176,14 @@ export function loadState(): boolean {
     if (typeof data.shipMinutes === 'number') state.shipMinutes = data.shipMinutes;
     if (typeof data.energy === 'number') state.energy = Math.max(0, Math.min(100, data.energy));
     if (typeof data.hunger === 'number') state.hunger = Math.max(0, Math.min(100, data.hunger));
+    if (data.questStep === 0 || data.questStep === 1 || data.questStep === 2 || data.questStep === 3) {
+      state.questStep = data.questStep;
+    }
+    if (data.questFlags) {
+      if (typeof data.questFlags.panelRead === 'boolean')  state.questFlags.panelRead  = data.questFlags.panelRead;
+      if (typeof data.questFlags.breakerSet === 'boolean') state.questFlags.breakerSet = data.questFlags.breakerSet;
+      if (typeof data.questFlags.logged === 'boolean')     state.questFlags.logged     = data.questFlags.logged;
+    }
     return true;
   } catch {
     return false;

@@ -2,6 +2,13 @@
  * Room dressing helpers — Phase 3.
  * Adds teal floor strips, emissive ceiling panels, and burnt-orange door frames.
  * Called by roomBuilder.ts and corridor.ts.
+ *
+ * Geometry strategy (v0.4 defrag):
+ *   addFloorStrips  — collects all strip BoxGeometries, merges into ONE mesh/room.
+ *   addDoorFrame    — merges 3 pieces (left jamb, right jamb, header) into ONE mesh/frame.
+ *   addCeilingLights — already merged (unchanged).
+ *
+ * Disposal: all input geometries are disposed after mergeGeometries().
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -19,7 +26,8 @@ export const FRAME_HEAD_H      = 0.10;  // height of header strip
 
 /**
  * Add a burnt-orange door frame around a doorway gap.
- * Three BoxGeometry pieces (left jamb, right jamb, header) proud of both wall planes.
+ * Merges left jamb, right jamb, and header into ONE BufferGeometry → ONE draw call.
+ * Previously 3 separate BoxGeometry meshes → saves 2 geos + 2 draws per frame.
  */
 export function addDoorFrame(
   group: THREE.Group,
@@ -34,54 +42,51 @@ export function addDoorFrame(
   const halfD = roomD / 2;
   const depth = FRAME_TOTAL_DEPTH;
 
+  // Build the three sub-geometries translated to their final positions,
+  // then merge them into a single draw call.
+
+  const pieces: THREE.BufferGeometry[] = [];
+
   if (wall === 'fore' || wall === 'aft') {
     const wZ = wall === 'fore' ? -halfD : halfD;
 
-    const lJamb = new THREE.Mesh(
-      new THREE.BoxGeometry(FRAME_JAMB_W, gapH, depth),
-      matDoorFrame,
-    );
-    lJamb.position.set(gapOffset - gapW / 2 - FRAME_JAMB_W / 2, gapH / 2, wZ);
-    group.add(lJamb);
+    // Left jamb
+    const lJambGeo = new THREE.BoxGeometry(FRAME_JAMB_W, gapH, depth);
+    lJambGeo.translate(gapOffset - gapW / 2 - FRAME_JAMB_W / 2, gapH / 2, wZ);
+    pieces.push(lJambGeo);
 
-    const rJamb = new THREE.Mesh(
-      new THREE.BoxGeometry(FRAME_JAMB_W, gapH, depth),
-      matDoorFrame,
-    );
-    rJamb.position.set(gapOffset + gapW / 2 + FRAME_JAMB_W / 2, gapH / 2, wZ);
-    group.add(rJamb);
+    // Right jamb
+    const rJambGeo = new THREE.BoxGeometry(FRAME_JAMB_W, gapH, depth);
+    rJambGeo.translate(gapOffset + gapW / 2 + FRAME_JAMB_W / 2, gapH / 2, wZ);
+    pieces.push(rJambGeo);
 
-    const header = new THREE.Mesh(
-      new THREE.BoxGeometry(gapW + FRAME_JAMB_W * 2, FRAME_HEAD_H, depth),
-      matDoorFrame,
-    );
-    header.position.set(gapOffset, gapH + FRAME_HEAD_H / 2, wZ);
-    group.add(header);
+    // Header
+    const headerGeo = new THREE.BoxGeometry(gapW + FRAME_JAMB_W * 2, FRAME_HEAD_H, depth);
+    headerGeo.translate(gapOffset, gapH + FRAME_HEAD_H / 2, wZ);
+    pieces.push(headerGeo);
 
   } else {
     const wX = wall === 'port' ? -halfW : halfW;
 
-    const lJamb = new THREE.Mesh(
-      new THREE.BoxGeometry(depth, gapH, FRAME_JAMB_W),
-      matDoorFrame,
-    );
-    lJamb.position.set(wX, gapH / 2, gapOffset - gapW / 2 - FRAME_JAMB_W / 2);
-    group.add(lJamb);
+    // Left jamb
+    const lJambGeo = new THREE.BoxGeometry(depth, gapH, FRAME_JAMB_W);
+    lJambGeo.translate(wX, gapH / 2, gapOffset - gapW / 2 - FRAME_JAMB_W / 2);
+    pieces.push(lJambGeo);
 
-    const rJamb = new THREE.Mesh(
-      new THREE.BoxGeometry(depth, gapH, FRAME_JAMB_W),
-      matDoorFrame,
-    );
-    rJamb.position.set(wX, gapH / 2, gapOffset + gapW / 2 + FRAME_JAMB_W / 2);
-    group.add(rJamb);
+    // Right jamb
+    const rJambGeo = new THREE.BoxGeometry(depth, gapH, FRAME_JAMB_W);
+    rJambGeo.translate(wX, gapH / 2, gapOffset + gapW / 2 + FRAME_JAMB_W / 2);
+    pieces.push(rJambGeo);
 
-    const header = new THREE.Mesh(
-      new THREE.BoxGeometry(depth, FRAME_HEAD_H, gapW + FRAME_JAMB_W * 2),
-      matDoorFrame,
-    );
-    header.position.set(wX, gapH + FRAME_HEAD_H / 2, gapOffset);
-    group.add(header);
+    // Header
+    const headerGeo = new THREE.BoxGeometry(depth, FRAME_HEAD_H, gapW + FRAME_JAMB_W * 2);
+    headerGeo.translate(wX, gapH + FRAME_HEAD_H / 2, gapOffset);
+    pieces.push(headerGeo);
   }
+
+  const merged = mergeGeometries(pieces);
+  for (const g of pieces) g.dispose();
+  group.add(new THREE.Mesh(merged, matDoorFrame));
 }
 
 // ── Floor strips ───────────────────────────────────────────────────────────────
@@ -89,6 +94,10 @@ export function addDoorFrame(
 /**
  * Add teal emissive floor-edge strips along all four walls.
  * Door gap sections are skipped so strips don't block doorways.
+ *
+ * v0.4 defrag: all strip BoxGeometries are collected, translated in place,
+ * merged into ONE geometry, inputs disposed, ONE mesh added to group.
+ * Saves ~5 geos + ~5 draws per room vs the old per-strip approach.
  */
 export function addFloorStrips(
   group: THREE.Group,
@@ -103,7 +112,9 @@ export function addFloorStrips(
   const OFFSET  = 0.025;
 
   const doorMap = new Map<string, DoorSpec>(doors.map((d) => [d.wall, d]));
+  const stripGeos: THREE.BufferGeometry[] = [];
 
+  // ── Fore / aft walls ──────────────────────────────────────────────────────
   for (const side of ['fore', 'aft'] as const) {
     const door   = doorMap.get(side);
     const wZ     = side === 'fore' ? -halfD + OFFSET : halfD - OFFSET;
@@ -114,22 +125,23 @@ export function addFloorStrips(
       const leftLen  = gapOff - gapW / 2 + halfW;
       const rightLen = halfW - (gapOff + gapW / 2);
       if (leftLen > 0.05) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(leftLen, STRIP_H, STRIP_D), matTealStrip);
-        m.position.set(-halfW + leftLen / 2, STRIP_H / 2, wZ);
-        group.add(m);
+        const g = new THREE.BoxGeometry(leftLen, STRIP_H, STRIP_D);
+        g.translate(-halfW + leftLen / 2, STRIP_H / 2, wZ);
+        stripGeos.push(g);
       }
       if (rightLen > 0.05) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(rightLen, STRIP_H, STRIP_D), matTealStrip);
-        m.position.set(halfW - rightLen / 2, STRIP_H / 2, wZ);
-        group.add(m);
+        const g = new THREE.BoxGeometry(rightLen, STRIP_H, STRIP_D);
+        g.translate(halfW - rightLen / 2, STRIP_H / 2, wZ);
+        stripGeos.push(g);
       }
     } else {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(roomW, STRIP_H, STRIP_D), matTealStrip);
-      m.position.set(0, STRIP_H / 2, wZ);
-      group.add(m);
+      const g = new THREE.BoxGeometry(roomW, STRIP_H, STRIP_D);
+      g.translate(0, STRIP_H / 2, wZ);
+      stripGeos.push(g);
     }
   }
 
+  // ── Port / starboard walls ────────────────────────────────────────────────
   for (const side of ['port', 'starboard'] as const) {
     const door   = doorMap.get(side);
     const wX     = side === 'port' ? -halfW + OFFSET : halfW - OFFSET;
@@ -140,20 +152,27 @@ export function addFloorStrips(
       const foreLen = gapOff - gapW / 2 + halfD;
       const aftLen  = halfD - (gapOff + gapW / 2);
       if (foreLen > 0.05) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(STRIP_D, STRIP_H, foreLen), matTealStrip);
-        m.position.set(wX, STRIP_H / 2, -halfD + foreLen / 2);
-        group.add(m);
+        const g = new THREE.BoxGeometry(STRIP_D, STRIP_H, foreLen);
+        g.translate(wX, STRIP_H / 2, -halfD + foreLen / 2);
+        stripGeos.push(g);
       }
       if (aftLen > 0.05) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(STRIP_D, STRIP_H, aftLen), matTealStrip);
-        m.position.set(wX, STRIP_H / 2, halfD - aftLen / 2);
-        group.add(m);
+        const g = new THREE.BoxGeometry(STRIP_D, STRIP_H, aftLen);
+        g.translate(wX, STRIP_H / 2, halfD - aftLen / 2);
+        stripGeos.push(g);
       }
     } else {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(STRIP_D, STRIP_H, roomD), matTealStrip);
-      m.position.set(wX, STRIP_H / 2, 0);
-      group.add(m);
+      const g = new THREE.BoxGeometry(STRIP_D, STRIP_H, roomD);
+      g.translate(wX, STRIP_H / 2, 0);
+      stripGeos.push(g);
     }
+  }
+
+  // ── Merge all strips into a single draw call ──────────────────────────────
+  if (stripGeos.length > 0) {
+    const merged = mergeGeometries(stripGeos);
+    for (const g of stripGeos) g.dispose();
+    group.add(new THREE.Mesh(merged, matTealStrip));
   }
 }
 

@@ -1,16 +1,26 @@
 /**
- * src/fx/bloom.ts — Optional UnrealBloomPass post-processing.
+ * src/fx/bloom.ts — Post-processing: UnrealBloom + optional SSAO.
  *
- * Only the emissive elements should glow (teal strips, screens, reactor core,
- * ceiling panels). The high threshold ensures cream walls and structural trim
- * are NOT bloomed; only things that exceed the threshold (emissive colours like
- * #46E0D8 teal and bright panel highlights) pick up the halo.
- *
- * Kill switch: URL param ?bloom=0 disables it entirely.
+ * Kill switch: URL param ?bloom=0 disables bloom entirely.
  *   e.g. http://localhost:5173/?bloom=0
  *
- * Returns null when bloom is disabled so the caller falls back to
- * renderer.render() directly.
+ * Quality gate: ?quality=high adds SSAOPass BEFORE the bloom pass.
+ *   Expected cost: +2-4ms @1280x720. Measured separately from bloom cost.
+ *   See QUALITY_HIGH in perf.ts for details.
+ *
+ * Composer is built when (bloomEnabled || QUALITY_HIGH):
+ *   - Always: RenderPass, OutputPass
+ *   - If quality=high: SSAOPass (before bloom, subtle corner darkening)
+ *   - If bloom enabled: UnrealBloomPass
+ *
+ * Bloom tuning constants (left AS-IS per v0.4 brief; re-tune post space-lane merge):
+ *   threshold: 0.90 — cream walls (luminance ≈0.77) never bloom.
+ *              Emissive teal (0x55FFEE, lum ≈0.93) clears this.
+ *   strength:  0.45 — subtle, not blowout.
+ *   radius:    0.55 — tight halo.
+ *
+ * Integration task (post-merge): re-run verify:headed; if space emissives
+ * blow out, lower strength 0.45->0.38 OR raise threshold 0.90->0.92.
  */
 
 import * as THREE from 'three';
@@ -18,25 +28,27 @@ import { EffectComposer }  from 'three/examples/jsm/postprocessing/EffectCompose
 import { RenderPass }      from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass }      from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SSAOPass }        from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import { QUALITY_HIGH }    from '../core/perf.js';
 
-// ── Bloom tuning constants ─────────────────────────────────────────────────────
-//
-// Goal: gentle halos on emissives only.
-//
-//   threshold: 0.90 — raised from 0.80 so cream walls (#E8E2D4, luminance ≈0.77)
-//              can NEVER bloom. Emissive materials (teal strips, ceiling lights,
-//              console screens) use toneMapped=false and a slightly boosted colour
-//              so they still clear this threshold and produce a halo.
-//              The teal #55FFEE (boosted from #46E0D8) converts to luminance ≈0.93.
-//              Ceiling lights use pure white (0xFFFFFF, luminance 1.0).
-//   strength:  0.45 — subtle halo, not white blowout.
-//   radius:    0.55 — tight spread so the glow hugs the source geometry.
+// ── Bloom tuning ───────────────────────────────────────────────────────────────
 
 const BLOOM_THRESHOLD = 0.90;
 const BLOOM_STRENGTH  = 0.45;
 const BLOOM_RADIUS    = 0.55;
 
-// ── Bloom result ──────────────────────────────────────────────────────────────
+// ── SSAO tuning (room scale ≈3m) ──────────────────────────────────────────────
+//
+// kernelRadius 8 — moderate sampling radius for ~3m room scale
+// minDistance  0.002 — ignore very close occluders (avoids self-occlusion)
+// maxDistance  0.08  — subtle contact/corner darkening only (not full haloing)
+// Full resolution (no half-res). Expected cost: +2-4ms @1280x720.
+
+const SSAO_KERNEL_RADIUS  = 8;
+const SSAO_MIN_DISTANCE   = 0.002;
+const SSAO_MAX_DISTANCE   = 0.08;
+
+// ── BloomSystem interface ──────────────────────────────────────────────────────
 
 export interface BloomSystem {
   /** Replace renderer.render() calls with this. */
@@ -55,37 +67,48 @@ export function initBloom(
   scene: THREE.Scene,
   camera: THREE.Camera,
 ): BloomSystem {
-  // ── Kill switch ─────────────────────────────────────────────────────────────
-  const params = new URLSearchParams(window.location.search);
+  const params       = new URLSearchParams(window.location.search);
   const bloomEnabled = params.get('bloom') !== '0';
+  const needComposer = bloomEnabled || QUALITY_HIGH;
 
-  if (!bloomEnabled) {
+  // ── Fast-path: no composer needed ─────────────────────────────────────────
+  if (!needComposer) {
     return {
-      render():                    void { renderer.render(scene, camera); },
-      resize(_w: number, _h: number): void { /* no-op */ },
-      dispose():                   void { /* no-op */ },
+      render():                        void { renderer.render(scene, camera); },
+      resize(_w: number, _h: number):  void { /* no-op */ },
+      dispose():                        void { /* no-op */ },
       enabled: false,
     };
   }
 
-  // ── Build composer ──────────────────────────────────────────────────────────
+  // ── Build composer ─────────────────────────────────────────────────────────
   const composer = new EffectComposer(renderer);
 
-  const renderPass = new RenderPass(scene, camera);
-  composer.addPass(renderPass);
+  // 1. RenderPass — always first
+  composer.addPass(new RenderPass(scene, camera));
 
-  const resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
-  const bloomPass  = new UnrealBloomPass(
-    resolution,
-    BLOOM_STRENGTH,
-    BLOOM_RADIUS,
-    BLOOM_THRESHOLD,
-  );
-  composer.addPass(bloomPass);
+  // 2. SSAOPass — only when quality=high (before bloom so SSAO affects bloom input)
+  let ssaoPass: SSAOPass | null = null;
+  if (QUALITY_HIGH) {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    ssaoPass = new SSAOPass(scene, camera, w, h);
+    ssaoPass.kernelRadius  = SSAO_KERNEL_RADIUS;
+    ssaoPass.minDistance   = SSAO_MIN_DISTANCE;
+    ssaoPass.maxDistance   = SSAO_MAX_DISTANCE;
+    composer.addPass(ssaoPass);
+  }
 
-  // OutputPass handles tone-mapping and sRGB conversion after bloom
-  const outputPass = new OutputPass();
-  composer.addPass(outputPass);
+  // 3. UnrealBloomPass — only when bloom is enabled
+  let bloomPass: UnrealBloomPass | null = null;
+  if (bloomEnabled) {
+    const resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+    bloomPass = new UnrealBloomPass(resolution, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+    composer.addPass(bloomPass);
+  }
+
+  // 4. OutputPass — tone-mapping + sRGB conversion, always last
+  composer.addPass(new OutputPass());
 
   return {
     render(): void {
@@ -94,13 +117,19 @@ export function initBloom(
 
     resize(width: number, height: number): void {
       composer.setSize(width, height);
-      bloomPass.resolution.set(width, height);
+      if (bloomPass) {
+        bloomPass.resolution.set(width, height);
+      }
+      if (ssaoPass) {
+        ssaoPass.setSize(width, height);
+      }
     },
 
     dispose(): void {
       composer.dispose();
+      // SSAOPass and UnrealBloomPass are disposed by composer.dispose()
     },
 
-    enabled: true,
+    enabled: bloomEnabled,
   };
 }
