@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildCorridorSignage } from './corridorSignage.js';
+import { buildCornerConduits } from './corridorCornerConduits.js';
 
 // ── Palette constants ──────────────────────────────────────────────────────────
 const COL_GUNMETAL  = 0x1c1e22;
@@ -249,6 +250,9 @@ export function buildCorridorProps(group: THREE.Group): void {
     tray.name = `cable-tray-${side === -1 ? 'port' : 'stbd'}`;
     group.add(tray);
   }
+
+  // ── 6b. CEILING-CORNER CONDUIT BUNDLES → corridorCornerConduits.ts ─────────
+  buildCornerConduits(group, halfW, halfD, H);
 
   // ── 7. DIAGONAL CONDUITS + JUNCTION BOXES ────────────────────────────────────
   // 3 junction boxes per side at Y=1.7, Z=-5/0/+5

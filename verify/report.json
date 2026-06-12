@@ -1,11 +1,11 @@
 {
-  "avgFps": 3.2,
+  "avgFps": 3.1,
   "p95FrameTime": 333.3,
-  "drawCalls": 1057,
-  "triangles": 58985,
-  "geometries": 596,
-  "textures": 79,
-  "sampleDurationMs": 5023.4000000059605,
+  "drawCalls": 1065,
+  "triangles": 67985,
+  "geometries": 607,
+  "textures": 82,
+  "sampleDurationMs": 5368.699999988079,
   "headless": true,
   "qualityHigh": false,
   "cameras": [
@@ -24,5 +24,5 @@
     "qa-jitter-b"
   ],
   "perfCamera": "corridor",
-  "timestamp": "2026-06-12T19:10:53.775Z"
+  "timestamp": "2026-06-12T19:41:05.627Z"
 }

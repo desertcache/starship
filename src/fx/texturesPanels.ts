@@ -17,6 +17,7 @@ import {
   buildPanelGrid,
 } from './texturesPanelsShared.js';
 import type { PanelRect } from './texturesPanelsShared.js';
+import { drawGrimeStreaks, drawInsetDetail } from './texturesPanelsDetails.js';
 
 export { makeWallNormalMapTexture } from './texturesPanelsNormal.js';
 
@@ -37,25 +38,29 @@ function drawRecessed(ctx: CanvasRenderingContext2D, panels: PanelRect[]): void 
   xSeams.delete(TW);
   ySeams.delete(TH);
 
+  // Stage D: seam core 3px→6px, darker fill, stronger bevel lines
   const half = Math.floor(SEAM_PX / 2);
 
   for (const sx of xSeams) {
     const x0 = sx - half;
-    ctx.fillStyle = 'rgba(12,9,6,0.85)';
-    ctx.fillRect(x0 + 1, 0, SEAM_CORE_PX, TH);
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.fillRect(x0, 0, 1, TH);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(x0 + SEAM_PX - 1, 0, 1, TH);
+    // Dark core — deeper than before
+    ctx.fillStyle = 'rgba(4,3,2,0.95)';
+    ctx.fillRect(x0 + 2, 0, SEAM_CORE_PX, TH);
+    // Bevel highlight (lit top-left edge)
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.fillRect(x0, 0, 2, TH);
+    // Bevel shadow (dark bottom-right edge)
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(x0 + SEAM_PX - 2, 0, 2, TH);
   }
   for (const sy of ySeams) {
     const y0 = sy - half;
-    ctx.fillStyle = 'rgba(12,9,6,0.85)';
-    ctx.fillRect(0, y0 + 1, TW, SEAM_CORE_PX);
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.fillRect(0, y0, TW, 1);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(0, y0 + SEAM_PX - 1, TW, 1);
+    ctx.fillStyle = 'rgba(4,3,2,0.95)';
+    ctx.fillRect(0, y0 + 2, TW, SEAM_CORE_PX);
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.fillRect(0, y0, TW, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, y0 + SEAM_PX - 2, TW, 2);
   }
 }
 
@@ -70,18 +75,39 @@ function drawBolts(ctx: CanvasRenderingContext2D, panels: PanelRect[]): void {
       [p.x + p.w - BOLT_INSET, p.y + p.h - BOLT_INSET],
     ] as [number, number][]) {
       if (bx < SEAM_PX || bx > TW - SEAM_PX || by < SEAM_PX || by > TH - SEAM_PX) continue;
-      const g = ctx.createRadialGradient(bx - 1, by - 1, 0, bx, by, BOLT_R);
-      g.addColorStop(0,   'rgba(200,195,185,0.9)');
-      g.addColorStop(0.5, 'rgba(140,135,125,0.8)');
-      g.addColorStop(1,   'rgba(60,55,50,0.7)');
+
+      // Drop shadow below bolt
+      const shadow = ctx.createRadialGradient(bx + 2, by + 3, 0, bx + 2, by + 3, BOLT_R + 4);
+      shadow.addColorStop(0,   'rgba(0,0,0,0.55)');
+      shadow.addColorStop(0.6, 'rgba(0,0,0,0.25)');
+      shadow.addColorStop(1,   'rgba(0,0,0,0)');
+      ctx.beginPath();
+      ctx.arc(bx + 2, by + 3, BOLT_R + 4, 0, Math.PI * 2);
+      ctx.fillStyle = shadow;
+      ctx.fill();
+
+      // Bolt body radial gradient (highlight upper-left)
+      const g = ctx.createRadialGradient(bx - 2, by - 2, 0, bx, by, BOLT_R);
+      g.addColorStop(0,   'rgba(215,210,200,0.95)');
+      g.addColorStop(0.4, 'rgba(150,145,135,0.9)');
+      g.addColorStop(1,   'rgba(55,50,45,0.85)');
       ctx.beginPath();
       ctx.arc(bx, by, BOLT_R, 0, Math.PI * 2);
       ctx.fillStyle = g;
       ctx.fill();
+
+      // Dark ring outline
       ctx.beginPath();
       ctx.arc(bx, by, BOLT_R, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(0,0,0,0.60)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Top-edge glint line
+      ctx.beginPath();
+      ctx.arc(bx, by, BOLT_R * 0.55, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.strokeStyle = 'rgba(255,250,240,0.80)';
+      ctx.lineWidth = 2.0;
       ctx.stroke();
     }
   }
@@ -182,16 +208,17 @@ function fillCreamPanels(
   ctx.fillRect(0, 0, TW, TH);
   const inset = Math.ceil(SEAM_PX / 2) + 1;
   for (const p of panels) {
-    const jitter = (rand() - 0.5) * 0.10 * 255;
-    const l  = Math.round(Math.max(150, Math.min(220, baseL + jitter)));
+    // Stage D: luminance jitter ±5%→±9%
+    const jitter = (rand() - 0.5) * 0.18 * 255;
+    const l  = Math.round(Math.max(145, Math.min(222, baseL + jitter)));
     const r2 = l;
-    const g2 = Math.round(Math.max(140, Math.min(210, l - 6)));
-    const b2 = Math.round(Math.max(125, Math.min(200, l - 17)));
+    const g2 = Math.round(Math.max(135, Math.min(212, l - 6)));
+    const b2 = Math.round(Math.max(120, Math.min(202, l - 17)));
     const px = p.x + inset; const py = p.y + inset;
     const pw = p.w - inset * 2; const ph = p.h - inset * 2;
     if (pw <= 0 || ph <= 0) continue;
     const grad = ctx.createLinearGradient(px, py, px, py + ph);
-    grad.addColorStop(0, `rgb(${Math.min(255,r2+8)},${Math.min(255,g2+8)},${Math.min(255,b2+8)})`);
+    grad.addColorStop(0, `rgb(${Math.min(255,r2+10)},${Math.min(255,g2+10)},${Math.min(255,b2+10)})`);
     grad.addColorStop(1, `rgb(${r2},${g2},${b2})`);
     ctx.fillStyle = grad;
     ctx.fillRect(px, py, pw, ph);
@@ -202,7 +229,7 @@ function fillCreamPanels(
 
 /** Standard cream modular panel wall texture (2 m × 3 m tile). */
 export function makeCreamWallTexture(): THREE.CanvasTexture {
-  return cached('cream-wall-v2', () => {
+  return cached('cream-wall-v3', () => {
     const canvas = document.createElement('canvas');
     canvas.width  = TW; canvas.height = TH;
     const ctx  = canvas.getContext('2d')!;
@@ -211,6 +238,8 @@ export function makeCreamWallTexture(): THREE.CanvasTexture {
     fillCreamPanels(ctx, panels, rand);
     drawAccentPanels(ctx, panels, rng(71));
     drawRecessed(ctx, panels);
+    drawGrimeStreaks(ctx, panels, rng(131));
+    drawInsetDetail(ctx, panels, rng(157));
     drawBolts(ctx, panels);
     addGrime(ctx, TW, TH, 7, 0.12);
     drawScuffBand(ctx, rng(199));
@@ -227,7 +256,7 @@ export function makeCreamWallTexture(): THREE.CanvasTexture {
  * Same panel system; orange band row at waist height (0.7–1.1 m from floor).
  */
 export function makeCreamOrangeBandTexture(): THREE.CanvasTexture {
-  return cached('cream-orange-band-v2', () => {
+  return cached('cream-orange-band-v3', () => {
     const canvas = document.createElement('canvas');
     canvas.width  = TW; canvas.height = TH;
     const ctx  = canvas.getContext('2d')!;
@@ -250,6 +279,8 @@ export function makeCreamOrangeBandTexture(): THREE.CanvasTexture {
 
     drawAccentPanels(ctx, panels, rng(83));
     drawRecessed(ctx, panels);
+    drawGrimeStreaks(ctx, panels, rng(139));
+    drawInsetDetail(ctx, panels, rng(163));
     drawBolts(ctx, panels);
     addGrime(ctx, TW, TH, 13, 0.12);
     drawScuffBand(ctx, rng(211));

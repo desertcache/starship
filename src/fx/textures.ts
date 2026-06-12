@@ -139,13 +139,13 @@ export function makeFloorRoughnessMapTexture(): THREE.CanvasTexture {
 
     const rand = rng(42);
 
-    // Long worn streaks — dark = smooth/glossy (roughness ~0.30 → #4D)
+    // Stage D: streak centres darker = more gloss (~0.22 roughness → #38)
     for (let i = 0; i < 20; i++) {
       const x   = rand() * S;
       const w   = 5 + rand() * 24;
       const len = S * (0.4 + rand() * 0.6);
       const y0  = rand() * S;
-      const v   = Math.floor(0x40 + rand() * 0x20); // 0x40-0x60 → roughness 0.25-0.38
+      const v   = Math.floor(0x30 + rand() * 0x18); // 0x30-0x48 → roughness 0.19-0.28
       const grad = ctx.createLinearGradient(x - w, y0, x + w, y0);
       grad.addColorStop(0, '#808080');
       grad.addColorStop(0.3, `rgb(${v},${v},${v})`);

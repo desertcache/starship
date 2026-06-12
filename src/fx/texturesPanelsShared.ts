@@ -15,13 +15,13 @@ export const MPY = 3 / TH;
 // Scuff band: bottom 0.35 m of the tile
 export const SCUFF_PX    = Math.round(0.35 / MPY);
 
-// Seam geometry
-export const SEAM_PX      = 6;   // total seam width in pixels
-export const SEAM_CORE_PX = 3;
+// Seam geometry — Stage D: core widened 3px→6px for viewable-distance read
+export const SEAM_PX      = 10;  // total seam width (bevel + core + bevel)
+export const SEAM_CORE_PX = 6;   // dark core pixels (was 3)
 
-// Bolt inset and radius
-export const BOLT_INSET = 18;
-export const BOLT_R     = 5;
+// Bolt inset and radius — Stage D: bolts ~5px→~9px
+export const BOLT_INSET = 20;
+export const BOLT_R     = 9;
 
 // ── Panel rect ─────────────────────────────────────────────────────────────────
 

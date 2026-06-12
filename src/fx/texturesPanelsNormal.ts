@@ -35,23 +35,29 @@ function buildHeightCanvas(panels: ReturnType<typeof buildPanelGrid>): HTMLCanva
   xSeams.delete(TW);
   ySeams.delete(TH);
 
+  // Stage D: stronger seam depth to match wider seams
   for (const sx of xSeams) {
     const x0 = sx - half;
-    hx.fillStyle = 'rgba(30,30,30,1)';
-    hx.fillRect(x0 + 1, 0, SEAM_CORE_PX, TH);
-    hx.fillStyle = 'rgba(80,80,80,0.8)';
-    hx.fillRect(x0, 0, 1, TH);
-    hx.fillRect(x0 + SEAM_PX - 1, 0, 1, TH);
+    // Deep core channel
+    hx.fillStyle = 'rgba(10,10,10,1)';
+    hx.fillRect(x0 + 2, 0, SEAM_CORE_PX, TH);
+    // Bevel ramps — wider for stronger normal relief
+    hx.fillStyle = 'rgba(60,60,60,1)';
+    hx.fillRect(x0, 0, 2, TH);
+    hx.fillStyle = 'rgba(55,55,55,1)';
+    hx.fillRect(x0 + SEAM_PX - 2, 0, 2, TH);
   }
   for (const sy of ySeams) {
     const y0 = sy - half;
-    hx.fillStyle = 'rgba(30,30,30,1)';
-    hx.fillRect(0, y0 + 1, TW, SEAM_CORE_PX);
-    hx.fillStyle = 'rgba(80,80,80,0.8)';
-    hx.fillRect(0, y0, TW, 1);
-    hx.fillRect(0, y0 + SEAM_PX - 1, TW, 1);
+    hx.fillStyle = 'rgba(10,10,10,1)';
+    hx.fillRect(0, y0 + 2, TW, SEAM_CORE_PX);
+    hx.fillStyle = 'rgba(60,60,60,1)';
+    hx.fillRect(0, y0, TW, 2);
+    hx.fillStyle = 'rgba(55,55,55,1)';
+    hx.fillRect(0, y0 + SEAM_PX - 2, TW, 2);
   }
 
+  // Stage D: larger bolt bumps to match BOLT_R=9
   for (const p of panels) {
     for (const [bx, by] of [
       [p.x + BOLT_INSET,       p.y + BOLT_INSET],
@@ -60,12 +66,12 @@ function buildHeightCanvas(panels: ReturnType<typeof buildPanelGrid>): HTMLCanva
       [p.x + p.w - BOLT_INSET, p.y + p.h - BOLT_INSET],
     ] as [number, number][]) {
       if (bx < SEAM_PX || bx > TW - SEAM_PX || by < SEAM_PX || by > TH - SEAM_PX) continue;
-      const g = hx.createRadialGradient(bx, by, 0, bx, by, BOLT_R + 2);
-      g.addColorStop(0, 'rgba(220,220,220,1)');
-      g.addColorStop(0.6, 'rgba(150,150,150,0.9)');
-      g.addColorStop(1, 'rgba(128,128,128,0)');
+      const g = hx.createRadialGradient(bx, by, 0, bx, by, BOLT_R + 4);
+      g.addColorStop(0,   'rgba(235,235,235,1)');
+      g.addColorStop(0.5, 'rgba(165,165,165,0.9)');
+      g.addColorStop(1,   'rgba(128,128,128,0)');
       hx.beginPath();
-      hx.arc(bx, by, BOLT_R + 2, 0, Math.PI * 2);
+      hx.arc(bx, by, BOLT_R + 4, 0, Math.PI * 2);
       hx.fillStyle = g;
       hx.fill();
     }
@@ -96,7 +102,8 @@ function sobelToNormal(heightCanvas: HTMLCanvasElement): HTMLCanvasElement {
     return hData[(cy * W + cx) * 4] / 255;
   }
 
-  const scale = 4.0;
+  // Stage D: stronger Sobel scale for deeper seam/bolt relief
+  const scale = 6.5;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const dx = (
@@ -131,7 +138,7 @@ function sobelToNormal(heightCanvas: HTMLCanvasElement): HTMLCanvasElement {
  * Wire as material.normalMap with normalScale (0.35, 0.35).
  */
 export function makeWallNormalMapTexture(): THREE.CanvasTexture {
-  return cached('wall-normal-map-v2', () => {
+  return cached('wall-normal-map-v3', () => {
     const rand = rng(37);
     const panels = buildPanelGrid(rand);
     const heightCanvas = buildHeightCanvas(panels);

@@ -1,5 +1,6 @@
 /**
  * Galley prop geometry — Phase 3b / v0.2 fill pass + v0.3 fridge hinge.
+ * Stage D: cabinet face textures, warm-amber under-counter strip, extra props.
  * Counter along starboard wall (X = +3), doors fore/aft stay clear.
  * Port wall dressing and door-flank panels → galleyDressing.ts
  * FILE OWNERSHIP: only galley.ts and galleyProps.ts (+ galleyDressing.ts).
@@ -12,7 +13,7 @@
 import * as THREE from 'three';
 import type { AABB } from './types.js';
 import { matShipWall } from '../fx/shipMaterials.js';
-import { buildPortWall, buildDoorFlankPanels } from './galleyDressing.js';
+import { buildPortWall, buildDoorFlankPanels, matCabFaceCream, matCabFaceGunmetal, matCabFaceOrange, matWarmAmber } from './galleyDressing.js';
 import { createPropTween } from './propTween.js';
 import type { PropTween } from './propTween.js';
 
@@ -104,6 +105,28 @@ function buildCounterRun(g: THREE.Group): AABB[] {
   box(g, CTR_DEPTH - 0.02, 0.04, STOVE_LEN, CTR_X, CTR_H + 0.01, STOVE_Z_CTR, matRedBase, 'stove');
   box(g, CTR_DEPTH, CAB_H, FORE_CAB_LEN, CTR_X, CAB_H / 2, FORE_CAB_Z, matCream);
   box(g, CTR_DEPTH, CAB_H, AFT_CAB_LEN,  CTR_X, CAB_H / 2, AFT_CAB_Z,  matCream);
+
+  // Stage D: cabinet face planes — textured panel-seam treatment
+  // Fore cabinet face (FORE_CAB — cream with seams)
+  const fFace = new THREE.Mesh(new THREE.PlaneGeometry(FORE_CAB_LEN, CAB_H), matCabFaceCream);
+  fFace.rotation.y = Math.PI / 2;
+  fFace.position.set(CTR_FACE - 0.001, CAB_H / 2, FORE_CAB_Z);
+  g.add(fFace);
+
+  // Aft cabinet face (AFT_CAB — gunmetal alternate)
+  const aFace = new THREE.Mesh(new THREE.PlaneGeometry(AFT_CAB_LEN, CAB_H), matCabFaceGunmetal);
+  aFace.rotation.y = Math.PI / 2;
+  aFace.position.set(CTR_FACE - 0.001, CAB_H / 2, AFT_CAB_Z);
+  g.add(aFace);
+
+  // Stage D: warm-amber emissive under-counter strip along counter front edge
+  const warmStrip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.015, 0.025, NF_LEN),
+    matWarmAmber,
+  );
+  warmStrip.position.set(CTR_FACE + 0.008, 0.035, NF_Z);
+  g.add(warmStrip);
+
   const HX = CTR_FACE - 0.015;
   for (let i = 0; i < 2; i++) {
     box(g, 0.03, 0.50, 0.06, HX, CAB_H / 2, CTR_Z_MIN + (FORE_CAB_LEN / 3) * (i + 1), matOrange);
@@ -117,6 +140,13 @@ function buildCounterRun(g: THREE.Group): AABB[] {
 
 function buildUpperCabinets(g: THREE.Group): void {
   box(g, UPR_DEPTH, UPR_H, UPR_LEN, UPR_X, UPR_Y_BOT + UPR_H / 2, UPR_Z_CTR, matCream);
+
+  // Stage D: upper cabinet face — orange variant for accent
+  const uFace = new THREE.Mesh(new THREE.PlaneGeometry(UPR_LEN, UPR_H), matCabFaceOrange);
+  uFace.rotation.y = Math.PI / 2;
+  uFace.position.set(UPR_FACE - 0.001, UPR_Y_BOT + UPR_H / 2, UPR_Z_CTR);
+  g.add(uFace);
+
   for (let i = 1; i < 3; i++) {
     box(g, UPR_DEPTH + 0.006, UPR_H + 0.008, 0.028,
       UPR_X, UPR_Y_BOT + UPR_H / 2, CTR_Z_MIN + (UPR_LEN / 3) * i, matGunmetal);
@@ -239,9 +269,17 @@ function buildFridge(g: THREE.Group): AABB[] {
 }
 
 function buildClutter(g: THREE.Group): void {
+  // Stage D: additional props to break bare countertop
+  // Metal tray + 2 canisters (existing)
   box(g, 0.28, 0.025, 0.16, CTR_X, CTR_H + 0.012, -1.80, matMetalTray);
   cyl(g, 0.055, 0.13, CTR_X - 0.05, CTR_H + 0.065, -1.90, matTealEmit);
   cyl(g, 0.050, 0.12, CTR_X + 0.08, CTR_H + 0.060, -1.62, matMustard);
+  // Extra: ration box on aft counter zone
+  box(g, 0.14, 0.10, 0.08, CTR_X, CTR_H + 0.05, AFT_CAB_Z - 0.15, matFoodPackage);
+  // Small flat tray with rim on fore zone
+  box(g, 0.22, 0.018, 0.14, CTR_X - 0.05, CTR_H + 0.009, FORE_CAB_Z + 0.30, matMetalTray);
+  // Tall canister with gunmetal lid
+  cyl(g, 0.042, 0.16, CTR_X + 0.10, CTR_H + 0.08, FORE_CAB_Z - 0.20, matGunmetal);
 }
 
 function buildMessTable(g: THREE.Group): AABB[] {

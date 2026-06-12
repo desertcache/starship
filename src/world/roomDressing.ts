@@ -23,6 +23,11 @@ export const FRAME_TOTAL_DEPTH = 0.30;  // spans both coincident wall planes
 export const FRAME_JAMB_W      = 0.12;  // width of left/right jamb strips
 export const FRAME_HEAD_H      = 0.10;  // height of header strip
 
+// Stage D: inner step constants — chunky bulkhead penetration look (ref-3)
+const INNER_STEP   = 0.07;  // 7cm step inward
+const INNER_JAMB_W = 0.06;  // inner jamb width
+const INNER_HEAD_H = 0.06;  // inner header height
+
 // ── Door frames ────────────────────────────────────────────────────────────────
 
 /**
@@ -51,38 +56,82 @@ export function addDoorFrame(
   if (wall === 'fore' || wall === 'aft') {
     const wZ = wall === 'fore' ? -halfD : halfD;
 
-    // Left jamb
+    // Outer frame: left jamb, right jamb, header
     const lJambGeo = new THREE.BoxGeometry(FRAME_JAMB_W, gapH, depth);
     lJambGeo.translate(gapOffset - gapW / 2 - FRAME_JAMB_W / 2, gapH / 2, wZ);
     pieces.push(lJambGeo);
 
-    // Right jamb
     const rJambGeo = new THREE.BoxGeometry(FRAME_JAMB_W, gapH, depth);
     rJambGeo.translate(gapOffset + gapW / 2 + FRAME_JAMB_W / 2, gapH / 2, wZ);
     pieces.push(rJambGeo);
 
-    // Header
     const headerGeo = new THREE.BoxGeometry(gapW + FRAME_JAMB_W * 2, FRAME_HEAD_H, depth);
     headerGeo.translate(gapOffset, gapH + FRAME_HEAD_H / 2, wZ);
     pieces.push(headerGeo);
 
+    // Stage D inner step: slightly smaller, slightly recessed — bulkhead look
+    const innerDepth = depth - INNER_STEP * 2;
+    if (innerDepth > 0.02) {
+      const iLJambGeo = new THREE.BoxGeometry(INNER_JAMB_W, gapH - INNER_HEAD_H, innerDepth);
+      iLJambGeo.translate(
+        gapOffset - gapW / 2 + FRAME_JAMB_W - INNER_JAMB_W / 2,
+        (gapH - INNER_HEAD_H) / 2,
+        wZ,
+      );
+      pieces.push(iLJambGeo);
+
+      const iRJambGeo = new THREE.BoxGeometry(INNER_JAMB_W, gapH - INNER_HEAD_H, innerDepth);
+      iRJambGeo.translate(
+        gapOffset + gapW / 2 - FRAME_JAMB_W + INNER_JAMB_W / 2,
+        (gapH - INNER_HEAD_H) / 2,
+        wZ,
+      );
+      pieces.push(iRJambGeo);
+
+      const iHeaderGeo = new THREE.BoxGeometry(gapW - FRAME_JAMB_W * 2, INNER_HEAD_H, innerDepth);
+      iHeaderGeo.translate(gapOffset, gapH - INNER_HEAD_H / 2, wZ);
+      pieces.push(iHeaderGeo);
+    }
+
   } else {
     const wX = wall === 'port' ? -halfW : halfW;
 
-    // Left jamb
+    // Outer frame: left jamb, right jamb, header
     const lJambGeo = new THREE.BoxGeometry(depth, gapH, FRAME_JAMB_W);
     lJambGeo.translate(wX, gapH / 2, gapOffset - gapW / 2 - FRAME_JAMB_W / 2);
     pieces.push(lJambGeo);
 
-    // Right jamb
     const rJambGeo = new THREE.BoxGeometry(depth, gapH, FRAME_JAMB_W);
     rJambGeo.translate(wX, gapH / 2, gapOffset + gapW / 2 + FRAME_JAMB_W / 2);
     pieces.push(rJambGeo);
 
-    // Header
     const headerGeo = new THREE.BoxGeometry(depth, FRAME_HEAD_H, gapW + FRAME_JAMB_W * 2);
     headerGeo.translate(wX, gapH + FRAME_HEAD_H / 2, gapOffset);
     pieces.push(headerGeo);
+
+    // Stage D inner step
+    const innerDepth = depth - INNER_STEP * 2;
+    if (innerDepth > 0.02) {
+      const iLJambGeo = new THREE.BoxGeometry(innerDepth, gapH - INNER_HEAD_H, INNER_JAMB_W);
+      iLJambGeo.translate(
+        wX,
+        (gapH - INNER_HEAD_H) / 2,
+        gapOffset - gapW / 2 + FRAME_JAMB_W - INNER_JAMB_W / 2,
+      );
+      pieces.push(iLJambGeo);
+
+      const iRJambGeo = new THREE.BoxGeometry(innerDepth, gapH - INNER_HEAD_H, INNER_JAMB_W);
+      iRJambGeo.translate(
+        wX,
+        (gapH - INNER_HEAD_H) / 2,
+        gapOffset + gapW / 2 - FRAME_JAMB_W + INNER_JAMB_W / 2,
+      );
+      pieces.push(iRJambGeo);
+
+      const iHeaderGeo = new THREE.BoxGeometry(innerDepth, INNER_HEAD_H, gapW - FRAME_JAMB_W * 2);
+      iHeaderGeo.translate(wX, gapH - INNER_HEAD_H / 2, gapOffset);
+      pieces.push(iHeaderGeo);
+    }
   }
 
   const merged = mergeGeometries(pieces);
