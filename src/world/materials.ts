@@ -1,8 +1,19 @@
-import * as THREE from 'three';
+/**
+ * Shared world materials — Phase 3 palette.
+ * These are the material singletons used by roomBuilder, windowWall, and all room modules.
+ * They delegate to src/fx/shipMaterials.ts which holds the actual instances.
+ */
+import { matShipWall, matShipFloor, matShipCeiling, matShipWallBand } from '../fx/shipMaterials.js';
+import type * as THREE from 'three';
 
-// Shared greybox materials — Phase 1 placeholder palette.
-// Re-used across all rooms to keep draw calls low.
+/** Standard cream seamed wall. */
+export const matWall: THREE.MeshLambertMaterial = matShipWall;
 
-export const matWall = new THREE.MeshLambertMaterial({ color: 0xb0aa9e, side: THREE.FrontSide });
-export const matFloor = new THREE.MeshLambertMaterial({ color: 0x4a4a50, side: THREE.FrontSide });
-export const matCeiling = new THREE.MeshLambertMaterial({ color: 0x888880, side: THREE.FrontSide });
+/** Cream wall with burnt-orange horizontal band (use for corridor + feature walls). */
+export const matWallBand: THREE.MeshLambertMaterial = matShipWallBand;
+
+/** Gunmetal worn floor. */
+export const matFloor: THREE.MeshLambertMaterial = matShipFloor;
+
+/** Gunmetal ceiling with panel grid. */
+export const matCeiling: THREE.MeshLambertMaterial = matShipCeiling;

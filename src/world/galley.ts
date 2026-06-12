@@ -13,16 +13,16 @@ export function buildGalley(): RoomModule {
     height: H,
     depth: D,
     doors: [
-      // Fore wall connects to corridor aft
+      // Fore wall connects to corridor aft — corridor already owns that frame
       { wall: 'fore', gapW: 1.4, gapH: 2.2, offset: 0 },
-      // Aft wall connects to engineering
-      { wall: 'aft', gapW: 1.4, gapH: 2.2, offset: 0 },
+      // Aft wall connects to engineering — galley owns THIS frame
+      { wall: 'aft', gapW: 1.4, gapH: 2.2, offset: 0, framed: true },
     ],
   });
 
   group.name = 'galley';
 
-  const localCamPos = new THREE.Vector3(0, 1.7, 1.5);
+  const localCamPos  = new THREE.Vector3(0, 1.7, 1.5);
   const localCamLook = new THREE.Vector3(0, 1.7, -2.0);
 
   return {

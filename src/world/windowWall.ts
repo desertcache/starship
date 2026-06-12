@@ -25,9 +25,10 @@ function addPane(
   h: number,
   pos: THREE.Vector3Like,
   rotY: number,
+  mat: THREE.Material,
 ): void {
-  const geo = new THREE.PlaneGeometry(w, h);
-  const mesh = new THREE.Mesh(geo, matWall);
+  const geo  = new THREE.PlaneGeometry(w, h);
+  const mesh = new THREE.Mesh(geo, mat);
   mesh.position.set(pos.x, pos.y, pos.z);
   if (rotY !== 0) mesh.rotation.y = rotY;
   group.add(mesh);
@@ -37,6 +38,8 @@ function addPane(
  * Build a wall with a window opening decomposed into sub-panels.
  * Layout: up to 5 panels around the void (below, above, left, right, + void collider).
  * The void itself has no geometry but gets an AABB collider so the player cannot walk through.
+ *
+ * @param wallMat  Material for the wall panels (defaults to matWall if omitted)
  */
 export function buildWindowWall(
   group: THREE.Group,
@@ -44,8 +47,9 @@ export function buildWindowWall(
   roomW: number,
   roomH: number,
   roomD: number,
+  wallMat: THREE.Material = matWall,
 ): AABB[] {
-  const WALL_T = 0.05;
+  const WALL_T  = 0.05;
   const colliders: AABB[] = [];
 
   const winOffset = spec.offset ?? 0;
@@ -68,19 +72,19 @@ export function buildWindowWall(
     const rightW   = halfW - winRight;
 
     if (belowH > 0.01) {
-      addPane(group, roomW, belowH, { x: 0, y: belowH / 2, z: wZ }, rotY);
+      addPane(group, roomW, belowH, { x: 0, y: belowH / 2, z: wZ }, rotY, wallMat);
       colliders.push({ minX: -halfW, minY: 0, minZ: wZ - WALL_T, maxX: halfW, maxY: belowH, maxZ: wZ + WALL_T });
     }
     if (aboveH > 0.01) {
-      addPane(group, roomW, aboveH, { x: 0, y: yTop + aboveH / 2, z: wZ }, rotY);
+      addPane(group, roomW, aboveH, { x: 0, y: yTop + aboveH / 2, z: wZ }, rotY, wallMat);
       colliders.push({ minX: -halfW, minY: yTop, minZ: wZ - WALL_T, maxX: halfW, maxY: roomH, maxZ: wZ + WALL_T });
     }
     if (leftW > 0.01) {
-      addPane(group, leftW, midH, { x: -halfW + leftW / 2, y: yBot + midH / 2, z: wZ }, rotY);
+      addPane(group, leftW, midH, { x: -halfW + leftW / 2, y: yBot + midH / 2, z: wZ }, rotY, wallMat);
       colliders.push({ minX: -halfW, minY: yBot, minZ: wZ - WALL_T, maxX: -halfW + leftW, maxY: yTop, maxZ: wZ + WALL_T });
     }
     if (rightW > 0.01) {
-      addPane(group, rightW, midH, { x: halfW - rightW / 2, y: yBot + midH / 2, z: wZ }, rotY);
+      addPane(group, rightW, midH, { x: halfW - rightW / 2, y: yBot + midH / 2, z: wZ }, rotY, wallMat);
       colliders.push({ minX: halfW - rightW, minY: yBot, minZ: wZ - WALL_T, maxX: halfW, maxY: yTop, maxZ: wZ + WALL_T });
     }
     // Void collider — physical barrier over the window opening
@@ -100,19 +104,19 @@ export function buildWindowWall(
     const aftStripD  = halfD - winAft;
 
     if (belowH > 0.01) {
-      addPane(group, roomD, belowH, { x: wX, y: belowH / 2, z: 0 }, rotY);
+      addPane(group, roomD, belowH, { x: wX, y: belowH / 2, z: 0 }, rotY, wallMat);
       colliders.push({ minX: wX - WALL_T, minY: 0, minZ: -halfD, maxX: wX + WALL_T, maxY: belowH, maxZ: halfD });
     }
     if (aboveH > 0.01) {
-      addPane(group, roomD, aboveH, { x: wX, y: yTop + aboveH / 2, z: 0 }, rotY);
+      addPane(group, roomD, aboveH, { x: wX, y: yTop + aboveH / 2, z: 0 }, rotY, wallMat);
       colliders.push({ minX: wX - WALL_T, minY: yTop, minZ: -halfD, maxX: wX + WALL_T, maxY: roomH, maxZ: halfD });
     }
     if (foreStripD > 0.01) {
-      addPane(group, foreStripD, midH, { x: wX, y: yBot + midH / 2, z: -halfD + foreStripD / 2 }, rotY);
+      addPane(group, foreStripD, midH, { x: wX, y: yBot + midH / 2, z: -halfD + foreStripD / 2 }, rotY, wallMat);
       colliders.push({ minX: wX - WALL_T, minY: yBot, minZ: -halfD, maxX: wX + WALL_T, maxY: yTop, maxZ: -halfD + foreStripD });
     }
     if (aftStripD > 0.01) {
-      addPane(group, aftStripD, midH, { x: wX, y: yBot + midH / 2, z: halfD - aftStripD / 2 }, rotY);
+      addPane(group, aftStripD, midH, { x: wX, y: yBot + midH / 2, z: halfD - aftStripD / 2 }, rotY, wallMat);
       colliders.push({ minX: wX - WALL_T, minY: yBot, minZ: halfD - aftStripD, maxX: wX + WALL_T, maxY: yTop, maxZ: halfD });
     }
     // Void collider

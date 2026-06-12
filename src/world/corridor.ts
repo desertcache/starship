@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
 import { matWall } from './materials.js';
+import { matTealStrip, matDoorFrame } from '../fx/shipMaterials.js';
+import { FRAME_TOTAL_DEPTH, FRAME_JAMB_W, FRAME_HEAD_H } from './roomDressing.js';
 import type { AABB, RoomModule } from './types.js';
 
 /**
  * Corridor spine — 3W x 3H x 16D.
  * Doors: fore (to cockpit), aft (to galley), port (to quarters-a), starboard (to quarters-b).
+ * Corridor OWNS door frames for all 4 of its doorways (framed flag).
  *
  * Port/starboard walls have BOTH a door gap AND a porthole in the aft section.
  * Because buildRoom only handles one spec per wall, we build the port/starboard
@@ -33,27 +36,16 @@ export function buildCorridor(): RoomModule {
   const halfD       = D / 2; // 8
   const halfW       = W / 2; // 1.5
 
-  // Build the base room (fore/aft walls + floor/ceiling only — no side walls yet)
-  // We achieve this by passing dummy side doors that span the full wall, then
-  // removing those panels and rebuilding manually.
-  // SIMPLER: build room without side walls by using a special approach —
-  // build fore/aft walls + floor/ceiling via a minimal room, then add custom side walls.
-
-  // Actually the cleanest: use buildRoom with all 4 doors to get fore/aft/floor/ceiling,
-  // then explicitly reconstruct the port/starboard walls ourselves.
-  // buildRoom will build port/starboard as door-gap walls; we just add extra porthole panels on top.
-  // But z-fighting... unless we skip those walls entirely and build them custom.
-
-  // We'll build a corridor with fore/aft doors and no side walls, then add side walls manually.
-  // To skip side walls: pass side doors that consume the entire wall (offset=0, full width).
-  // When gapW >= roomD, all panels become 0-width and nothing is drawn.
+  // Use buildRoom to get: fore/aft walls (with frames), floor, ceiling, ceiling lights, floor strips
+  // Side walls are built manually below (porthole cutout requirement)
   const { group, colliders: baseColliders } = buildRoom({
     width: W,
     height: H,
     depth: D,
+    wallMaterial: matWall,
     doors: [
-      { wall: 'fore', gapW: 1.4, gapH: 2.2, offset: 0 },
-      { wall: 'aft',  gapW: 1.4, gapH: 2.2, offset: 0 },
+      { wall: 'fore', gapW: 1.4, gapH: 2.2, offset: 0, framed: true },
+      { wall: 'aft',  gapW: 1.4, gapH: 2.2, offset: 0, framed: true },
       // Side doors with gap = full depth so no wall panels are generated
       { wall: 'port',      gapW: D + 1, gapH: H + 1, offset: 0 },
       { wall: 'starboard', gapW: D + 1, gapH: H + 1, offset: 0 },
@@ -65,8 +57,6 @@ export function buildCorridor(): RoomModule {
   const colliders: AABB[] = [...baseColliders];
 
   // Now build port and starboard walls manually with door + porthole cutouts.
-  // Porthole spec: centered at Z=+3, 0.8w x 0.7h, sill at Y=1.1
-  // World Z = corridor-center(-12) + local(+3) = -9, comfortably in exposed stretch -13.5..-4
   const PORTHOLE_CENTER_Z = 3.0;
   const PORTHOLE_W = 0.8;
   const PORTHOLE_H = 0.7;
@@ -77,24 +67,18 @@ export function buildCorridor(): RoomModule {
   const DOOR_AFT_EDGE  = SIDE_DOOR_Z + DOOR_GAP_W / 2; // -3.3
   const DOOR_ABOVE_H   = H - DOOR_GAP_H; // 0.8
 
-  // Z regions:
-  // [A] Fore section:  -8.0 to DOOR_FORE_EDGE (-4.7)  length=3.3 — solid
-  // [B] Door column:   DOOR_FORE_EDGE to DOOR_AFT_EDGE (-4.7 to -3.3)  length=1.4
-  //     [B1] Above door: Y from 2.2 to 3.0, Z range 1.4
-  // [C] Aft section:   DOOR_AFT_EDGE (-3.3) to +8.0   length=11.3 — has porthole at Z=+3
-
-  const foreLen = DOOR_FORE_EDGE - (-halfD);    // 3.3
+  const foreLen = DOOR_FORE_EDGE - (-halfD); // 3.3
 
   // Porthole edges within aft section
   const poreLeft  = PORTHOLE_CENTER_Z - PORTHOLE_W / 2; // +2.6
   const poreRight = PORTHOLE_CENTER_Z + PORTHOLE_W / 2; // +3.4
 
   // Aft sub-sections around porthole
-  const aftL = poreLeft - DOOR_AFT_EDGE;        // +2.6 - (-3.3) = 5.9
-  const aftR = halfD - poreRight;               // +8.0 - (+3.4) = 4.6
+  const aftL = poreLeft - DOOR_AFT_EDGE;       // +2.6 - (-3.3) = 5.9
+  const aftR = halfD - poreRight;              // +8.0 - (+3.4) = 4.6
 
-  const aftZCenterL = DOOR_AFT_EDGE + aftL / 2; // -3.3 + 2.95 = -0.35
-  const aftZCenterR = poreRight + aftR / 2;      // +3.4 + 2.3  = +5.7
+  const aftZCenterL = DOOR_AFT_EDGE + aftL / 2; // -0.35
+  const aftZCenterR = poreRight + aftR / 2;      // +5.7
 
   const belowPH = PORTHOLE_SILL;
   const abovePH = H - PORTHOLE_TOP;
@@ -115,8 +99,6 @@ export function buildCorridor(): RoomModule {
     }
 
     // === Section B: Door column ===
-    // Below-door gap: nothing (player can walk through)
-    // Above-door strip:
     if (DOOR_ABOVE_H > 0.01) {
       const fg = new THREE.PlaneGeometry(DOOR_GAP_W, DOOR_ABOVE_H);
       const fm = new THREE.Mesh(fg, matWall);
@@ -125,10 +107,36 @@ export function buildCorridor(): RoomModule {
       group.add(fm);
       colliders.push({ minX: wX - WALL_T, minY: DOOR_GAP_H, minZ: DOOR_FORE_EDGE, maxX: wX + WALL_T, maxY: H, maxZ: DOOR_AFT_EDGE });
     }
-    // Collider for door space below gap (none — door gap is walkable)
 
-    // === Section C: Aft section (with porthole cutout at Z=+3) ===
-    // [C-left]:  full height, Z DOOR_AFT_EDGE to poreLeft   length=aftL
+    // Door frame for side doorways (corridor owns these frames)
+    // Left (fore) jamb
+    const lJambZ = SIDE_DOOR_Z - DOOR_GAP_W / 2 - FRAME_JAMB_W / 2;
+    const lJamb  = new THREE.Mesh(
+      new THREE.BoxGeometry(FRAME_TOTAL_DEPTH, DOOR_GAP_H, FRAME_JAMB_W),
+      matDoorFrame,
+    );
+    lJamb.position.set(wX, DOOR_GAP_H / 2, lJambZ);
+    group.add(lJamb);
+
+    // Right (aft) jamb
+    const rJambZ = SIDE_DOOR_Z + DOOR_GAP_W / 2 + FRAME_JAMB_W / 2;
+    const rJamb  = new THREE.Mesh(
+      new THREE.BoxGeometry(FRAME_TOTAL_DEPTH, DOOR_GAP_H, FRAME_JAMB_W),
+      matDoorFrame,
+    );
+    rJamb.position.set(wX, DOOR_GAP_H / 2, rJambZ);
+    group.add(rJamb);
+
+    // Header
+    const headerD = DOOR_GAP_W + FRAME_JAMB_W * 2;
+    const header  = new THREE.Mesh(
+      new THREE.BoxGeometry(FRAME_TOTAL_DEPTH, FRAME_HEAD_H, headerD),
+      matDoorFrame,
+    );
+    header.position.set(wX, DOOR_GAP_H + FRAME_HEAD_H / 2, SIDE_DOOR_Z);
+    group.add(header);
+
+    // === Section C: Aft section (with porthole cutout) ===
     if (aftL > 0.01) {
       const fg = new THREE.PlaneGeometry(aftL, H);
       const fm = new THREE.Mesh(fg, matWall);
@@ -137,7 +145,6 @@ export function buildCorridor(): RoomModule {
       group.add(fm);
       colliders.push({ minX: wX - WALL_T, minY: 0, minZ: DOOR_AFT_EDGE, maxX: wX + WALL_T, maxY: H, maxZ: poreLeft });
     }
-    // [C-right]: full height, Z poreRight to halfD          length=aftR
     if (aftR > 0.01) {
       const fg = new THREE.PlaneGeometry(aftR, H);
       const fm = new THREE.Mesh(fg, matWall);
@@ -146,7 +153,6 @@ export function buildCorridor(): RoomModule {
       group.add(fm);
       colliders.push({ minX: wX - WALL_T, minY: 0, minZ: poreRight, maxX: wX + WALL_T, maxY: H, maxZ: halfD });
     }
-    // [C-below]: below porthole sill, Z poreLeft..poreRight
     if (belowPH > 0.01) {
       const fg = new THREE.PlaneGeometry(PORTHOLE_W, belowPH);
       const fm = new THREE.Mesh(fg, matWall);
@@ -155,7 +161,6 @@ export function buildCorridor(): RoomModule {
       group.add(fm);
       colliders.push({ minX: wX - WALL_T, minY: 0, minZ: poreLeft, maxX: wX + WALL_T, maxY: belowPH, maxZ: poreRight });
     }
-    // [C-above]: above porthole top, Z poreLeft..poreRight
     if (abovePH > 0.01) {
       const fg = new THREE.PlaneGeometry(PORTHOLE_W, abovePH);
       const fm = new THREE.Mesh(fg, matWall);
@@ -164,15 +169,74 @@ export function buildCorridor(): RoomModule {
       group.add(fm);
       colliders.push({ minX: wX - WALL_T, minY: PORTHOLE_TOP, minZ: poreLeft, maxX: wX + WALL_T, maxY: H, maxZ: poreRight });
     }
-    // Porthole void collider (physical barrier — blocks player from stepping through)
+    // Porthole void collider
     colliders.push({ minX: wX - WALL_T, minY: PORTHOLE_SILL, minZ: poreLeft, maxX: wX + WALL_T, maxY: PORTHOLE_TOP, maxZ: poreRight });
+
+    // Teal floor strips along side walls (split for door gap)
+    const STRIP_H = 0.06;
+    const STRIP_W = 0.04;
+    const STRIP_OFFSET = 0.025;
+    const sX = side === 'port' ? -halfW + STRIP_OFFSET : halfW - STRIP_OFFSET;
+    const gapForeEdge = SIDE_DOOR_Z - DOOR_GAP_W / 2;
+    const gapAftEdge  = SIDE_DOOR_Z + DOOR_GAP_W / 2;
+
+    // Fore strip: -halfD to gapForeEdge
+    const foreSLen = gapForeEdge - (-halfD);
+    if (foreSLen > 0.05) {
+      const sm = new THREE.Mesh(
+        new THREE.BoxGeometry(STRIP_W, STRIP_H, foreSLen),
+        matTealStrip,
+      );
+      sm.position.set(sX, STRIP_H / 2, -halfD + foreSLen / 2);
+      group.add(sm);
+    }
+
+    // Aft strip: gapAftEdge to +halfD
+    const aftSLen = halfD - gapAftEdge;
+    if (aftSLen > 0.05) {
+      const sm = new THREE.Mesh(
+        new THREE.BoxGeometry(STRIP_W, STRIP_H, aftSLen),
+        matTealStrip,
+      );
+      sm.position.set(sX, STRIP_H / 2, gapAftEdge + aftSLen / 2);
+      group.add(sm);
+    }
   }
 
-  // Camera: positioned in the aft section, looking directly at the port porthole
-  // Port porthole is at X=-1.5, Y=1.45, Z=+3 in local space (world Z=-9)
-  // Camera stands at corridor centre at eye height, angled to frame the porthole clearly
-  const localCamPos = new THREE.Vector3(0.6, 1.6, 3.0);
-  const localCamLook = new THREE.Vector3(-1.5, 1.45, 3.0);
+  // ── Orange waist-band geometry (continuous, panel-seam-independent) ──────────
+  const BAND_H   = 0.20;
+  const BAND_MID = 0.90 + BAND_H / 2;  // ~1.0 m centre
+  const BAND_D   = 0.025;              // proud of wall
+  const BAND_OFF = 0.03;
+
+  function addBandBox(gx: number, gy: number, gz: number, bw: number, bh: number, bd: number): void {
+    const bm = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), matDoorFrame);
+    bm.position.set(gx, gy, gz);
+    group.add(bm);
+  }
+
+  // Fore/aft walls: split around centred 1.4-wide door gap
+  for (const [wZ, sign] of [[-halfD + BAND_OFF, 1], [halfD - BAND_OFF, -1]] as [number, number][]) {
+    const sideLen = halfW - 0.7; // 0.8 each side
+    addBandBox(-halfW + sideLen / 2, BAND_MID, wZ, sideLen, BAND_H, BAND_D);
+    addBandBox( halfW - sideLen / 2, BAND_MID, wZ, sideLen, BAND_H, BAND_D);
+    void sign;
+  }
+
+  // Port/starboard: fore strip (-halfD → DOOR_FORE_EDGE) + aft strip (DOOR_AFT_EDGE → +halfD)
+  for (const side of ['port', 'starboard'] as const) {
+    const wX = side === 'port' ? -halfW + BAND_OFF : halfW - BAND_OFF;
+    const fbl = DOOR_FORE_EDGE - (-halfD); // 3.3
+    const abl = halfD - DOOR_AFT_EDGE;     // 11.3
+    addBandBox(wX, BAND_MID, -halfD + fbl / 2,       BAND_D, BAND_H, fbl);
+    addBandBox(wX, BAND_MID, DOOR_AFT_EDGE + abl / 2, BAND_D, BAND_H, abl);
+  }
+
+  // Camera: aft-section, looking FORE down the spine toward cockpit.
+  // All verify cameras must look toward -Z (fore) to avoid Y-axis inversion
+  // that occurs when camera.lookAt targets a point in the +Z (aft) direction.
+  const localCamPos  = new THREE.Vector3(0, 1.65, 6);
+  const localCamLook = new THREE.Vector3(0, 1.5, -8);
 
   return {
     group,

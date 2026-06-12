@@ -58,17 +58,14 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   const groups: THREE.Group[] = [];
 
   for (const { module, worldPos } of placements) {
-    // Position the group
     module.group.position.copy(worldPos);
     scene.add(module.group);
     groups.push(module.group);
 
-    // Translate local colliders to world space
     for (const localAABB of module.colliders) {
       allColliders.push(translateAABB(localAABB, worldPos));
     }
 
-    // Register named cameras in world space
     for (const cam of module.cameras) {
       const worldPos2 = cam.position.clone().add(worldPos);
       const worldLook = cam.lookAt.clone().add(worldPos);
@@ -83,28 +80,43 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   const planet = buildPlanet();
   scene.add(planet.mesh);
 
-  // ── Lighting ──────────────────────────────────────────────────────────────
-  // HemisphereLight: sky = warm white, ground = cool dark — gives interior warmth
-  const hemi = new THREE.HemisphereLight(0xfff4e0, 0x1a1a2e, 0.4);
+  // ── Lighting ────────────────────────────────────────────────────────────────
+  // Phase 3: emissive ceiling panels carry the ambient look; actual lights just
+  // provide key fill to prevent flat pure-black corners.
+
+  // HemisphereLight: slightly raised so quarters and unlit corners aren't pure black
+  const hemi = new THREE.HemisphereLight(0xfff4e0, 0x1a1a2e, 0.45);
   scene.add(hemi);
 
-  // Point lights: cockpit, corridor mid, quarters area, galley, engineering (max 5)
-  const pointDefs: [number, number, number, number][] = [
-    [0,    2.5, -22.5, 0xfff4e0], // cockpit
-    [0,    2.5, -16,   0xfff4e0], // corridor/quarters junction
-    [0,    2.5, -8,    0xfff4e0], // corridor mid (aft half)
-    [0,    2.5, -1,    0xfff4e0], // galley
-    [0,    2.5,  5.5,  0xff8844], // engineering (warmer)
+  // 5 PointLights (≤ 6 budget) — one per major zone, warm white except engineering
+  // Intensity reduced slightly because emissive panels add warmth.
+  // Light positions at ceiling height (Y=2.8) so they reach floor and walls evenly.
+  //
+  //  1. Cockpit (fore canopy area)
+  //  2. Quarters zone — centred between side rooms so both get lit
+  //  3. Corridor mid (covers fore/aft corridor halves + junction)
+  //  4. Galley/mess
+  //  5. Engineering (warmer orange tint)
+  //  6. Corridor fore / cockpit-aft transition
+  const pointDefs: [number, number, number, number, number][] = [
+    [0,    2.8, -22.5, 0xfff4e0, 1.8], // cockpit
+    [0,    2.8, -16,   0xfff8f0, 3.5], // quarters/corridor junction — boosted intensity reaches side rooms at x=±4
+    [0,    2.8, -8,    0xfff4e0, 1.6], // corridor mid-aft
+    [0,    2.8, -1,    0xfff4e0, 1.6], // galley
+    [0,    2.8,  5.5,  0xff7733, 1.8], // engineering (warm orange)
+    [0,    2.8, -19,   0xfff4e0, 1.2], // corridor fore / cockpit threshold
   ];
 
-  for (const [px, py, pz, color] of pointDefs) {
-    const light = new THREE.PointLight(color, 1.8, 16);
+  for (const [px, py, pz, color, intensity] of pointDefs) {
+    // Quarters junction light gets a larger radius to reach the side rooms at X=±4
+    const dist = (pz === -16) ? 24 : 18;
+    const light = new THREE.PointLight(color, intensity, dist);
     light.position.set(px, py, pz);
     scene.add(light);
   }
 
-  // Ambient fill to prevent absolute black in corners
-  const ambient = new THREE.AmbientLight(0xffffff, 0.2);
+  // Ambient fill — quarters and corridor corners need enough base light to read
+  const ambient = new THREE.AmbientLight(0xffffff, 0.20);
   scene.add(ambient);
 
   return { groups, colliders: allColliders, planet };

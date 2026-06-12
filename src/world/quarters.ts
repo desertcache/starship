@@ -36,14 +36,10 @@ function buildQuarter(
 
   group.name = `quarters-${side === 'port' ? 'a' : 'b'}`;
 
-  // Camera positioned near the inner wall, looking toward the porthole
-  const localCamPos = side === 'port'
-    ? new THREE.Vector3(1.5, 1.7, 0)   // near starboard (inner) wall
-    : new THREE.Vector3(-1.5, 1.7, 0); // near port (inner) wall
-  // Look toward the outer wall porthole
-  const localCamLook = side === 'port'
-    ? new THREE.Vector3(-2.5, 1.6, 0)  // looking at port outer wall
-    : new THREE.Vector3(2.5, 1.6, 0);  // looking at starboard outer wall
+  // Camera positioned near the aft wall, looking fore — shows ceiling panels on
+  // the ceiling, teal strips along the floor perimeter, and the inner/outer walls.
+  const localCamPos = new THREE.Vector3(0, 1.65, 1.8);   // aft-ish, centred
+  const localCamLook = new THREE.Vector3(0, 1.5, -2.5);  // looking toward fore wall
 
   return {
     group,
