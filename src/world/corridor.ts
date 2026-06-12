@@ -3,6 +3,7 @@ import { buildRoom } from './roomBuilder.js';
 import { matWall } from './materials.js';
 import { matTealStrip, matDoorFrame } from '../fx/shipMaterials.js';
 import { FRAME_TOTAL_DEPTH, FRAME_JAMB_W, FRAME_HEAD_H } from './roomDressing.js';
+import { buildCorridorProps } from './corridorProps.js';
 import type { AABB, RoomModule } from './types.js';
 
 /**
@@ -232,11 +233,15 @@ export function buildCorridor(): RoomModule {
     addBandBox(wX, BAND_MID, DOOR_AFT_EDGE + abl / 2, BAND_D, BAND_H, abl);
   }
 
-  // Camera: aft-section, looking FORE down the spine toward cockpit.
-  // All verify cameras must look toward -Z (fore) to avoid Y-axis inversion
-  // that occurs when camera.lookAt targets a point in the +Z (aft) direction.
-  const localCamPos  = new THREE.Vector3(0, 1.65, 6);
-  const localCamLook = new THREE.Vector3(0, 1.5, -8);
+  // ── Corridor props (pipes, vents, status lights, handles, conduit) ──────────
+  buildCorridorProps(group);
+
+  // Camera: mid-aft corridor, looking FORE down the spine toward cockpit.
+  // Eye height Y=1.95 — player standing height, slight upward pitch so both
+  // ceiling pipe runs and floor teal strips are in frame simultaneously.
+  // All verify cameras must look toward -Z (fore) to avoid Y-axis inversion.
+  const localCamPos  = new THREE.Vector3(0, 1.95, 5);
+  const localCamLook = new THREE.Vector3(0, 2.1, -8);
 
   return {
     group,

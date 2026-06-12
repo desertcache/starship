@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
 import type { RoomModule } from './types.js';
+import { addGalleyProps } from './galleyProps.js';
 
 /** Galley / mess — 6W x 3H x 6D. */
 export function buildGalley(): RoomModule {
@@ -22,8 +23,13 @@ export function buildGalley(): RoomModule {
 
   group.name = 'galley';
 
-  const localCamPos  = new THREE.Vector3(0, 1.7, 1.5);
-  const localCamLook = new THREE.Vector3(0, 1.7, -2.0);
+  const { colliders: propColliders } = addGalleyProps(group);
+  colliders.push(...propColliders);
+
+  // Camera: angled to frame counter + upper cabinets + fridge + stove glow.
+  // Position on port side looking toward starboard counter run.
+  const localCamPos  = new THREE.Vector3(-1.8, 1.55, -0.4);
+  const localCamLook = new THREE.Vector3(2.5,  1.20, -0.4);
 
   return {
     group,

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
+import { addCockpitProps } from './cockpitProps.js';
 import type { RoomModule } from './types.js';
 
 /** Cockpit — fore end of ship. 6W x 3H x 5D. */
@@ -9,8 +10,8 @@ export function buildCockpit(): RoomModule {
   const D = 5;
 
   // Canopy: nearly full fore wall opening
-  // Room is 6 wide, 3 tall — canopy is 4.6w x 1.8h starting at y=0.8
-  // Leaves a ~0.7 strip on each side and a 0.8 sill / 0.4 header
+  // Room is 6 wide, 3 tall — canopy is 4.6w x 1.9h starting at y=0.7
+  // Leaves a ~0.7 strip on each side and a 0.7 sill / 0.4 header
   const { group, colliders } = buildRoom({
     width: W,
     height: H,
@@ -24,7 +25,7 @@ export function buildCockpit(): RoomModule {
         wall: 'fore',
         w: 4.6,    // wide canopy
         h: 1.9,    // tall opening
-        yBot: 0.7, // sill height
+        yBot: 0.7, // sill height — console bank sits below this line
         offset: 0,
       },
     ],
@@ -32,14 +33,19 @@ export function buildCockpit(): RoomModule {
 
   group.name = 'cockpit';
 
-  // cockpit cam — from aft, looking fore toward canopy
-  const localCamCockpit = new THREE.Vector3(0, 1.7, 1.8);
-  const localLookCockpit = new THREE.Vector3(0, 1.7, -2.0);
+  // Add props (console bank, seats, pedestal, accents)
+  const props = addCockpitProps(group);
+  colliders.push(...props.colliders);
 
-  // cockpit-canopy cam — mid-room, eye level, looking straight at canopy
-  // Positioned close enough to the canopy that the opening fills the view
-  const localCamCanopy = new THREE.Vector3(0, 1.6, 0.2);
-  const localLookCanopy = new THREE.Vector3(0, 1.6, -2.5);
+  // cockpit cam — from aft looking fore; eye level sees seats mid-frame,
+  // console bank in lower-mid, canopy + planet above
+  const localCamCockpit  = new THREE.Vector3(0, 1.55, 1.8);
+  const localLookCockpit = new THREE.Vector3(0, 1.10, -1.8);
+
+  // cockpit-canopy cam — from pilot position behind console, canopy fills upper frame,
+  // console screens visible in lower portion
+  const localCamCanopy  = new THREE.Vector3(0, 1.55, 0.0);
+  const localLookCanopy = new THREE.Vector3(0, 1.40, -2.5);
 
   return {
     group,

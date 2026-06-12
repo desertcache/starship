@@ -1,0 +1,229 @@
+/**
+ * Quarters prop builders — Phase 3b.
+ * Builds bunk, lockers, and nightstand geometry for crew quarters A and B.
+ * All materials are created once and shared between both rooms.
+ * No PointLights — emissive only for screen glow.
+ *
+ * Coordinate conventions (all in room-local space):
+ *   X: -2.5 port / +2.5 starboard
+ *   Y: 0 = deck
+ *   Z: -2.5 fore / +2.5 aft
+ *
+ * Bunk group: origin at centre of bunk footprint, head = -Z, foot = +Z.
+ *   Caller positions group: bunk back face (back rail) touching fore wall.
+ *   → group.position.z = -2.5 + 0.52 ≈ -1.98
+ *
+ * Locker group: origin at back face (Z = 0), lockers spread along X axis,
+ *   face (with handles) pointing in -Z direction, back flush to aft wall.
+ *   → group.position.z = +2.5, rotate Y = 0, lockers face -Z into room.
+ *
+ * Nightstand group: origin at floor center of stand base.
+ */
+import * as THREE from 'three';
+import type { AABB } from './types.js';
+
+// ── Material singletons (shared between both rooms) ────────────────────────────
+
+/** Dark gunmetal — bunk frame posts, rails, locker bodies. */
+export const matGunmetal     = new THREE.MeshLambertMaterial({ color: 0x1c1e22 });
+/** Slightly lighter slab for mattress. */
+export const matMattress     = new THREE.MeshLambertMaterial({ color: 0x2e3038 });
+/** Deep-red blanket band — Room A. */
+export const matBlanketA     = new THREE.MeshLambertMaterial({ color: 0x7a2c1f });
+/** Burnt-orange blanket band — Room B. */
+export const matBlanketB     = new THREE.MeshLambertMaterial({ color: 0xc7641e });
+/** Off-white pillow. */
+export const matPillow       = new THREE.MeshLambertMaterial({ color: 0xd8d2c4 });
+/** Locker body — dark gunmetal, slightly lighter than walls. */
+export const matLockerBody   = new THREE.MeshLambertMaterial({ color: 0x2c3038 });
+/** Orange handle stripe on lockers. */
+export const matLockerHandle = new THREE.MeshLambertMaterial({ color: 0xc7641e });
+/** Shelf / nightstand surface. */
+export const matShelf        = new THREE.MeshLambertMaterial({ color: 0x252830 });
+/** Cup / mug body. */
+export const matCup          = new THREE.MeshLambertMaterial({ color: 0x3a3d45 });
+/** Datapad body. */
+export const matDatapad      = new THREE.MeshLambertMaterial({ color: 0x181a1e });
+/** Emissive screen face — faint teal glow. */
+export const matDataScreen   = new THREE.MeshBasicMaterial({ color: 0x1e8070 });
+
+// ── Geometry singletons (reused across both rooms) ─────────────────────────────
+
+// Bunk
+const geoPost      = new THREE.BoxGeometry(0.07, 0.76, 0.07); // vertical corner post
+const geoRailX     = new THREE.BoxGeometry(2.00, 0.05, 0.05); // side rail along X
+const geoRailZ     = new THREE.BoxGeometry(0.05, 0.05, 1.00); // end rail along Z
+const geoMattress  = new THREE.BoxGeometry(1.90, 0.16, 0.98); // mattress slab
+const geoBlanket   = new THREE.BoxGeometry(1.90, 0.18, 0.28); // foot-end blanket band
+const geoPillow    = new THREE.BoxGeometry(0.82, 0.10, 0.28); // head-end pillow
+
+// Lockers — back at Z=0, face at Z=-0.35, spread along X
+const geoLockBody  = new THREE.BoxGeometry(0.50, 1.86, 0.35); // single locker body
+const geoLockSeam  = new THREE.BoxGeometry(0.007, 1.86, 0.01); // vertical seam detail
+const geoLockHndl  = new THREE.BoxGeometry(0.10, 0.70, 0.06); // orange handle bar (wider for visibility)
+
+// Nightstand
+const geoNstand    = new THREE.BoxGeometry(0.44, 0.54, 0.38);
+const geoCup       = new THREE.BoxGeometry(0.09, 0.14, 0.09);
+const geoPadBody   = new THREE.BoxGeometry(0.30, 0.026, 0.22);
+const geoPadScr    = new THREE.BoxGeometry(0.24, 0.029, 0.16);
+
+// ── Helper ─────────────────────────────────────────────────────────────────────
+
+function b(geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh {
+  return new THREE.Mesh(geo, mat);
+}
+
+// ── Bunk ───────────────────────────────────────────────────────────────────────
+
+export interface BunkResult {
+  /** Group root — mesh.name = 'bunk' for Phase 4 interaction hook. */
+  group: THREE.Group;
+  /** AABB in group-local space. */
+  collider: AABB;
+}
+
+/**
+ * Build a sturdy freighter bunk.
+ * Head at -Z, foot at +Z. Frame width 2.0 along X, depth 1.0 along Z.
+ * Posts run Y = 0..0.76. Mattress top at Y ≈ 0.96.
+ *
+ * @param blanketMat - room-specific blanket material.
+ */
+export function buildBunk(blanketMat: THREE.MeshLambertMaterial): BunkResult {
+  const g = new THREE.Group();
+  g.name = 'bunk';
+
+  // Corner posts — X=±0.93, Z=±0.46
+  const postXZ: [number, number][] = [[-0.93, -0.46], [0.93, -0.46], [-0.93, 0.46], [0.93, 0.46]];
+  for (const [px, pz] of postXZ) {
+    const m = b(geoPost, matGunmetal);
+    m.position.set(px, 0.38, pz);
+    g.add(m);
+  }
+
+  // Side rails (along X)
+  const ry = 0.74;
+  const rfore = b(geoRailX, matGunmetal); rfore.position.set(0, ry, -0.46); g.add(rfore);
+  const raft  = b(geoRailX, matGunmetal); raft.position.set(0, ry, 0.46);  g.add(raft);
+
+  // End rails (along Z)
+  const rl = b(geoRailZ, matGunmetal); rl.position.set(-0.93, ry, 0); g.add(rl);
+  const rr = b(geoRailZ, matGunmetal); rr.position.set( 0.93, ry, 0); g.add(rr);
+
+  // Mattress slab
+  const mat = b(geoMattress, matMattress);
+  mat.position.set(0, 0.84, 0);
+  g.add(mat);
+
+  // Blanket band at foot
+  const blanket = b(geoBlanket, blanketMat);
+  blanket.position.set(0, 0.94, 0.35);
+  g.add(blanket);
+
+  // Pillow at head
+  const pillow = b(geoPillow, matPillow);
+  pillow.position.set(0, 0.945, -0.32);
+  g.add(pillow);
+
+  const collider: AABB = {
+    minX: -1.00, maxX: 1.00,
+    minY: 0,     maxY: 1.02,
+    minZ: -0.53, maxZ: 0.53,
+  };
+
+  return { group: g, collider };
+}
+
+// ── Lockers ────────────────────────────────────────────────────────────────────
+
+export interface LockersResult {
+  group: THREE.Group;
+  colliders: AABB[];
+}
+
+/**
+ * Build a bank of lockers.
+ *
+ * Geometry: lockers spread along X axis, back face at Z=0, face at Z=-0.35.
+ * Place group at Z = +2.5 (aft wall) so back flush to wall, face into room.
+ *
+ * @param count - 2 or 3 lockers.
+ * @param xCenter - X offset to centre the bank (default 0).
+ */
+export function buildLockers(count: 2 | 3, xCenter = 0): LockersResult {
+  const g = new THREE.Group();
+  const colliders: AABB[] = [];
+
+  const step = 0.54;
+  const half = (count - 1) * step / 2;
+
+  for (let i = 0; i < count; i++) {
+    const xOff = xCenter + (-half + i * step);
+
+    // Main body — centred between back (Z=0) and face (Z=-0.35)
+    const body = b(geoLockBody, matLockerBody);
+    body.position.set(xOff, 0.93, -0.175);
+    g.add(body);
+
+    // Vertical panel seam at centre of locker face
+    const seam = b(geoLockSeam, matGunmetal);
+    seam.position.set(xOff, 0.93, -0.352);
+    g.add(seam);
+
+    // Orange handle bar proud of face
+    const handle = b(geoLockHndl, matLockerHandle);
+    handle.position.set(xOff, 0.93, -0.375);
+    g.add(handle);
+
+    colliders.push({
+      minX: xOff - 0.25,  maxX: xOff + 0.25,
+      minY: 0,             maxY: 1.88,
+      minZ: -0.38,         maxZ: 0.02,
+    });
+  }
+
+  return { group: g, colliders };
+}
+
+// ── Nightstand ─────────────────────────────────────────────────────────────────
+
+export interface NightstandResult {
+  group: THREE.Group;
+  collider: AABB;
+}
+
+/**
+ * Small bedside shelf.
+ * Origin at floor center of stand base.
+ */
+export function buildNightstand(): NightstandResult {
+  const g = new THREE.Group();
+
+  const stand = b(geoNstand, matShelf);
+  stand.position.set(0, 0.27, 0);
+  g.add(stand);
+
+  // Cup on top
+  const cup = b(geoCup, matCup);
+  cup.position.set(-0.13, 0.61, 0.06);
+  g.add(cup);
+
+  // Datapad flat on top
+  const pad = b(geoPadBody, matDatapad);
+  pad.position.set(0.05, 0.553, -0.03);
+  g.add(pad);
+
+  // Emissive screen face
+  const scr = b(geoPadScr, matDataScreen);
+  scr.position.set(0.05, 0.568, -0.03);
+  g.add(scr);
+
+  const collider: AABB = {
+    minX: -0.22, maxX: 0.22,
+    minY: 0,     maxY: 0.70,
+    minZ: -0.19, maxZ: 0.19,
+  };
+
+  return { group: g, collider };
+}

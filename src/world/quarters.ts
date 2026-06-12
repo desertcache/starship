@@ -1,64 +1,163 @@
+/**
+ * Crew quarters rooms — Phase 3b prop dressing.
+ * Builds both quarters-a (port) and quarters-b (starboard).
+ * Each room: 5W × 3H × 5D, porthole in outer wall, door in inner wall.
+ *
+ * Props per room:
+ *   - Bunk against fore wall (mesh.name = 'bunk' for Phase 4 Sleep hook)
+ *   - 2 lockers (A) / 3 lockers (B) against aft wall
+ *   - Nightstand beside bunk head
+ *
+ * Differences A vs B:
+ *   - A: deep-red blanket, 2 lockers, nightstand on starboard side of bunk
+ *   - B: orange blanket, 3 lockers, nightstand on port side of bunk (mirrored)
+ *   - B: extra equipment crate on starboard side
+ */
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
-import type { RoomModule } from './types.js';
+import type { RoomModule, AABB } from './types.js';
+import {
+  buildBunk,
+  buildLockers,
+  buildNightstand,
+  matBlanketA,
+  matBlanketB,
+} from './quartersProps.js';
 
-/** Build one crew quarter room. 5W x 3H x 5D. */
-function buildQuarter(
-  side: 'port' | 'starboard',
-  camName: string,
-): RoomModule {
-  const W = 5;
-  const H = 3;
-  const D = 5;
+// ── Room constants ─────────────────────────────────────────────────────────────
 
-  // The door connects to the corridor on the inner wall
-  const innerWall: 'port' | 'starboard' = side === 'port' ? 'starboard' : 'port';
-  // The porthole goes in the outer wall (faces space)
-  const outerWall: 'port' | 'starboard' = side;
+const W = 5;   // width  (+X = starboard, -X = port)
+const H = 3;   // height
+const D = 5;   // depth  (-Z = fore, +Z = aft)
 
-  const { group, colliders } = buildRoom({
-    width: W,
-    height: H,
-    depth: D,
-    doors: [
-      { wall: innerWall, gapW: 1.4, gapH: 2.2, offset: 0 },
-    ],
-    windows: [
-      {
-        wall: outerWall,
-        w: 1.0,    // porthole width
-        h: 0.8,    // porthole height
-        yBot: 1.2, // mid-wall height
-        offset: 0, // centered
-      },
-    ],
-  });
+// ── Helper: translate local AABB by a room-space offset ───────────────────────
 
-  group.name = `quarters-${side === 'port' ? 'a' : 'b'}`;
-
-  // Camera positioned near the aft wall, looking fore — shows ceiling panels on
-  // the ceiling, teal strips along the floor perimeter, and the inner/outer walls.
-  const localCamPos = new THREE.Vector3(0, 1.65, 1.8);   // aft-ish, centred
-  const localCamLook = new THREE.Vector3(0, 1.5, -2.5);  // looking toward fore wall
-
+function shiftAABB(aabb: AABB, dx: number, dy: number, dz: number): AABB {
   return {
-    group,
-    colliders,
-    interactables: [],
-    cameras: [
-      {
-        name: camName,
-        position: localCamPos,
-        lookAt: localCamLook,
-      },
-    ],
+    minX: aabb.minX + dx, maxX: aabb.maxX + dx,
+    minY: aabb.minY + dy, maxY: aabb.maxY + dy,
+    minZ: aabb.minZ + dz, maxZ: aabb.maxZ + dz,
   };
 }
 
+// ── Port quarter (quarters-a) ──────────────────────────────────────────────────
+
 export function buildQuartersA(): RoomModule {
-  return buildQuarter('port', 'quarters-a');
+  // Port side:  outer wall = port  (X = -2.5), porthole there.
+  //             inner wall = starboard (X = +2.5), door to corridor.
+  const { group, colliders } = buildRoom({
+    width: W, height: H, depth: D,
+    doors: [
+      { wall: 'starboard', gapW: 1.4, gapH: 2.2, offset: 0 },
+    ],
+    windows: [
+      { wall: 'port', w: 1.0, h: 0.8, yBot: 1.2, offset: 0 },
+    ],
+  });
+
+  group.name = 'quarters-a';
+
+  const propColliders: AABB[] = [];
+
+  // ── Bunk against fore wall ─────────────────────────────────────────────────
+  // Bunk group local: fore-side rail at Z = -0.46. Placed so that rail sits at
+  // Z = -2.44 in room space → group.position.z = -2.44 + 0.46 = -1.98.
+  const bunkA = buildBunk(matBlanketA);
+  bunkA.group.position.set(0, 0, -1.98);
+  group.add(bunkA.group);
+  propColliders.push(shiftAABB(bunkA.collider, 0, 0, -1.98));
+
+  // ── Lockers against aft wall ───────────────────────────────────────────────
+  // Locker group: back at Z=0 → placed at z=+2.5 (aft wall), face at Z=-0.35.
+  // 2 lockers centred at X=0, step=0.54 → centres at X=±0.27.
+  const lockA = buildLockers(2, 0);
+  lockA.group.position.set(0, 0, 2.5);
+  group.add(lockA.group);
+  for (const c of lockA.colliders) {
+    propColliders.push(shiftAABB(c, 0, 0, 2.5));
+  }
+
+  // ── Nightstand beside bunk head (head=-Z side), starboard side ────────────
+  // Nightstand at X=+1.30 (starboard of bunk centre), Z=-2.00.
+  const nsA = buildNightstand();
+  nsA.group.position.set(1.30, 0, -2.0);
+  group.add(nsA.group);
+  propColliders.push(shiftAABB(nsA.collider, 1.30, 0, -2.0));
+
+  // ── Camera: doorway (starboard wall), looking straight across to port ──────
+  // "Entering the room" perspective. Bunk fore-left, lockers aft-right,
+  // porthole on the far port wall, teal strips on floor, ceiling panels above.
+  const camPos  = new THREE.Vector3( 2.1, 1.65,  0.0);
+  const camLook = new THREE.Vector3(-2.1, 1.45,  0.0);
+
+  return {
+    group,
+    colliders: [...colliders, ...propColliders],
+    interactables: [],
+    cameras: [{ name: 'quarters-a', position: camPos, lookAt: camLook }],
+  };
 }
 
+// ── Starboard quarter (quarters-b) ────────────────────────────────────────────
+
 export function buildQuartersB(): RoomModule {
-  return buildQuarter('starboard', 'quarters-b');
+  // Starboard side: outer wall = starboard (X = +2.5), porthole there.
+  //                 inner wall = port (X = -2.5), door to corridor.
+  const { group, colliders } = buildRoom({
+    width: W, height: H, depth: D,
+    doors: [
+      { wall: 'port', gapW: 1.4, gapH: 2.2, offset: 0 },
+    ],
+    windows: [
+      { wall: 'starboard', w: 1.0, h: 0.8, yBot: 1.2, offset: 0 },
+    ],
+  });
+
+  group.name = 'quarters-b';
+
+  const propColliders: AABB[] = [];
+
+  // ── Bunk against fore wall — same position, orange blanket ────────────────
+  const bunkB = buildBunk(matBlanketB);
+  bunkB.group.position.set(0, 0, -1.98);
+  group.add(bunkB.group);
+  propColliders.push(shiftAABB(bunkB.collider, 0, 0, -1.98));
+
+  // ── Lockers against aft wall — 3 lockers ──────────────────────────────────
+  // step=0.54, 3 lockers → centres at X=-0.54, 0, +0.54
+  const lockB = buildLockers(3, 0);
+  lockB.group.position.set(0, 0, 2.5);
+  group.add(lockB.group);
+  for (const c of lockB.colliders) {
+    propColliders.push(shiftAABB(c, 0, 0, 2.5));
+  }
+
+  // ── Nightstand — port side of bunk (mirrored vs room A) ───────────────────
+  const nsB = buildNightstand();
+  nsB.group.position.set(-1.30, 0, -2.0);
+  group.add(nsB.group);
+  propColliders.push(shiftAABB(nsB.collider, -1.30, 0, -2.0));
+
+  // ── Extra equipment crate (starboard side, differentiator) ────────────────
+  const crateGeo = new THREE.BoxGeometry(0.44, 0.38, 0.38);
+  const crateMat = new THREE.MeshLambertMaterial({ color: 0x252830 });
+  const crate    = new THREE.Mesh(crateGeo, crateMat);
+  crate.position.set(1.30, 0.19, -2.0);
+  group.add(crate);
+  propColliders.push({
+    minX: 1.08,  maxX: 1.52,
+    minY: 0,     maxY: 0.40,
+    minZ: -2.19, maxZ: -1.81,
+  });
+
+  // ── Camera: doorway (port wall), looking straight across to starboard ──────
+  const camPos  = new THREE.Vector3(-2.1, 1.65,  0.0);
+  const camLook = new THREE.Vector3( 2.1, 1.45,  0.0);
+
+  return {
+    group,
+    colliders: [...colliders, ...propColliders],
+    interactables: [],
+    cameras: [{ name: 'quarters-b', position: camPos, lookAt: camLook }],
+  };
 }
