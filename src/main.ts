@@ -59,7 +59,9 @@ scene.background = new THREE.Color(0x0a0b10);
   scene.environment = envTexture;
   // v0.5 Stage 2: trimmed 0.4 → 0.28 — env still gives PBR materials specular
   // life on the glossy floor / metals, but no longer fights the dark mood.
-  scene.environmentIntensity = 0.28;
+  // Stage C: 0.28→0.34 — new cream panels + glossier floors need more specular
+  // life; bezels and metals pick up environment highlights.
+  scene.environmentIntensity = 0.34;
   pmrem.dispose();
 }
 

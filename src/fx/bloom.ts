@@ -60,7 +60,8 @@ const VignetteShader = {
     /** Falloff power — higher = tighter vignette edge (2.0 = cosine-like). */
     uFalloff:   { value: 2.0 },
     /** Darkness at the very corners (0 = none, 1 = black). */
-    uStrength:  { value: 0.18 },
+    // Stage C: 0.18→0.12 — reduce corner crush that compounds with darker walls.
+    uStrength:  { value: 0.12 },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
