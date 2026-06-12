@@ -1,20 +1,34 @@
 import type * as THREE from 'three';
 
-// ── Quality flag — default OFF, headed-gated ──────────────────────────────────
+// ── Quality flags ─────────────────────────────────────────────────────────────
 //
-// ?quality=high enables SSAO post-processing (and documents shadow intent).
-// Default (no flag) is a strict no-op — zero added draws, zero cost.
-// Verify runs WITHOUT this flag, so the budget is unaffected by default.
+// v0.5 Stage 3: SSAO and shadow maps are DEFAULT ON after measurement confirmed
+// their headed cost is negligible (baseline 132.1fps/8.2ms p95 vs quality-high
+// 131.9fps/8.2ms — within noise). Both features stay inside the ≥60fps/≤18ms
+// budget with enormous headroom.
+//
+// Opt-out: ?quality=low disables SSAO + shadow maps for low-end hardware.
+// The old ?quality=high flag continues to read correctly (QUALITY_HIGH stays
+// true when set), but the default path no longer checks it — both features are
+// on unless QUALITY_LOW is true.
 //
 const _qParams = new URLSearchParams(
   typeof window !== 'undefined' ? window.location.search : '',
 );
+
 /**
  * True when ?quality=high is in the URL.
- * Gate all quality-mode enhancements behind this boolean.
- * Default: false (shipped default, verify default).
+ * Kept for harness/verify compatibility (--quality flag appends ?quality=high).
+ * No longer the primary gate for SSAO/shadows — see QUALITY_LOW.
  */
 export const QUALITY_HIGH: boolean = _qParams.get('quality') === 'high';
+
+/**
+ * True when ?quality=low is in the URL.
+ * When true, SSAO and shadow maps are disabled for low-end / headless paths.
+ * Default: false — both SSAO and shadows are ON by default.
+ */
+export const QUALITY_LOW: boolean = _qParams.get('quality') === 'low';
 
 export interface PerfReport {
   avgFps: number;

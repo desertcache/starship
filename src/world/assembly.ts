@@ -11,7 +11,7 @@ import type { DoorEntry } from './doors.js';
 import { buildStarfield } from '../fx/starfield.js';
 import { wrapDirectorAsPlanetResult } from '../fx/planet.js';
 import { createSpaceDirector } from '../fx/space/director.js';
-import { QUALITY_HIGH } from '../core/perf.js';
+import { QUALITY_LOW } from '../core/perf.js';
 import type { AABB, RoomModule, Interactable } from './types.js';
 import type { PlanetResult } from '../fx/planet.js';
 
@@ -45,11 +45,12 @@ function translateAABB(aabb: AABB, offset: THREE.Vector3): AABB {
 }
 
 /**
- * QUALITY_HIGH-only: turn a PointLight into a soft shadow caster.
- * 1024² map, near 0.1 / far 12 (room scale). No-op when quality is default.
+ * Default-on: turn a PointLight into a soft shadow caster.
+ * 1024² map, near 0.1 / far 12 (room scale).
+ * No-op when ?quality=low is set.
  */
 function configureShadowCaster(light: THREE.PointLight): void {
-  if (!QUALITY_HIGH) return;
+  if (QUALITY_LOW) return;
   light.castShadow = true;
   light.shadow.mapSize.set(1024, 1024);
   light.shadow.camera.near = 0.1;
@@ -57,12 +58,12 @@ function configureShadowCaster(light: THREE.PointLight): void {
 }
 
 /**
- * QUALITY_HIGH-only: flag every mesh under the room groups to cast + receive
- * shadows. Cheap to set; only costs render time when shadowMap is enabled, which
- * is itself gated on QUALITY_HIGH. No-op for the shipped/verify default.
+ * Default-on: flag every mesh under the room groups to cast + receive shadows.
+ * Cheap to set; only costs render time when shadowMap is enabled.
+ * No-op when ?quality=low is set.
  */
 function enableMeshShadows(groups: THREE.Group[]): void {
-  if (!QUALITY_HIGH) return;
+  if (QUALITY_LOW) return;
   for (const g of groups) {
     g.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
@@ -271,7 +272,7 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   const ambient = new THREE.AmbientLight(0xfff0e0, 0.05);
   scene.add(ambient);
 
-  // QUALITY_HIGH: flag room meshes to cast/receive shadows (no-op by default).
+  // Default-on: flag room meshes to cast/receive shadows. No-op when ?quality=low.
   enableMeshShadows(groups);
 
   return { groups, colliders: allColliders, interactables: allInteractables, planet, starfield };

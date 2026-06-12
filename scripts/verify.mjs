@@ -2,8 +2,14 @@
  * verify.mjs — Phase-gate verification harness
  * Builds, serves vite preview, screenshots every named camera, samples perf.
  * Usage:
- *   node scripts/verify.mjs             (headless)
+ *   node scripts/verify.mjs             (headless, default quality)
  *   node scripts/verify.mjs --headed    (headed Chromium, fps authoritative)
+ *   node scripts/verify.mjs --quality   (append ?quality=high to URL — enables SSAO + shadows)
+ *   node scripts/verify.mjs --headed --quality   (both)
+ *
+ * --quality is a permanent harness flag; it appends ?quality=high to every page
+ * navigation so SSAOPass and shadow maps are active for the full perf sample.
+ * Default (no flag) loads the plain URL — zero cost, verify-budget baseline.
  */
 
 import { execSync, spawn } from 'node:child_process';
@@ -18,7 +24,11 @@ const SHOTS_DIR = resolve(ROOT, 'verify', 'shots');
 const REPORT_PATH = resolve(ROOT, 'verify', 'report.json');
 let PREVIEW_PORT = 4173;
 let BASE_URL = `http://localhost:${PREVIEW_PORT}`;
-const headed = process.argv.includes('--headed');
+const headed  = process.argv.includes('--headed');
+/** When true, appends ?quality=high to every URL opened by the harness. */
+const quality = process.argv.includes('--quality');
+/** Build the full page URL, optionally appending the quality param. */
+function pageUrl(base) { return quality ? `${base}/?quality=high` : base; }
 
 mkdirSync(SHOTS_DIR, { recursive: true });
 
@@ -111,7 +121,7 @@ async function run() {
     });
 
     console.log('[verify] Navigating…');
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(pageUrl(BASE_URL), { waitUntil: 'networkidle' });
 
     // ── 3. Await __ready ────────────────────────────────────────────────────────
     console.log('[verify] Awaiting __ready…');
@@ -170,6 +180,7 @@ async function run() {
       () => window.__perf.sample(5000),
     );
     report.headless = !headed;
+    report.qualityHigh = quality;
     report.cameras = toShoot;
     report.perfCamera = worstCam;
     report.timestamp = new Date().toISOString();

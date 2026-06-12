@@ -23,7 +23,7 @@ import { isDoorOpen, forceDoorAutoCloseCheck } from './world/doors.js';
 import { initBloom } from './fx/bloom.js';
 import { tickStarfield } from './fx/starfield.js';
 import { setScanProvider } from './world/interactConsole.js';
-import { QUALITY_HIGH } from './core/perf.js';
+import { QUALITY_LOW } from './core/perf.js';
 import type { ScanData } from './fx/space/types.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
@@ -37,9 +37,9 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 // interior sits low and emissives (toneMapped=false) punch against shadow.
 renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-// QUALITY_HIGH (?quality=high) enables soft shadow maps. Default (verify) is a
-// strict no-op so the shipped budget is unaffected.
-if (QUALITY_HIGH) {
+// Shadow maps: DEFAULT ON (promoted in v0.5 Stage 3 after headed measurement
+// showed negligible cost). Disable with ?quality=low for low-end hardware.
+if (!QUALITY_LOW) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 }

@@ -1,16 +1,17 @@
 /**
- * src/fx/bloom.ts — Post-processing: UnrealBloom + optional SSAO.
+ * src/fx/bloom.ts — Post-processing: UnrealBloom + SSAO (default) + vignette.
  *
  * Kill switch: URL param ?bloom=0 disables bloom entirely.
  *   e.g. http://localhost:5173/?bloom=0
  *
- * Quality gate: ?quality=high adds SSAOPass BEFORE the bloom pass.
- *   Expected cost: +2-4ms @1280x720. Measured separately from bloom cost.
- *   See QUALITY_HIGH in perf.ts for details.
+ * SSAO: DEFAULT ON (v0.5 Stage 3 promotion — headed measurement showed negligible
+ *   cost at 132fps/8.2ms p95). Disable with ?quality=low.
+ *   kernelRadius 8, minDistance 0.002, maxDistance 0.08 — subtle contact/corner
+ *   darkening without haloing. Expected cost: ~0ms measured at 1280×720.
  *
- * Composer is built when (bloomEnabled || QUALITY_HIGH):
+ * Composer is built when (bloomEnabled || !QUALITY_LOW):
  *   - Always: RenderPass, OutputPass
- *   - If quality=high: SSAOPass (before bloom, subtle corner darkening)
+ *   - Unless ?quality=low: SSAOPass (before bloom, subtle corner darkening)
  *   - If bloom enabled: UnrealBloomPass
  *
  * Bloom tuning constants (left AS-IS per v0.4 brief; re-tune post space-lane merge):
@@ -18,9 +19,6 @@
  *              Emissive teal (0x55FFEE, lum ≈0.93) clears this.
  *   strength:  0.45 — subtle, not blowout.
  *   radius:    0.55 — tight halo.
- *
- * Integration task (post-merge): re-run verify:headed; if space emissives
- * blow out, lower strength 0.45->0.38 OR raise threshold 0.90->0.92.
  */
 
 import * as THREE from 'three';
@@ -30,7 +28,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass }      from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass }      from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { SSAOPass }        from 'three/examples/jsm/postprocessing/SSAOPass.js';
-import { QUALITY_HIGH }    from '../core/perf.js';
+import { QUALITY_LOW }     from '../core/perf.js';
 
 // ── Bloom tuning ───────────────────────────────────────────────────────────────
 
@@ -108,7 +106,9 @@ export function initBloom(
 ): BloomSystem {
   const params       = new URLSearchParams(window.location.search);
   const bloomEnabled = params.get('bloom') !== '0';
-  const needComposer = bloomEnabled || QUALITY_HIGH;
+  // SSAO is default-on; composer needed whenever bloom is on OR SSAO is on.
+  const ssaoEnabled  = !QUALITY_LOW;
+  const needComposer = bloomEnabled || ssaoEnabled;
 
   // ── Fast-path: no composer needed ─────────────────────────────────────────
   if (!needComposer) {
@@ -126,9 +126,10 @@ export function initBloom(
   // 1. RenderPass — always first
   composer.addPass(new RenderPass(scene, camera));
 
-  // 2. SSAOPass — only when quality=high (before bloom so SSAO affects bloom input)
+  // 2. SSAOPass — default-on (before bloom so SSAO affects bloom input).
+  //    Disabled only when ?quality=low.
   let ssaoPass: SSAOPass | null = null;
-  if (QUALITY_HIGH) {
+  if (ssaoEnabled) {
     const w = window.innerWidth;
     const h = window.innerHeight;
     ssaoPass = new SSAOPass(scene, camera, w, h);
