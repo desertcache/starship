@@ -4,101 +4,45 @@
  * Corridor OWNS door frames for all 4 of its doorways (framed flag).
  *
  * Side walls are built manually (porthole cutouts, second porthole in fore section).
+ * Bezel builder delegated to corridorPortholes.ts (lane B3 split).
  * Density dressing (baseboards, crown, ribs, junction) delegated to corridorDensity.ts.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildRoom } from './roomBuilder.js';
+import { applyWorldUVs } from './uvWorld.js';
 import { matWall } from './materials.js';
 import { matTealStrip, matDoorFrame } from '../fx/shipMaterials.js';
 import { FRAME_TOTAL_DEPTH, FRAME_JAMB_W, FRAME_HEAD_H } from './roomDressing.js';
 import { buildCorridorProps } from './corridorProps.js';
 import { addBaseboardsAndCrowns, addVerticalRibs, addQuartersJunction } from './corridorDensity.js';
+import { buildCorridorPortholeBezel } from './corridorPortholes.js';
 import type { AABB, RoomModule } from './types.js';
 
-// ── Corridor porthole bezel materials (gunmetal PBR) ─────────────────────────
-const matCorridorBezel = new THREE.MeshStandardMaterial({
-  color: 0x3a3e44, roughness: 0.30, metalness: 0.75, envMapIntensity: 1.0,
-});
-const matCorridorTube = new THREE.MeshStandardMaterial({
-  color: 0x1a1c20, roughness: 0.7, metalness: 0.4, side: THREE.BackSide,
-});
-const matCorridorBolt = new THREE.MeshStandardMaterial({
-  color: 0x4a5058, roughness: 0.35, metalness: 0.85, envMapIntensity: 1.0,
-});
-const matCorridorCorner = new THREE.MeshStandardMaterial({
-  color: 0x0d0e11, roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide,
-});
+// ── UV tile sizes (must match roomBuilder / texturesPanels) ───────────────────
+const WALL_TILE_W = 2; // metres per U unit along wall horizontal axis
+const WALL_TILE_H = 3; // metres per V unit along wall vertical axis
 
 /**
- * Round porthole bezel for corridor side-walls.
- * Porthole opening is W×H rectangular; the bezel frames it with a ring + bolts.
- * The corner mask uses RingGeometry (open centre) so the circular aperture is
- * never occluded — only the square corners outside the circle are covered.
- * @param group  room group to add to
- * @param wX     wall X position (positive = starboard, negative = port)
- * @param pZ     local Z of porthole centre
- * @param pY     local Y of porthole centre
- * @param pW     porthole opening width
- * @param pH     porthole opening height
+ * Create a PlaneGeometry with world-aligned UVs for a corridor side-wall segment.
+ * For port/starboard walls, the horizontal UV axis tracks world-Z.
+ *
+ * @param segW         Plane width  (along Z axis)
+ * @param segH         Plane height (Y)
+ * @param worldZLeft   World Z of the left (fore) edge of this plane
+ * @param worldYBot    World Y of the bottom edge (0 for floor-to-ceiling)
  */
-function buildCorridorPortholeBezel(
-  group: THREE.Group,
-  wX: number, pZ: number, pY: number, pW: number, pH: number,
-): void {
-  const sign   = wX < 0 ? -1 : 1;  // which side the face is on
-  const faceX  = wX + sign * 0.005; // exterior face of wall (5mm proud — clears z-fight)
-
-  // Inscribed circle radius — clears the rectangular opening
-  const WIN_R  = Math.min(pW, pH) / 2 * 0.88;
-
-  // Torus center radius ≈ half cutout diagonal; tube thickness 0.05
-  // Capped per spec: P1 outer ≤ 0.58, P2 outer ≤ 0.45
-  const TUBE_R   = 0.05;
-  const diagHalf = Math.sqrt(pW * pW + pH * pH) / 2;
-  const torusR   = Math.min(diagHalf + 0.06, pW > 0.7 ? 0.53 : 0.40);
-
-  // Annulus outerR = just past the cutout corner diagonal (no excess)
-  // Stays flush behind the torus ring so the dark backing isn't visible
-  const outerR = diagHalf + 0.02;
-
-  // Corner-masking annulus — RingGeometry has an open centre so the circular
-  // aperture stays fully transparent. Covers square corners outside the circle.
-  const cornerGeo = new THREE.RingGeometry(WIN_R, outerR, 48);
-  const cornerMask = new THREE.Mesh(cornerGeo, matCorridorCorner);
-  cornerMask.rotation.y = Math.PI / 2;
-  // Position AT faceX (already 5mm proud of the wall plane) — no pullback needed.
-  // Previously sat exactly at the wall plane (faceX - sign*0.001 ≈ wX) → z-fight.
-  cornerMask.position.set(faceX, pY, pZ);
-  group.add(cornerMask);
-
-  // Cylindrical reveal tube — open-ended, short depth toward exterior
-  const tubeGeo = new THREE.CylinderGeometry(WIN_R, WIN_R, 0.08, 28, 1, true);
-  const tube = new THREE.Mesh(tubeGeo, matCorridorTube);
-  tube.rotation.z = Math.PI / 2;
-  tube.position.set(faceX + sign * 0.04, pY, pZ);
-  group.add(tube);
-
-  // Torus ring rim — center radius = torusR, tube thickness = TUBE_R
-  const ringGeo = new THREE.TorusGeometry(torusR, TUBE_R, 10, 40);
-  const ring = new THREE.Mesh(ringGeo, matCorridorBezel);
-  ring.rotation.y = Math.PI / 2;
-  ring.position.set(faceX + sign * 0.001, pY, pZ);
-  group.add(ring);
-
-  // 8 bolt cylinders placed on the ring outer edge
-  const boltGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.032, 7);
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2;
-    const bolt = new THREE.Mesh(boltGeo, matCorridorBolt);
-    bolt.rotation.z = Math.PI / 2;
-    bolt.position.set(
-      faceX + sign * 0.028,
-      pY + Math.sin(angle) * torusR,
-      pZ + Math.cos(angle) * torusR,
-    );
-    group.add(bolt);
-  }
+function makeSideWallPlane(
+  segW: number,
+  segH: number,
+  worldZLeft: number,
+  worldYBot: number,
+): THREE.BufferGeometry {
+  const geo = new THREE.PlaneGeometry(segW, segH);
+  // vOff: align so the scuff band (v=0) is only at the true floor
+  const vOff = Math.ceil(3 / WALL_TILE_H) * WALL_TILE_H - 3; // 0 for H=3
+  applyWorldUVs(geo, segW, segH, WALL_TILE_W, WALL_TILE_H, worldZLeft, worldYBot + vOff);
+  return geo;
 }
 
 export function buildCorridor(): RoomModule {
@@ -144,8 +88,6 @@ export function buildCorridor(): RoomModule {
   const p2Left = P2_Z - P2_W / 2;  const p2Right = P2_Z + P2_W / 2;  const p2Top = P2_SILL + P2_H;
 
   // v0.4 defrag: collect side-door frame boxes (both sides) and teal floor strips
-  // into geometry arrays, then merge each into ONE draw call after the loop.
-  // Previously 6 frame meshes + 4 strip meshes → 2 merged meshes (~-8 draws).
   const frameGeos: THREE.BufferGeometry[] = [];
   const stripGeos: THREE.BufferGeometry[] = [];
 
@@ -154,34 +96,39 @@ export function buildCorridor(): RoomModule {
     const rotY = side === 'port' ? Math.PI / 2 : -Math.PI / 2;
 
     // ── Fore section (-halfD to DOOR_FORE_EDGE) with porthole 2 cutout ──────
-    const foreSegA = p2Left - (-halfD);     // left of porthole 2
+    const foreSegA = p2Left - (-halfD);       // left of porthole 2
     const foreSegB = DOOR_FORE_EDGE - p2Right; // right of porthole 2
 
     if (foreSegA > 0.01) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(foreSegA, H), matWall);
+      const geo = makeSideWallPlane(foreSegA, H, -halfD, 0);
+      const m = new THREE.Mesh(geo, matWall);
       m.position.set(wX, H / 2, -halfD + foreSegA / 2); m.rotation.y = rotY; group.add(m);
       colliders.push({ minX: wX - WALL_T, minY: 0, minZ: -halfD, maxX: wX + WALL_T, maxY: H, maxZ: p2Left });
     }
     if (foreSegB > 0.01) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(foreSegB, H), matWall);
+      const geo = makeSideWallPlane(foreSegB, H, p2Right, 0);
+      const m = new THREE.Mesh(geo, matWall);
       m.position.set(wX, H / 2, p2Right + foreSegB / 2); m.rotation.y = rotY; group.add(m);
       colliders.push({ minX: wX - WALL_T, minY: 0, minZ: p2Right, maxX: wX + WALL_T, maxY: H, maxZ: DOOR_FORE_EDGE });
     }
     if (P2_SILL > 0.01) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(P2_W, P2_SILL), matWall);
+      const geo = makeSideWallPlane(P2_W, P2_SILL, p2Left, 0);
+      const m = new THREE.Mesh(geo, matWall);
       m.position.set(wX, P2_SILL / 2, P2_Z); m.rotation.y = rotY; group.add(m);
       colliders.push({ minX: wX - WALL_T, minY: 0, minZ: p2Left, maxX: wX + WALL_T, maxY: P2_SILL, maxZ: p2Right });
     }
     const aboveP2 = H - p2Top;
     if (aboveP2 > 0.01) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(P2_W, aboveP2), matWall);
+      const geo = makeSideWallPlane(P2_W, aboveP2, p2Left, p2Top);
+      const m = new THREE.Mesh(geo, matWall);
       m.position.set(wX, p2Top + aboveP2 / 2, P2_Z); m.rotation.y = rotY; group.add(m);
       colliders.push({ minX: wX - WALL_T, minY: p2Top, minZ: p2Left, maxX: wX + WALL_T, maxY: H, maxZ: p2Right });
     }
 
     // ── Door column (above door strip) ───────────────────────────────────────
     if (DOOR_ABOVE_H > 0.01) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_GAP_W, DOOR_ABOVE_H), matWall);
+      const geo = makeSideWallPlane(DOOR_GAP_W, DOOR_ABOVE_H, DOOR_FORE_EDGE, DOOR_GAP_H);
+      const m = new THREE.Mesh(geo, matWall);
       m.position.set(wX, DOOR_GAP_H + DOOR_ABOVE_H / 2, SIDE_DOOR_Z); m.rotation.y = rotY; group.add(m);
       colliders.push({ minX: wX - WALL_T, minY: DOOR_GAP_H, minZ: DOOR_FORE_EDGE, maxX: wX + WALL_T, maxY: H, maxZ: DOOR_AFT_EDGE });
     }
@@ -203,23 +150,27 @@ export function buildCorridor(): RoomModule {
     const aftR = halfD - p1Right;
 
     if (aftL > 0.01) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(aftL, H), matWall);
+      const geo = makeSideWallPlane(aftL, H, DOOR_AFT_EDGE, 0);
+      const m = new THREE.Mesh(geo, matWall);
       m.position.set(wX, H / 2, DOOR_AFT_EDGE + aftL / 2); m.rotation.y = rotY; group.add(m);
       colliders.push({ minX: wX - WALL_T, minY: 0, minZ: DOOR_AFT_EDGE, maxX: wX + WALL_T, maxY: H, maxZ: p1Left });
     }
     if (aftR > 0.01) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(aftR, H), matWall);
+      const geo = makeSideWallPlane(aftR, H, p1Right, 0);
+      const m = new THREE.Mesh(geo, matWall);
       m.position.set(wX, H / 2, p1Right + aftR / 2); m.rotation.y = rotY; group.add(m);
       colliders.push({ minX: wX - WALL_T, minY: 0, minZ: p1Right, maxX: wX + WALL_T, maxY: H, maxZ: halfD });
     }
     if (P1_SILL > 0.01) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(P1_W, P1_SILL), matWall);
+      const geo = makeSideWallPlane(P1_W, P1_SILL, p1Left, 0);
+      const m = new THREE.Mesh(geo, matWall);
       m.position.set(wX, P1_SILL / 2, P1_Z); m.rotation.y = rotY; group.add(m);
       colliders.push({ minX: wX - WALL_T, minY: 0, minZ: p1Left, maxX: wX + WALL_T, maxY: P1_SILL, maxZ: p1Right });
     }
     const aboveP1 = H - p1Top;
     if (aboveP1 > 0.01) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(P1_W, aboveP1), matWall);
+      const geo = makeSideWallPlane(P1_W, aboveP1, p1Left, P1_SILL + P1_H);
+      const m = new THREE.Mesh(geo, matWall);
       m.position.set(wX, p1Top + aboveP1 / 2, P1_Z); m.rotation.y = rotY; group.add(m);
       colliders.push({ minX: wX - WALL_T, minY: P1_SILL + P1_H, minZ: p1Left, maxX: wX + WALL_T, maxY: H, maxZ: p1Right });
     }
@@ -239,8 +190,7 @@ export function buildCorridor(): RoomModule {
     }
   }
 
-  // ── Round porthole bezels (ref-08 model: thick ring + bolts + reveal tube) ──
-  // Both sides get bezels on both portholes; corridor is 3W so port=-1.5, stbd=+1.5
+  // ── Round porthole bezels (ref-08 model: thick ring + catch-light + bolts + star disc) ──
   for (const bX of [-halfW, halfW]) {
     buildCorridorPortholeBezel(group, bX, P1_Z, P1_SILL + P1_H / 2, P1_W, P1_H);
     buildCorridorPortholeBezel(group, bX, P2_Z, P2_SILL + P2_H / 2, P2_W, P2_H);

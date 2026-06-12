@@ -1,34 +1,27 @@
 /**
  * Quarters wall dressing builders — v0.2 fill pass.
- * Bunk surround, porthole reveal, overhead cabinet, wall tablet,
- * hooks, toolboard, framed picture, potted plant, light switch plate.
- * All use shared materials from quartersProps.ts; inline CanvasTextures here.
+ * Bunk surround, porthole reveal, overhead cabinet, wall tablet, hooks.
+ * Room-A/B cosmetic props (toolboard, picture, plant, switch) → quartersDressingB.ts.
+ * All use shared materials from quartersProps.ts.
  *
  * Coordinate conventions: X port(−)/starboard(+), Y deck=0, Z fore(−)/aft(+).
  */
 import * as THREE from 'three';
 import { cached } from '../fx/textureHelpers.js';
 import {
-  matGunmetal, matCream, matTealEmit, matOrange, matRust,
-  matTealPlant,
+  matGunmetal, matCream, matTealEmit, matOrange,
 } from './quartersProps.js';
+import { buildPortholeStarDisc } from './corridorPortholes.js';
+
+// Re-export Room-A/B cosmetic builders so quarters.ts import stays unchanged
+export {
+  buildToolboard,
+  buildFramedPicture,
+  buildPottedPlant,
+  buildLightSwitchPlate,
+} from './quartersDressingB.js';
 
 // ── Inline CanvasTextures ──────────────────────────────────────────────────────
-
-function makeToolboardTex(): THREE.CanvasTexture {
-  return cached('qtr-toolboard', () => {
-    const S = 256;
-    const cv = document.createElement('canvas'); cv.width = S; cv.height = S;
-    const c = cv.getContext('2d')!;
-    c.fillStyle = '#1A1C20'; c.fillRect(0, 0, S, S);
-    c.fillStyle = 'rgba(80,85,95,0.5)';
-    for (let y = 32; y < S; y += 32)
-      for (let x = 32; x < S; x += 32) {
-        c.beginPath(); c.arc(x, y, 3, 0, Math.PI * 2); c.fill();
-      }
-    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
-  });
-}
 
 function makeTabletScreenTex(): THREE.CanvasTexture {
   return cached('qtr-tablet-scr', () => {
@@ -41,20 +34,6 @@ function makeTabletScreenTex(): THREE.CanvasTexture {
     for (let x = 16; x < W; x += 16) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); }
     c.fillStyle = 'rgba(70,224,216,0.85)'; c.font = '9px monospace';
     c.fillText('STATUS OK', 6, 14); c.fillText('BRG 247°', 6, 26); c.fillText('ALT 3.2k', 6, 38);
-    return new THREE.CanvasTexture(cv);
-  });
-}
-
-function makePictureTex(): THREE.CanvasTexture {
-  return cached('qtr-picture', () => {
-    const S = 128;
-    const cv = document.createElement('canvas'); cv.width = S; cv.height = S;
-    const c = cv.getContext('2d')!;
-    c.fillStyle = '#2a1a0a'; c.fillRect(0, 0, S, S);
-    const g = c.createRadialGradient(S/2, S/2, 0, S/2, S/2, S*0.55);
-    g.addColorStop(0, 'rgba(200,160,100,0.9)'); g.addColorStop(1, 'rgba(60,40,20,0.7)');
-    c.fillStyle = g; c.fillRect(6, 6, S-12, S-12);
-    c.fillStyle = 'rgba(30,60,80,0.6)'; c.fillRect(6, S/2, S-12, S/2-6);
     return new THREE.CanvasTexture(cv);
   });
 }
@@ -109,12 +88,13 @@ export function buildBunkSurround(roomGroup: THREE.Group, bunkXCenter: number, _
 
 // ── Porthole reveal + round bezel ─────────────────────────────────────────────
 
-/** Gunmetal PBR material for the bezel ring — warm-dark tint, catches room light. */
+/** Gunmetal PBR material for the bezel ring — lowered roughness 0.22 + elevated
+ *  envMapIntensity 1.6 to give the specular arc visible in ref-7. */
 const matBezelRing = new THREE.MeshStandardMaterial({
   color: 0x3a3e44,
-  roughness: 0.30,
+  roughness: 0.22,
   metalness: 0.75,
-  envMapIntensity: 1.0,
+  envMapIntensity: 1.6,
 });
 
 /**
@@ -136,51 +116,49 @@ function buildPortholeBezel(roomGroup: THREE.Group, xWall: number): void {
   const sign    = xWall < 0 ? 1 : -1;
   const faceX   = xWall + sign * 0.001; // just outside the wall face
 
-  // Corner-masking annulus — RingGeometry has an open centre so the circular
-  // aperture is NOT occluded. Inner radius = WIN_R (clears the full aperture),
-  // outer radius covers the diagonal of the 1.0×0.8 rect (≈0.64) with margin.
+  // Corner-masking annulus — open centre keeps circular aperture transparent
   const backMat = new THREE.MeshStandardMaterial({
-    color: 0x0d0e11,
-    roughness: 0.9,
-    metalness: 0.1,
-    side: THREE.DoubleSide,
+    color: 0x0d0e11, roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide,
   });
   const ringCornerGeo = new THREE.RingGeometry(WIN_R, 0.68, 48);
   const cornerMask = new THREE.Mesh(ringCornerGeo, backMat);
-  cornerMask.rotation.y = Math.PI / 2; // face along X axis
-  cornerMask.position.set(faceX - sign * 0.001, WIN_Y, WIN_Z);
+  cornerMask.rotation.y = Math.PI / 2;
+  // Place 5mm proud of wall face so it clears z-fighting with the wall plane.
+  cornerMask.position.set(faceX + sign * 0.005, WIN_Y, WIN_Z);
   roomGroup.add(cornerMask);
 
-  // Cylindrical reveal tube — short depth toward space (interior side).
-  // open-ended (openEnded: true already set by passing true to CylinderGeometry).
+  // Cylindrical reveal tube — open-ended, short depth toward space
   const tubeGeo = new THREE.CylinderGeometry(WIN_R, WIN_R, 0.08, 32, 1, true);
   const tubeMat = new THREE.MeshStandardMaterial({
-    color: 0x1a1c20,
-    roughness: 0.7,
-    metalness: 0.4,
-    side: THREE.BackSide,
+    color: 0x1a1c20, roughness: 0.7, metalness: 0.4, side: THREE.BackSide,
   });
   const tube = new THREE.Mesh(tubeGeo, tubeMat);
-  tube.rotation.z = Math.PI / 2; // cylinder axis → X
+  tube.rotation.z = Math.PI / 2;
   tube.position.set(faceX + sign * 0.04, WIN_Y, WIN_Z);
   roomGroup.add(tube);
 
   // Torus ring rim — thick beveled ring, gunmetal PBR
-  // TorusGeometry(outerR, tubeR, radialSeg, tubularSeg)
   const ringGeo = new THREE.TorusGeometry(WIN_R, 0.058, 12, 48);
   const ring = new THREE.Mesh(ringGeo, matBezelRing);
-  ring.rotation.y = Math.PI / 2; // face along X axis
+  ring.rotation.y = Math.PI / 2;
   ring.position.set(faceX + sign * 0.002, WIN_Y, WIN_Z);
   roomGroup.add(ring);
+
+  // Thin bright catch-light ring (≥5mm proud of bezel face per spec)
+  const catchMat = new THREE.MeshStandardMaterial({
+    color: 0x9aa0a8, metalness: 0.9, roughness: 0.15,
+  });
+  const catchGeo = new THREE.TorusGeometry(WIN_R - 0.03, 0.012, 8, 48);
+  const catchRing = new THREE.Mesh(catchGeo, catchMat);
+  catchRing.rotation.y = Math.PI / 2;
+  catchRing.position.set(faceX + sign * 0.009, WIN_Y, WIN_Z);
+  roomGroup.add(catchRing);
 
   // 9 bolt cylinders evenly spaced around the ring
   const BOLT_COUNT  = 9;
   const BOLT_INSET  = WIN_R + 0.058; // ring outer edge
   const boltMat = new THREE.MeshStandardMaterial({
-    color: 0x4a5058,
-    roughness: 0.35,
-    metalness: 0.85,
-    envMapIntensity: 1.0,
+    color: 0x4a5058, roughness: 0.35, metalness: 0.85, envMapIntensity: 1.0,
   });
   const boltGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.040, 8);
   for (let i = 0; i < BOLT_COUNT; i++) {
@@ -188,14 +166,15 @@ function buildPortholeBezel(roomGroup: THREE.Group, xWall: number): void {
     const by = WIN_Y + Math.sin(angle) * BOLT_INSET;
     const bz = WIN_Z + Math.cos(angle) * BOLT_INSET;
     const bolt = new THREE.Mesh(boltGeo, boltMat);
-    bolt.rotation.z = Math.PI / 2; // bolt axis along X
+    bolt.rotation.z = Math.PI / 2;
     bolt.position.set(faceX + sign * 0.035, by, bz);
     roomGroup.add(bolt);
   }
 }
 
 /**
- * 4 gunmetal reveal panels + orange rim flange + cream sill + round bezel overlay.
+ * 4 gunmetal reveal panels + orange rim flange + cream sill + round bezel overlay
+ * + star overlay disc (additive, anti-flat-black from oblique angles).
  * Window: 1.0W × 0.8H centred at Y=1.6, Z=0 in outer wall (X=±2.5).
  */
 export function buildPortholeReveal(roomGroup: THREE.Group, xWall: number): void {
@@ -232,6 +211,11 @@ export function buildPortholeReveal(roomGroup: THREE.Group, xWall: number): void
 
   // Round bezel overlay on the exterior face (ref-08 model: thick ring + bolts)
   buildPortholeBezel(roomGroup, xWall);
+
+  // Star overlay disc — guarantees porthole reads as "window with stars" from
+  // oblique angles; additive, alpha≤0.30, never blooms.
+  const faceX = xWall + sign * 0.001;
+  buildPortholeStarDisc(roomGroup, 0.38, faceX, sign, WIN_Y, WIN_Z);
 }
 
 // ── Overhead storage cabinet ───────────────────────────────────────────────────
@@ -265,7 +249,9 @@ export function buildOverheadCabinet(roomGroup: THREE.Group, xWall: number, bunk
  * 0.30×0.22×0.03 gunmetal tablet with teal screen + cream bezel.
  * Named dataPadName for geometry-only identification.
  */
-export function buildWallTablet(roomGroup: THREE.Group, xWall: number, tabletZ: number, dataPadName: string): void {
+export function buildWallTablet(
+  roomGroup: THREE.Group, xWall: number, tabletZ: number, dataPadName: string,
+): void {
   const sign = xWall < 0 ? 1 : -1;
   const D = 0.03; const WT = 0.30; const HT = 0.22;
 
@@ -303,83 +289,4 @@ export function buildHooks(roomGroup: THREE.Group, xWall: number, hookZ: number)
     new THREE.MeshLambertMaterial({ color: 0x3a2a1a }));
   coat.position.set(mountX + sign * 0.025, 1.55, hookZ);
   roomGroup.add(coat);
-}
-
-// ── Room-A toolboard ───────────────────────────────────────────────────────────
-
-/**
- * Gunmetal toolboard 1.0×0.7 with 5 hung-tool silhouettes (room A, maintenance vibe).
- */
-export function buildToolboard(roomGroup: THREE.Group, xWall: number, toolZ: number): void {
-  const sign = xWall < 0 ? 1 : -1;
-  const bX = xWall + sign * 0.03;
-
-  const board = bx(new THREE.BoxGeometry(0.03, 0.70, 1.00),
-    new THREE.MeshLambertMaterial({ map: makeToolboardTex() }));
-  board.position.set(bX, 1.70, toolZ);
-  roomGroup.add(board);
-
-  const toolZs = [-0.38, -0.19, 0.0, 0.19, 0.38];
-  const toolH  = [0.30, 0.22, 0.35, 0.20, 0.28];
-  for (let i = 0; i < 5; i++) {
-    const t = bx(new THREE.BoxGeometry(0.025, toolH[i], 0.04), matRust);
-    t.position.set(bX + sign * 0.025, 1.72, toolZ + toolZs[i]);
-    roomGroup.add(t);
-  }
-}
-
-// ── Room-B framed picture + teal potted plant ──────────────────────────────────
-
-/**
- * Small framed picture on inner wall (room B personal vibe).
- */
-export function buildFramedPicture(roomGroup: THREE.Group, xWall: number, picZ: number): void {
-  const sign = xWall < 0 ? 1 : -1;
-
-  const frame = bx(new THREE.BoxGeometry(0.03, 0.30, 0.26),
-    new THREE.MeshLambertMaterial({ color: 0x2a1a0a }));
-  frame.position.set(xWall + sign * 0.015, 1.72, picZ);
-  roomGroup.add(frame);
-
-  const pic = bx(new THREE.BoxGeometry(0.005, 0.22, 0.18),
-    new THREE.MeshBasicMaterial({ map: makePictureTex() }));
-  pic.position.set(xWall + sign * 0.032, 1.72, picZ);
-  roomGroup.add(pic);
-}
-
-/**
- * Teal cylinder pot + dark green foliage sphere.
- */
-export function buildPottedPlant(roomGroup: THREE.Group, x: number, z: number): void {
-  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.05, 0.12, 10), matTealPlant);
-  pot.position.set(x, 0.06, z);
-  roomGroup.add(pot);
-
-  const soil = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.01, 10),
-    new THREE.MeshLambertMaterial({ color: 0x1a1008 }));
-  soil.position.set(x, 0.125, z);
-  roomGroup.add(soil);
-
-  const foliage = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6),
-    new THREE.MeshLambertMaterial({ color: 0x1a5a30 }));
-  foliage.position.set(x, 0.26, z);
-  roomGroup.add(foliage);
-}
-
-// ── Light switch plate ─────────────────────────────────────────────────────────
-
-/**
- * Small wall plate for a future 'Toggle Lights' switch (integrationTask).
- * Named 'light-switch-plate'.
- */
-export function buildLightSwitchPlate(roomGroup: THREE.Group, xWall: number, plateZ: number): void {
-  const sign = xWall < 0 ? 1 : -1;
-  const plate = bx(new THREE.BoxGeometry(0.02, 0.12, 0.08),
-    new THREE.MeshLambertMaterial({ color: 0x2c3038 }), 'light-switch-plate');
-  plate.position.set(xWall + sign * 0.01, 1.20, plateZ);
-  roomGroup.add(plate);
-
-  const pip = bx(new THREE.BoxGeometry(0.008, 0.02, 0.02), matTealEmit);
-  pip.position.set(xWall + sign * 0.025, 1.20, plateZ);
-  roomGroup.add(pip);
 }
