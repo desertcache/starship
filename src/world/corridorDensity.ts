@@ -18,6 +18,9 @@ const RIB_W = 0.16;
 const RIB_D = 0.05;
 const RIB_ZS = [-6, -3, 0, 3, 6] as const;
 
+// Module-level material singleton — do not allocate inside functions
+const _matGunmetal = new THREE.MeshLambertMaterial({ color: 0x1C1E22 });
+
 // Junction widening constants
 const JCT_Z_FORE = -3.0;
 const JCT_Z_AFT  = -1.0;
@@ -36,7 +39,6 @@ export function addBaseboardsAndCrowns(
 ): void {
   const halfW = W / 2;
   const halfD = D / 2;
-  const matGunmetal = new THREE.MeshLambertMaterial({ color: 0x1C1E22 });
 
   // Side walls — baseboard + crown merged per side
   for (const side of ['port', 'starboard'] as const) {
@@ -49,8 +51,10 @@ export function addBaseboardsAndCrowns(
     const crGeo = new THREE.BoxGeometry(CR_D, CR_H, D);
     crGeo.translate(sign * (halfW + CR_D / 2), H - CR_H / 2, 0);
 
-    const merged = mergeGeometries([bbGeo, crGeo]);
-    const mesh   = new THREE.Mesh(merged, matGunmetal);
+    const parts = [bbGeo, crGeo];
+    const merged = mergeGeometries(parts);
+    for (const g of parts) g.dispose();
+    const mesh   = new THREE.Mesh(merged, _matGunmetal);
     group.add(mesh);
   }
 
@@ -60,8 +64,10 @@ export function addBaseboardsAndCrowns(
     bbGeo.translate(0, BB_H / 2, wZEnd + sign * BB_D / 2);
     const crGeo = new THREE.BoxGeometry(W, CR_H, CR_D);
     crGeo.translate(0, H - CR_H / 2, wZEnd + sign * CR_D / 2);
-    const merged = mergeGeometries([bbGeo, crGeo]);
-    const mesh   = new THREE.Mesh(merged, matGunmetal);
+    const parts = [bbGeo, crGeo];
+    const merged = mergeGeometries(parts);
+    for (const g of parts) g.dispose();
+    const mesh   = new THREE.Mesh(merged, _matGunmetal);
     group.add(mesh);
   }
 }
@@ -74,7 +80,6 @@ export function addVerticalRibs(
   W: number,
 ): void {
   const halfW   = W / 2;
-  const matGunmetal = new THREE.MeshLambertMaterial({ color: 0x1C1E22 });
 
   for (const side of ['port', 'starboard'] as const) {
     const sign  = side === 'port' ? -1 : 1;
@@ -86,7 +91,8 @@ export function addVerticalRibs(
       g.translate(wX, RIB_H / 2, rz);
       ribGeos.push(g);
     }
-    const mesh = new THREE.Mesh(mergeGeometries(ribGeos), matGunmetal);
+    const mesh = new THREE.Mesh(mergeGeometries(ribGeos), _matGunmetal);
+    for (const g of ribGeos) g.dispose();
     group.add(mesh);
   }
 }

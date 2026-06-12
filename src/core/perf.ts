@@ -40,7 +40,7 @@ export function recordFrame(now: number): void {
       elapsed += state.frameTimes[i];
       i--;
     }
-    if (i > 0) {
+    if (i >= 0) {
       state.frameTimes.splice(0, i);
     }
   }

@@ -47,6 +47,7 @@ export interface ShipAssembly {
   colliders: AABB[];
   interactables: Interactable[];
   planet: PlanetResult;
+  starfield: THREE.Points;
 }
 
 export function assembleShip(scene: THREE.Scene): ShipAssembly {
@@ -206,5 +207,5 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   const ambient = new THREE.AmbientLight(0xffffff, 0.20);
   scene.add(ambient);
 
-  return { groups, colliders: allColliders, interactables: allInteractables, planet };
+  return { groups, colliders: allColliders, interactables: allInteractables, planet, starfield };
 }

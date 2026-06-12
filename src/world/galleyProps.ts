@@ -39,8 +39,10 @@ const matDark      = lm(C_DARK);
 const matRedBase   = lm(C_RED_BASE);
 const matTealEmit  = bm(C_TEAL);
 const matCoilGlow  = bm(C_RED_GLOW);
-const matMustard   = lm(C_MUSTARD);
-const matMetalTray = lm(C_METAL_TRAY);
+const matMustard      = lm(C_MUSTARD);
+const matMetalTray    = lm(C_METAL_TRAY);
+const matCupGrey      = lm(0x3a3d45);
+const matFoodPackage  = lm(C_RED_BASE);
 
 function box(
   g: THREE.Group, w: number, h: number, d: number,
@@ -203,10 +205,8 @@ function buildMessTable(g: THREE.Group): AABB[] {
   box(g, 0.28, 0.02, 0.20, TX - 0.35, TH + 0.01, TZ - 0.10, matMetalTray);
   box(g, 0.28, 0.02, 0.20, TX + 0.30, TH + 0.01, TZ + 0.15, matMetalTray);
   cyl(g, 0.038, 0.09, TX - 0.42, TH + 0.045, TZ + 0.18, matTealEmit, 'coffee-cup');
-  cyl(g, 0.036, 0.085, TX + 0.42, TH + 0.042, TZ - 0.20,
-    new THREE.MeshLambertMaterial({ color: 0x3a3d45 }));
-  box(g, 0.14, 0.10, 0.08, TX, TH + 0.05, TZ,
-    new THREE.MeshLambertMaterial({ color: 0x7a2c1f }));
+  cyl(g, 0.036, 0.085, TX + 0.42, TH + 0.042, TZ - 0.20, matCupGrey);
+  box(g, 0.14, 0.10, 0.08, TX, TH + 0.05, TZ, matFoodPackage);
 
   return [{ minX: TX - TW / 2, minY: 0, minZ: TZ - TD / 2 - BO - 0.18,
             maxX: TX + TW / 2, maxY: TH, maxZ: TZ + TD / 2 + BO + 0.18 }];

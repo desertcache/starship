@@ -23,15 +23,16 @@ import { OutputPass }      from 'three/examples/jsm/postprocessing/OutputPass.js
 //
 // Goal: gentle halos on emissives only.
 //
-//   threshold: 0.72 — only pixels brighter than ~73% of white fire the bloom.
-//              The teal emissive (#46E0D8) converts to linear luminance ≈ 0.79,
-//              which just clears the threshold. Cream walls (#E8E2D4) sit at
-//              luminance ≈ 0.77 — too close, so we push threshold to 0.80 so
-//              only the brightest emissive hotspots light up.
+//   threshold: 0.90 — raised from 0.80 so cream walls (#E8E2D4, luminance ≈0.77)
+//              can NEVER bloom. Emissive materials (teal strips, ceiling lights,
+//              console screens) use toneMapped=false and a slightly boosted colour
+//              so they still clear this threshold and produce a halo.
+//              The teal #55FFEE (boosted from #46E0D8) converts to luminance ≈0.93.
+//              Ceiling lights use pure white (0xFFFFFF, luminance 1.0).
 //   strength:  0.45 — subtle halo, not white blowout.
 //   radius:    0.55 — tight spread so the glow hugs the source geometry.
 
-const BLOOM_THRESHOLD = 0.80;
+const BLOOM_THRESHOLD = 0.90;
 const BLOOM_STRENGTH  = 0.45;
 const BLOOM_RADIUS    = 0.55;
 

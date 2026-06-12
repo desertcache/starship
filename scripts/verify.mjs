@@ -80,9 +80,14 @@ async function waitForServer(url, maxMs = 15000) {
     }
     try {
       const resp = await fetch(url);
-      if (resp.ok || resp.status < 500) return;
-    } catch {
-      // not up yet
+      if (resp.status >= 200 && resp.status <= 299) return;
+      if (resp.status >= 400 && resp.status <= 499) {
+        throw new Error(`Server returned ${resp.status} for ${url} — check build output or route config.`);
+      }
+      // 5xx / redirects: keep retrying
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('Server returned 4')) throw err;
+      // connection refused / other: not up yet
     }
     await new Promise((r) => setTimeout(r, 300));
   }
@@ -140,10 +145,25 @@ async function run() {
       console.log(`[verify] Shot saved: ${shotPath}`);
     }
 
-    // ── 6. Perf sample (5 s) ────────────────────────────────────────────────────
-    const firstCam = toShoot[0];
-    console.log(`[verify] Perf sample (5000ms) from '${firstCam}'…`);
-    await page.evaluate((n) => window.__setCam(n), firstCam);
+    // ── 6. Perf sample — worst camera first, then full 5s sample ─────────────────
+    // Phase 1: 1s quick sample per camera to find the worst (lowest fps).
+    console.log('[verify] Probing each camera (1000ms each) to find worst…');
+    let worstCam = toShoot[0];
+    let worstFps = Infinity;
+    for (const camName of toShoot) {
+      await page.evaluate((n) => window.__setCam(n), camName);
+      await page.waitForTimeout(200);
+      const probe = await page.evaluate(() => window.__perf.sample(1000));
+      console.log(`[verify]   ${camName}: ${probe.avgFps} fps`);
+      if (probe.avgFps < worstFps) {
+        worstFps = probe.avgFps;
+        worstCam = camName;
+      }
+    }
+    console.log(`[verify] Worst camera: '${worstCam}' (${worstFps} fps) — running full 5s sample there.`);
+
+    // Phase 2: full 5s sample from worst camera
+    await page.evaluate((n) => window.__setCam(n), worstCam);
     await page.waitForTimeout(200);
 
     const report = await page.evaluate(
@@ -151,6 +171,7 @@ async function run() {
     );
     report.headless = !headed;
     report.cameras = toShoot;
+    report.perfCamera = worstCam;
     report.timestamp = new Date().toISOString();
 
     writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));

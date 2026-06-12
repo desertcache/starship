@@ -4,6 +4,7 @@
  * Called by roomBuilder.ts and corridor.ts.
  */
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { matTealStrip, matCeilingLight, matDoorFrame } from '../fx/shipMaterials.js';
 import type { DoorSpec } from './roomBuilder.js';
 
@@ -160,6 +161,7 @@ export function addFloorStrips(
 
 /**
  * Add emissive ceiling light panels in a grid scaled to the room dimensions.
+ * All panels are merged into a single draw call per room to reduce geometry count.
  */
 export function addCeilingLights(
   group: THREE.Group,
@@ -177,17 +179,25 @@ export function addCeilingLights(
   const stepX = roomW / cols;
   const stepZ = roomD / rows;
 
+  const panelGeos: THREE.BufferGeometry[] = [];
+
   for (let ci = 0; ci < cols; ci++) {
     for (let ri = 0; ri < rows; ri++) {
-      const cx    = -roomW / 2 + stepX * (ci + 0.5);
-      const cz    = -roomD / 2 + stepZ * (ri + 0.5);
-      const panel = new THREE.Mesh(
-        new THREE.PlaneGeometry(PANEL_W, PANEL_D),
-        matCeilingLight,
-      );
-      panel.position.set(cx, Y, cz);
-      panel.rotation.x = Math.PI / 2;
-      group.add(panel);
+      const cx = -roomW / 2 + stepX * (ci + 0.5);
+      const cz = -roomD / 2 + stepZ * (ri + 0.5);
+      const pg  = new THREE.PlaneGeometry(PANEL_W, PANEL_D);
+      // Rotate so it faces downward (normal = -Y) and translate to final position
+      pg.rotateX(Math.PI / 2);
+      pg.translate(cx, Y, cz);
+      panelGeos.push(pg);
     }
+  }
+
+  if (panelGeos.length > 0) {
+    const merged = mergeGeometries(panelGeos);
+    // Dispose input geometries immediately — they've been merged into one
+    for (const g of panelGeos) g.dispose();
+    const panel  = new THREE.Mesh(merged, matCeilingLight);
+    group.add(panel);
   }
 }

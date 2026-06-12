@@ -62,6 +62,19 @@ let _mGun: THREE.MeshLambertMaterial | null = null;
 const matGun = (): THREE.MeshLambertMaterial =>
   _mGun ?? (_mGun = new THREE.MeshLambertMaterial({ map: mkGunTex() }));
 
+// Singleton materials used inside crate/floor-panel builders
+let _mCrateOrange: THREE.MeshBasicMaterial | null = null;
+const matCrateOrange = (): THREE.MeshBasicMaterial =>
+  _mCrateOrange ?? (_mCrateOrange = new THREE.MeshBasicMaterial({ color: COL_ORANGE }));
+
+let _mFloorPanel: THREE.MeshLambertMaterial | null = null;
+const matFloorPanel = (): THREE.MeshLambertMaterial =>
+  _mFloorPanel ?? (_mFloorPanel = new THREE.MeshLambertMaterial({ color: 0x0a0c10, side: THREE.FrontSide }));
+
+let _mFloorSeam: THREE.MeshBasicMaterial | null = null;
+const matFloorSeam = (): THREE.MeshBasicMaterial =>
+  _mFloorSeam ?? (_mFloorSeam = new THREE.MeshBasicMaterial({ color: 0x46e0d8, side: THREE.FrontSide }));
+
 // FIX: matHou hoisted to module-level singleton — was allocating fresh per buildReactor() call.
 let _mHou: THREE.MeshLambertMaterial | null = null;
 const matHou = (): THREE.MeshLambertMaterial =>
@@ -252,7 +265,7 @@ export interface CrateResult { group: THREE.Group; collider: AABB; }
 function buildCrate(x: number, z: number, w: number, h: number, d: number, crateName: string): CrateResult {
   const g = new THREE.Group(); g.name = crateName;
   const T = 0.04;
-  const sm = new THREE.MeshBasicMaterial({ color: COL_ORANGE });
+  const sm = matCrateOrange();
   const bm = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), matGun());
   bm.position.set(x, h/2, z); g.add(bm);
   ([
@@ -272,14 +285,13 @@ function buildCrate(x: number, z: number, w: number, h: number, d: number, crate
 }
 
 function buildHiddenFloorPanel(g: THREE.Group, x: number, z: number, w: number, d: number): void {
-  const floorPanelMat = new THREE.MeshLambertMaterial({ color: 0x0a0c10, side: THREE.FrontSide });
-  const panel = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.04, d - 0.04), floorPanelMat);
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.04, d - 0.04), matFloorPanel());
   panel.name = 'hidden-floor-panel';
   panel.rotation.x = -Math.PI / 2;
   panel.position.set(x, 0.001, z);
   g.add(panel);
 
-  const seamMat = new THREE.MeshBasicMaterial({ color: 0x46e0d8, side: THREE.FrontSide });
+  const seamMat = matFloorSeam();
   const seamThick = 0.012;
   const seamY = 0.002;
   const seams: [number, number, number, number][] = [

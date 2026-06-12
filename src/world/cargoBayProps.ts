@@ -59,6 +59,7 @@ function buildCatwalk(group: THREE.Group, W: number): void {
     barGeos.push(bg);
   }
   const merged = mergeGeometries(barGeos);
+  for (const g of barGeos) g.dispose();
   const deckMesh = new THREE.Mesh(merged, matGun());
   group.add(deckMesh); // 1 draw call
 
@@ -75,7 +76,9 @@ function buildCatwalk(group: THREE.Group, W: number): void {
     const postGeoB = new THREE.CylinderGeometry(POST_R, POST_R, RAIL_H, 6);
     postGeoB.translate( WALK_L / 2 - 0.04, WALK_Y + WALK_H + RAIL_H / 2, railZ);
 
-    const railMerged = mergeGeometries([railGeo, postGeoA, postGeoB]);
+    const railParts = [railGeo, postGeoA, postGeoB];
+    const railMerged = mergeGeometries(railParts);
+    for (const g of railParts) g.dispose();
     const railMesh = new THREE.Mesh(railMerged, matGun());
     group.add(railMesh); // 2 draw calls (one per side)
   }
@@ -98,6 +101,7 @@ function buildCatwalk(group: THREE.Group, W: number): void {
   strB.translate(ladderX, (WALK_Y + WALK_H) / 2,  STEP_W / 2 - 0.02);
   stepGeos.push(strA, strB);
   const ladderMerged = mergeGeometries(stepGeos);
+  for (const g of stepGeos) g.dispose();
   const ladderMesh = new THREE.Mesh(ladderMerged, matGun());
   group.add(ladderMesh); // 1 draw call
 }
@@ -118,6 +122,7 @@ function buildMagClamps(group: THREE.Group): void {
     }
   }
   const padMerged = mergeGeometries(padGeos);
+  for (const g of padGeos) g.dispose();
   const padMesh = new THREE.Mesh(padMerged, matOrange());
   group.add(padMesh); // 1 draw call
 
@@ -156,10 +161,12 @@ function buildCrateColumns(group: THREE.Group, D: number): void {
     }
     if (rustGeos.length > 0) {
       const m = new THREE.Mesh(mergeGeometries(rustGeos), matRust());
+      for (const g of rustGeos) g.dispose();
       group.add(m); // 1 draw call per column for rust crates
     }
     if (gunGeos.length > 0) {
       const m = new THREE.Mesh(mergeGeometries(gunGeos), matGun());
+      for (const g of gunGeos) g.dispose();
       group.add(m); // 1 draw call per column for gun crates
     }
 
@@ -182,6 +189,7 @@ function buildCrateColumns(group: THREE.Group, D: number): void {
     }
     if (trimGeos.length > 0) {
       const m = new THREE.Mesh(mergeGeometries(trimGeos), matOrange());
+      for (const g of trimGeos) g.dispose();
       group.add(m); // 1 draw call per column for trim
     }
   }

@@ -18,6 +18,7 @@ import type { RoomName } from './fx/audio.js';
 import { buildAllInteractables } from './world/interactWiring.js';
 import { isDoorOpen } from './world/doors.js';
 import { initBloom } from './fx/bloom.js';
+import { tickStarfield } from './fx/starfield.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -189,6 +190,7 @@ function animate(now: number): void {
   tickInteract();
   tickSway(camera, elapsed);
   ship.planet.tick(elapsed);
+  tickStarfield(ship.starfield, elapsed);
   tickDebug(now);
   audio.tick(isMoving());
 
