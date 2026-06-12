@@ -1,18 +1,19 @@
 /**
  * Room dressing helpers — Phase 3.
- * Adds teal floor strips, emissive ceiling panels, and burnt-orange door frames.
+ * Adds teal floor strips, discrete recessed ceiling fixtures, and burnt-orange door frames.
  * Called by roomBuilder.ts and corridor.ts.
  *
- * Geometry strategy (v0.4 defrag):
- *   addFloorStrips  — collects all strip BoxGeometries, merges into ONE mesh/room.
- *   addDoorFrame    — merges 3 pieces (left jamb, right jamb, header) into ONE mesh/frame.
- *   addCeilingLights — already merged (unchanged).
+ * Geometry strategy (v0.4 defrag / v0.8 B2 lane):
+ *   addFloorStrips   — collects all strip BoxGeometries, merges into ONE mesh/room.
+ *   addDoorFrame     — merges 3 pieces (left jamb, right jamb, header) into ONE mesh/frame.
+ *   addCeilingLights — delegates to buildCeilingFixtures (discrete recessed fixtures).
  *
  * Disposal: all input geometries are disposed after mergeGeometries().
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { matTealStrip, matCeilingLight, matDoorFrame } from '../fx/shipMaterials.js';
+import { matTealStrip, matDoorFrame } from '../fx/shipMaterials.js';
+import { buildCeilingFixtures } from './ceilingFixtures.js';
 import type { DoorSpec } from './roomBuilder.js';
 
 const GAP_W_DEFAULT = 1.4;
@@ -176,11 +177,16 @@ export function addFloorStrips(
   }
 }
 
-// ── Ceiling light panels ───────────────────────────────────────────────────────
+// ── Ceiling fixture panels (v0.8 B2 lane) ─────────────────────────────────────
 
 /**
- * Add emissive ceiling light panels in a grid scaled to the room dimensions.
- * All panels are merged into a single draw call per room to reduce geometry count.
+ * Replace the old giant ceiling slab panels with discrete recessed fixtures.
+ * Signature unchanged — roomBuilder.ts calls addCeilingLights(group, W, H, D)
+ * and that call site does NOT need to change.
+ *
+ * Delegates entirely to buildCeilingFixtures (ceilingFixtures.ts) which
+ * identifies the room from W×D, selects fixture positions, and emits
+ * exactly TWO merged meshes per room (gunmetal housing + emissive diffuser).
  */
 export function addCeilingLights(
   group: THREE.Group,
@@ -188,35 +194,5 @@ export function addCeilingLights(
   roomH: number,
   roomD: number,
 ): void {
-  const PANEL_W = 0.8;
-  const PANEL_D = 1.6;
-  const INSET   = 0.01;
-  const Y       = roomH - INSET;
-
-  const cols  = Math.max(1, Math.round(roomW / 2));
-  const rows  = Math.max(1, Math.round(roomD / 2.5));
-  const stepX = roomW / cols;
-  const stepZ = roomD / rows;
-
-  const panelGeos: THREE.BufferGeometry[] = [];
-
-  for (let ci = 0; ci < cols; ci++) {
-    for (let ri = 0; ri < rows; ri++) {
-      const cx = -roomW / 2 + stepX * (ci + 0.5);
-      const cz = -roomD / 2 + stepZ * (ri + 0.5);
-      const pg  = new THREE.PlaneGeometry(PANEL_W, PANEL_D);
-      // Rotate so it faces downward (normal = -Y) and translate to final position
-      pg.rotateX(Math.PI / 2);
-      pg.translate(cx, Y, cz);
-      panelGeos.push(pg);
-    }
-  }
-
-  if (panelGeos.length > 0) {
-    const merged = mergeGeometries(panelGeos);
-    // Dispose input geometries immediately — they've been merged into one
-    for (const g of panelGeos) g.dispose();
-    const panel  = new THREE.Mesh(merged, matCeilingLight);
-    group.add(panel);
-  }
+  buildCeilingFixtures(group, roomW, roomH, roomD);
 }
