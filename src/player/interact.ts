@@ -5,6 +5,10 @@
  * If it hits a registered interactable within 2.5m, shows the prompt.
  * Pressing E triggers onInteract on the current target.
  *
+ * Seated toggle-off: if the player is currently seated (state.seated=true),
+ * pressing E calls exitAnchor() to stand up — regardless of raycast target.
+ * This is the only addition to the headless raycast/proximity fallback behavior.
+ *
  * Headless (no pointer-lock) fallback for window.__test.interact():
  *   falls back to nearest registered interactable within radius.
  */
@@ -12,6 +16,8 @@
 import * as THREE from 'three';
 import type { Interactable } from '../world/types.js';
 import { showPrompt, clearPrompt } from '../ui/hud.js';
+import { getState } from '../core/state.js';
+import { exitAnchor } from './controller.js';
 
 const MAX_INTERACT_DIST = 2.5; // metres
 
@@ -45,7 +51,16 @@ export function registerInteractables(list: Interactable[]): void {
 }
 
 function onKeyDown(e: KeyboardEvent): void {
-  if (e.code === 'KeyE' && state.current) {
+  if (e.code !== 'KeyE') return;
+
+  // Seated toggle-off: press E while seated → stand up
+  const shipState = getState();
+  if (shipState.seated) {
+    exitAnchor();
+    return;
+  }
+
+  if (state.current) {
     triggerCurrent();
   }
 }
@@ -110,6 +125,7 @@ function findInteractableForObject(obj: THREE.Object3D): Interactable | null {
  * Headless interact — used by window.__test.interact().
  * Finds the nearest interactable within its declared radius from the camera.
  * This bypasses pointer-lock so it works in the Playwright harness.
+ * Does NOT trigger seated toggle-off (seated state is not expected in headless tests).
  */
 export function headlessInteract(): boolean {
   if (!state.camera) return false;

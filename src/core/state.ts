@@ -1,5 +1,5 @@
 /**
- * Ship state — Phase 4.
+ * Ship state — Phase 4 + Phase 5 extensions.
  *
  * Clock rate: 1 real second = 1 ship minute (60x acceleration).
  *   → 8 ship-hours pass in 8 real minutes of idle time.
@@ -9,7 +9,20 @@
  *   energy: −0.10/s  → drains from 100 to 0 in ~16.7 real minutes
  *   hunger: −0.07/s  → drains from 100 to 0 in ~23.8 real minutes
  * Both are noticeable within a few minutes but not punishing.
+ *
+ * Phase 5 additions:
+ *   - seated / anchorReturn for camera anchor API
+ *   - consoleMode for datapad/console overlay
+ *   - heading for compass direction
+ *   - localStorage save/load for persistence
  */
+
+import * as THREE from 'three';
+
+export interface AnchorReturn {
+  position: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+}
 
 export interface ShipState {
   /** Ship time in minutes since epoch (0 = midnight ship-day 0). */
@@ -18,15 +31,36 @@ export interface ShipState {
   energy: number;
   /** 0–100, decays over real time. */
   hunger: number;
+  /** True when the player is sitting in an anchor (seat). */
+  seated: boolean;
+  /** Camera pose to restore when exiting an anchor. */
+  anchorReturn: AnchorReturn | null;
+  /** Console/datapad mode: 0=none, 1=datapad, 2=console. */
+  consoleMode: 0 | 1 | 2;
+  /** Player heading in degrees 0–360. */
+  heading: number;
 }
 
 /** Real seconds → ship minutes conversion rate. */
 export const SHIP_MINUTES_PER_REAL_SECOND = 1; // 1 real-s = 1 ship-min → 1 real-hr = 1 ship-hr at 60x
 
+const SAVE_KEY = 'starship-save';
+
+/** Serialized subset for localStorage. */
+interface SaveData {
+  shipMinutes: number;
+  energy: number;
+  hunger: number;
+}
+
 const state: ShipState = {
   shipMinutes: 7 * 60, // start at 07:00 ship time
   energy: 80,
   hunger: 70,
+  seated: false,
+  anchorReturn: null,
+  consoleMode: 0,
+  heading: 0,
 };
 
 const ENERGY_DECAY = 0.10; // per real second
@@ -45,7 +79,7 @@ export function advanceShipClock(minutes: number): void {
 }
 
 export function getState(): ShipState {
-  return { ...state };
+  return { ...state, anchorReturn: state.anchorReturn };
 }
 
 export function setEnergy(v: number): void {
@@ -56,6 +90,22 @@ export function setHunger(v: number): void {
   state.hunger = Math.max(0, Math.min(100, v));
 }
 
+/** Set seated state and anchor-return pose. */
+export function setSeated(seated: boolean, returnPose?: AnchorReturn): void {
+  state.seated = seated;
+  state.anchorReturn = returnPose ?? null;
+}
+
+/** Set console mode. */
+export function setConsoleMode(mode: 0 | 1 | 2): void {
+  state.consoleMode = mode;
+}
+
+/** Set player heading (0–360 degrees). */
+export function setHeading(degrees: number): void {
+  state.heading = ((degrees % 360) + 360) % 360;
+}
+
 /** Format ship-minutes as "DD:HH:MM" clock string. */
 export function formatShipClock(minutes: number): string {
   const totalMin = Math.floor(minutes) % (24 * 60 * 100); // wrap after 100 days
@@ -64,4 +114,39 @@ export function formatShipClock(minutes: number): string {
   const hh = String(h).padStart(2, '0');
   const mm = String(m).padStart(2, '0');
   return `${hh}:${mm}`;
+}
+
+/**
+ * Save shipMinutes/energy/hunger to localStorage under key 'starship-save'.
+ * Called after interactions that meaningfully change state (sleep, eat).
+ */
+export function saveState(): void {
+  try {
+    const data: SaveData = {
+      shipMinutes: state.shipMinutes,
+      energy: state.energy,
+      hunger: state.hunger,
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  } catch {
+    // localStorage may be unavailable in some contexts — silently skip
+  }
+}
+
+/**
+ * Load state from localStorage if a save exists.
+ * Returns true if a save was found and applied.
+ */
+export function loadState(): boolean {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw) as Partial<SaveData>;
+    if (typeof data.shipMinutes === 'number') state.shipMinutes = data.shipMinutes;
+    if (typeof data.energy === 'number') state.energy = Math.max(0, Math.min(100, data.energy));
+    if (typeof data.hunger === 'number') state.hunger = Math.max(0, Math.min(100, data.hunger));
+    return true;
+  } catch {
+    return false;
+  }
 }

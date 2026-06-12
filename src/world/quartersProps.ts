@@ -1,8 +1,7 @@
 /**
- * Quarters prop builders — Phase 3b.
- * Builds bunk, lockers, and nightstand geometry for crew quarters A and B.
- * All materials are created once and shared between both rooms.
- * No PointLights — emissive only for screen glow.
+ * Quarters prop builders — core furniture (Phase 3b / v0.2).
+ * Bunk, lockers, nightstand. Materials are singletons shared with quartersDressing.ts.
+ * Wall dressing (surround, reveal, cabinet, tablet, hooks, etc.) → quartersDressing.ts
  *
  * Coordinate conventions (all in room-local space):
  *   X: -2.5 port / +2.5 starboard
@@ -10,19 +9,18 @@
  *   Z: -2.5 fore / +2.5 aft
  *
  * Bunk group: origin at centre of bunk footprint, head = -Z, foot = +Z.
- *   Caller positions group: bunk back face (back rail) touching fore wall.
- *   → group.position.z = -2.5 + 0.52 ≈ -1.98
+ *   Caller positions group: bunk back face touching fore wall.
+ *   → group.position.z = -1.98
  *
- * Locker group: origin at back face (Z = 0), lockers spread along X axis,
- *   face (with handles) pointing in -Z direction, back flush to aft wall.
- *   → group.position.z = +2.5, rotate Y = 0, lockers face -Z into room.
+ * Locker group: origin at back face (Z = 0), lockers spread along X axis.
+ *   → group.position.z = +2.5, lockers face -Z into room.
  *
  * Nightstand group: origin at floor center of stand base.
  */
 import * as THREE from 'three';
 import type { AABB } from './types.js';
 
-// ── Material singletons (shared between both rooms) ────────────────────────────
+// ── Material singletons (shared with quartersDressing.ts) ─────────────────────
 
 /** Dark gunmetal — bunk frame posts, rails, locker bodies. */
 export const matGunmetal     = new THREE.MeshLambertMaterial({ color: 0x1c1e22 });
@@ -46,21 +44,31 @@ export const matCup          = new THREE.MeshLambertMaterial({ color: 0x3a3d45 }
 export const matDatapad      = new THREE.MeshLambertMaterial({ color: 0x181a1e });
 /** Emissive screen face — faint teal glow. */
 export const matDataScreen   = new THREE.MeshBasicMaterial({ color: 0x1e8070 });
+/** Teal emissive — reading light strip, tablet screen. */
+export const matTealEmit     = new THREE.MeshBasicMaterial({ color: 0x46e0d8 });
+/** Cream bezel for tablet / sill. */
+export const matCream        = new THREE.MeshLambertMaterial({ color: 0xe8e2d4 });
+/** Orange rim / flange / cabinet handles. */
+export const matOrange       = new THREE.MeshLambertMaterial({ color: 0xc7641e });
+/** Rust / red — toolboard hung-tool silhouettes for room A. */
+export const matRust         = new THREE.MeshLambertMaterial({ color: 0x7a2c1f });
+/** Teal potted plant (room B accent). */
+export const matTealPlant    = new THREE.MeshLambertMaterial({ color: 0x2aaa96 });
 
 // ── Geometry singletons (reused across both rooms) ─────────────────────────────
 
 // Bunk
-const geoPost      = new THREE.BoxGeometry(0.07, 0.76, 0.07); // vertical corner post
-const geoRailX     = new THREE.BoxGeometry(2.00, 0.05, 0.05); // side rail along X
-const geoRailZ     = new THREE.BoxGeometry(0.05, 0.05, 1.00); // end rail along Z
-const geoMattress  = new THREE.BoxGeometry(1.90, 0.16, 0.98); // mattress slab
-const geoBlanket   = new THREE.BoxGeometry(1.90, 0.18, 0.28); // foot-end blanket band
-const geoPillow    = new THREE.BoxGeometry(0.82, 0.10, 0.28); // head-end pillow
+const geoPost      = new THREE.BoxGeometry(0.07, 0.76, 0.07);
+const geoRailX     = new THREE.BoxGeometry(2.00, 0.05, 0.05);
+const geoRailZ     = new THREE.BoxGeometry(0.05, 0.05, 1.00);
+const geoMattress  = new THREE.BoxGeometry(1.90, 0.16, 0.98);
+const geoBlanket   = new THREE.BoxGeometry(1.90, 0.18, 0.28);
+const geoPillow    = new THREE.BoxGeometry(0.82, 0.10, 0.28);
 
-// Lockers — back at Z=0, face at Z=-0.35, spread along X
-const geoLockBody  = new THREE.BoxGeometry(0.50, 1.86, 0.35); // single locker body
-const geoLockSeam  = new THREE.BoxGeometry(0.007, 1.86, 0.01); // vertical seam detail
-const geoLockHndl  = new THREE.BoxGeometry(0.10, 0.70, 0.06); // orange handle bar (wider for visibility)
+// Lockers
+const geoLockBody  = new THREE.BoxGeometry(0.50, 1.86, 0.35);
+const geoLockSeam  = new THREE.BoxGeometry(0.007, 1.86, 0.01);
+const geoLockHndl  = new THREE.BoxGeometry(0.10, 0.70, 0.06);
 
 // Nightstand
 const geoNstand    = new THREE.BoxGeometry(0.44, 0.54, 0.38);
@@ -144,15 +152,16 @@ export interface LockersResult {
 
 /**
  * Build a bank of lockers.
- *
  * Geometry: lockers spread along X axis, back face at Z=0, face at Z=-0.35.
  * Place group at Z = +2.5 (aft wall) so back flush to wall, face into room.
  *
  * @param count - 2 or 3 lockers.
  * @param xCenter - X offset to centre the bank (default 0).
+ * @param namePrefix - mesh.name on the group (default 'lockers').
  */
-export function buildLockers(count: 2 | 3, xCenter = 0): LockersResult {
+export function buildLockers(count: 2 | 3, xCenter = 0, namePrefix = 'lockers'): LockersResult {
   const g = new THREE.Group();
+  g.name = namePrefix;
   const colliders: AABB[] = [];
 
   const step = 0.54;
@@ -161,17 +170,14 @@ export function buildLockers(count: 2 | 3, xCenter = 0): LockersResult {
   for (let i = 0; i < count; i++) {
     const xOff = xCenter + (-half + i * step);
 
-    // Main body — centred between back (Z=0) and face (Z=-0.35)
     const body = b(geoLockBody, matLockerBody);
     body.position.set(xOff, 0.93, -0.175);
     g.add(body);
 
-    // Vertical panel seam at centre of locker face
     const seam = b(geoLockSeam, matGunmetal);
     seam.position.set(xOff, 0.93, -0.352);
     g.add(seam);
 
-    // Orange handle bar proud of face
     const handle = b(geoLockHndl, matLockerHandle);
     handle.position.set(xOff, 0.93, -0.375);
     g.add(handle);

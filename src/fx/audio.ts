@@ -1,219 +1,158 @@
 /**
- * src/fx/audio.ts — Phase 5 WebAudio synthesis. Zero external files.
+ * src/fx/audio.ts — Phase 5 WebAudio public API. Zero external files.
  *
- * Sounds:
- *   1. Engine hum: low filtered noise + sine sub-oscillator, constant,
- *      with a slow LFO for organic breathing.
- *   2. Footsteps: short filtered noise bursts tied to player movement,
- *      random pitch/interval variation so it never sounds mechanical.
+ * Node builders live in audioSynth.ts (kept under 300 lines).
+ * This file owns: AudioContext bootstrap, room crossfade logic, module state,
+ * and the exported AudioSystem singleton.
  *
- * AudioContext starts SUSPENDED — it can only resume after a user gesture.
- * We resume on first click or keydown. The game runs fine with audio absent
- * (headless Playwright never triggers a gesture, so audio stays suspended
- * and produces no errors).
+ * AudioContext starts SUSPENDED — resumes only on first user gesture.
+ * All synthesis is safe to omit if ctx is null (headless Playwright).
  */
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+import {
+  RoomBranch,
+  MASTER_GAIN, CROSSFADE_MS,
+  STEP_INTERVAL_MIN, STEP_INTERVAL_MAX,
+  buildEngineHum,
+  buildCockpitBed, buildEngineeringBed, buildGalleyBed, buildCorridorBed,
+  scheduleStep, playOneShotInternal, buildQuartersPersonality,
+} from './audioSynth.js';
+
+// Re-export types callers need
+export type { RoomName, SurfaceType, OneShotType } from './audioSynth.js';
+
+import type { RoomName, SurfaceType, OneShotType } from './audioSynth.js';
 
 export interface AudioSystem {
-  /** Call each frame. moving=true when player is walking. */
   tick(moving: boolean): void;
-  /** Dispose all nodes and buffers. */
+  playOneShot(type: OneShotType): void;
+  setRoom(room: RoomName): void;
   dispose(): void;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Room Z-range helper ───────────────────────────────────────────────────────
 
-// Engine hum
-const HUM_NOISE_GAIN    = 0.035;   // overall filtered-noise level
-const HUM_SUB_GAIN      = 0.060;   // sine sub-oscillator level
-const HUM_SUB_FREQ      = 58;      // Hz — low rumble
-const HUM_LPF_FREQ      = 140;     // noise low-pass cutoff
-const HUM_LPF_Q         = 1.2;
-const HUM_BANDPASS_FREQ = 90;
-const HUM_BANDPASS_Q    = 4.0;
-const LFO_FREQ          = 0.08;    // Hz — slow breath cycle
-const LFO_DEPTH         = 0.018;   // gain modulation depth (keeps it subtle)
-const MASTER_GAIN       = 0.65;    // master output level
+/**
+ * Map a world-space Z position to a room name.
+ * cockpit Z < -18, corridor -18..-7, galley -7..-1, engineering -1..9, cargo > 9.
+ */
+export function getRoomForPosition(z: number): RoomName {
+  if (z < -18) return 'cockpit';
+  if (z < -7)  return 'corridor';
+  if (z < -1)  return 'galley';
+  if (z <= 9)  return 'engineering';
+  return 'cargo';
+}
 
-// Footsteps
-const STEP_NOISE_GAIN   = 0.22;    // burst loudness
-const STEP_BURST_SECS   = 0.055;   // burst duration
-const STEP_LPF_FREQ     = 700;     // step filter — muffled thud
-const STEP_INTERVAL_MIN = 0.42;    // fastest cadence (secs between steps)
-const STEP_INTERVAL_MAX = 0.54;    // slowest cadence
-const STEP_FREQ_JITTER  = 100;     // ±Hz variation on step filter for variety
+function surfaceForRoom(room: RoomName): SurfaceType {
+  if (room === 'engineering' || room === 'cargo') return 'metal';
+  if (room === 'galley') return 'tile';
+  return 'soft';
+}
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
 let ctx: AudioContext | null = null;
-
-// Engine hum nodes (kept alive)
 let masterGain: GainNode | null = null;
-let humNoiseSource: AudioBufferSourceNode | null = null;
+let humNoiseSource: ReturnType<typeof buildEngineHum> | null = null;
 
-// Footstep timing state
-let nextStepTime = 0;   // absolute AudioContext time for the next step burst
+let nextStepTime = 0;
+let currentSurface: SurfaceType = 'soft';
 
-// ── Noise buffer helper ───────────────────────────────────────────────────────
+const roomBranches: Partial<Record<RoomName, RoomBranch>> = {};
+let currentRoom: RoomName = 'corridor';
 
-function makeNoiseBuffer(audioCtx: AudioContext, durationSecs: number): AudioBuffer {
-  const sampleRate = audioCtx.sampleRate;
-  const length     = Math.ceil(sampleRate * durationSecs);
-  const buf        = audioCtx.createBuffer(1, length, sampleRate);
-  const data       = buf.getChannelData(0);
-  for (let i = 0; i < length; i++) {
-    data[i] = Math.random() * 2 - 1;
-  }
-  return buf;
+// Module-level function refs so playOneShot/setAudioRoom work before initAudio()
+let _playOneShotFn: ((type: OneShotType) => void) | null = null;
+let _setRoomFn: ((room: RoomName) => void) | null = null;
+
+/** Module-level playOneShot — importable by main.ts / interact.ts */
+export function playOneShot(type: OneShotType): void {
+  _playOneShotFn?.(type);
 }
 
-// ── Engine hum construction ───────────────────────────────────────────────────
-
-function buildEngineHum(audioCtx: AudioContext, outputGain: GainNode): void {
-  // ── Noise branch ──────────────────────────────────────────────────────────
-  // 4-second looping noise buffer so it never repeats audibly
-  const noiseBuffer = makeNoiseBuffer(audioCtx, 4.0);
-  humNoiseSource    = audioCtx.createBufferSource();
-  humNoiseSource.buffer = noiseBuffer;
-  humNoiseSource.loop   = true;
-
-  const lpf = audioCtx.createBiquadFilter();
-  lpf.type            = 'lowpass';
-  lpf.frequency.value = HUM_LPF_FREQ;
-  lpf.Q.value         = HUM_LPF_Q;
-
-  const bandpass = audioCtx.createBiquadFilter();
-  bandpass.type            = 'bandpass';
-  bandpass.frequency.value = HUM_BANDPASS_FREQ;
-  bandpass.Q.value         = HUM_BANDPASS_Q;
-
-  const noiseGainNode = audioCtx.createGain();
-  noiseGainNode.gain.value = HUM_NOISE_GAIN;
-
-  humNoiseSource.connect(lpf);
-  lpf.connect(bandpass);
-  bandpass.connect(noiseGainNode);
-  noiseGainNode.connect(outputGain);
-  humNoiseSource.start(0);
-
-  // ── Sub-oscillator (sine) ─────────────────────────────────────────────────
-  const sub = audioCtx.createOscillator();
-  sub.type            = 'sine';
-  sub.frequency.value = HUM_SUB_FREQ;
-
-  const subGain = audioCtx.createGain();
-  subGain.gain.value  = HUM_SUB_GAIN;
-
-  sub.connect(subGain);
-  subGain.connect(outputGain);
-  sub.start(0);
-
-  // ── LFO (modulates master gain for breathing effect) ──────────────────────
-  const lfo = audioCtx.createOscillator();
-  lfo.type            = 'sine';
-  lfo.frequency.value = LFO_FREQ;
-
-  const lfoGain = audioCtx.createGain();
-  lfoGain.gain.value  = LFO_DEPTH;
-
-  // LFO target: masterGain.gain — adds ± LFO_DEPTH to the master level
-  lfo.connect(lfoGain);
-  lfoGain.connect(outputGain.gain);
-  lfo.start(0);
-}
-
-// ── Footstep burst ────────────────────────────────────────────────────────────
-
-function scheduleStep(
-  audioCtx: AudioContext,
-  outputGain: GainNode,
-  when: number,
-): void {
-  const stepNoiseBuffer = makeNoiseBuffer(audioCtx, STEP_BURST_SECS + 0.01);
-
-  const source = audioCtx.createBufferSource();
-  source.buffer = stepNoiseBuffer;
-
-  // Slight pitch jitter via playback rate (affects frequency character)
-  source.playbackRate.value = 0.85 + Math.random() * 0.3;
-
-  const filterFreq = STEP_LPF_FREQ + (Math.random() * 2 - 1) * STEP_FREQ_JITTER;
-  const lpf        = audioCtx.createBiquadFilter();
-  lpf.type            = 'lowpass';
-  lpf.frequency.value = filterFreq;
-  lpf.Q.value         = 0.8;
-
-  const stepGain = audioCtx.createGain();
-  stepGain.gain.setValueAtTime(STEP_NOISE_GAIN, when);
-  stepGain.gain.exponentialRampToValueAtTime(0.0001, when + STEP_BURST_SECS);
-
-  source.connect(lpf);
-  lpf.connect(stepGain);
-  stepGain.connect(outputGain);
-  source.start(when);
-  source.stop(when + STEP_BURST_SECS + 0.01);
+/** Module-level setRoom — importable by main.ts */
+export function setAudioRoom(room: RoomName): void {
+  _setRoomFn?.(room);
 }
 
 // ── AudioContext bootstrap ────────────────────────────────────────────────────
 
 function resumeCtx(): void {
-  if (ctx && ctx.state === 'suspended') {
-    void ctx.resume();
-  }
+  if (ctx?.state === 'suspended') void ctx.resume();
 }
 
 function initAudioContext(): void {
-  if (ctx) return; // already set up
-
+  if (ctx) return;
   try {
     ctx = new AudioContext();
   } catch {
-    // AudioContext not available (headless / no audio hardware) — silently skip
     return;
   }
 
-  // Master gain node — all audio routed through here
   masterGain = ctx.createGain();
   masterGain.gain.value = MASTER_GAIN;
   masterGain.connect(ctx.destination);
 
-  buildEngineHum(ctx, masterGain);
+  humNoiseSource = buildEngineHum(ctx, masterGain);
+
+  roomBranches['cockpit']     = buildCockpitBed(ctx, masterGain);
+  roomBranches['engineering'] = buildEngineeringBed(ctx, masterGain);
+  roomBranches['galley']      = buildGalleyBed(ctx, masterGain);
+  roomBranches['corridor']    = buildCorridorBed(ctx, masterGain);
+  roomBranches['cargo']       = buildCorridorBed(ctx, masterGain);
+
+  // Corridor starts at full gain
+  const corridorBranch = roomBranches['corridor'];
+  if (corridorBranch) corridorBranch.gainNode.gain.value = 1;
+
+  buildQuartersPersonality(ctx, masterGain);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * Initialise audio and attach gesture listeners.
- * Safe to call unconditionally — does nothing in headless environments.
- */
 export function initAudio(): AudioSystem {
-  // Gesture listeners — resume AudioContext on first user interaction
-  const onGesture = (): void => {
-    initAudioContext();
-    resumeCtx();
-  };
+  const onGesture = (): void => { initAudioContext(); resumeCtx(); };
   window.addEventListener('click',   onGesture, { once: true });
   window.addEventListener('keydown', onGesture, { once: true });
 
-  function tick(moving: boolean): void {
-    if (!ctx || !masterGain) return;
-    if (ctx.state !== 'running') return;
-
+  function crossfadeToRoom(room: import('./audioSynth.js').RoomName): void {
+    if (!ctx || room === currentRoom) return;
     const now = ctx.currentTime;
+    const fadeT = CROSSFADE_MS / 1000;
 
+    const out = roomBranches[currentRoom];
+    if (out) {
+      out.gainNode.gain.cancelScheduledValues(now);
+      out.gainNode.gain.setValueAtTime(out.gainNode.gain.value, now);
+      out.gainNode.gain.linearRampToValueAtTime(0, now + fadeT);
+    }
+    const ins = roomBranches[room];
+    if (ins) {
+      ins.gainNode.gain.cancelScheduledValues(now);
+      ins.gainNode.gain.setValueAtTime(0, now);
+      ins.gainNode.gain.linearRampToValueAtTime(1, now + fadeT);
+    }
+    currentRoom = room;
+    currentSurface = surfaceForRoom(room);
+  }
+
+  _setRoomFn     = crossfadeToRoom;
+  _playOneShotFn = (type) => {
+    if (!ctx || !masterGain || ctx.state !== 'running') return;
+    playOneShotInternal(ctx, masterGain, type);
+  };
+
+  function tick(moving: boolean): void {
+    if (!ctx || !masterGain || ctx.state !== 'running') return;
+    const now = ctx.currentTime;
     if (moving) {
-      // Schedule the next step if we've reached the time for it
       if (now >= nextStepTime) {
-        scheduleStep(ctx, masterGain, now + 0.005); // tiny lookahead
-
-        // Randomise interval for next step
-        const interval = STEP_INTERVAL_MIN
+        scheduleStep(ctx, masterGain, now + 0.005, currentSurface);
+        nextStepTime = now + STEP_INTERVAL_MIN
           + Math.random() * (STEP_INTERVAL_MAX - STEP_INTERVAL_MIN);
-        nextStepTime = now + interval;
       }
     } else {
-      // Reset step timer so the next movement starts a fresh cadence
       nextStepTime = 0;
     }
   }
@@ -223,15 +162,18 @@ export function initAudio(): AudioSystem {
       try { humNoiseSource.stop(); } catch { /* already stopped */ }
       humNoiseSource = null;
     }
-    if (ctx) {
-      void ctx.close();
-      ctx         = null;
-      masterGain  = null;
-    }
+    if (ctx) { void ctx.close(); ctx = null; masterGain = null; }
+    _playOneShotFn = null;
+    _setRoomFn     = null;
     window.removeEventListener('click',   onGesture);
     window.removeEventListener('keydown', onGesture);
   }
 
-  return { tick, dispose };
+  const system: AudioSystem = {
+    tick,
+    playOneShot: (type) => { _playOneShotFn?.(type); },
+    setRoom: crossfadeToRoom,
+    dispose,
+  };
+  return system;
 }
-

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
-import { addCockpitProps } from './cockpitProps.js';
+import { addCockpitProps, liveScreenTick, dustMoteTick } from './cockpitProps.js';
 import type { RoomModule } from './types.js';
 
 /** Cockpit — fore end of ship. 6W x 3H x 5D. */
@@ -33,9 +33,21 @@ export function buildCockpit(): RoomModule {
 
   group.name = 'cockpit';
 
-  // Add props (console bank, seats, pedestal, accents)
+  // Add props (console bank, seats, side consoles, pedestal, dust, decals)
   const props = addCockpitProps(group);
   colliders.push(...props.colliders);
+
+  // Per-frame tick for live screens and dust motes (onBeforeRender on the group)
+  let _lastFrame = 0;
+  group.onBeforeRender = (): void => {
+    const elapsed = performance.now();
+    // Gate dust mote tick to ~30fps update (every ~33ms)
+    if (elapsed - _lastFrame > 16) {
+      dustMoteTick();
+      liveScreenTick(elapsed);
+      _lastFrame = elapsed;
+    }
+  };
 
   // cockpit cam — from aft looking fore; eye level sees seats mid-frame,
   // console bank in lower-mid, canopy + planet above

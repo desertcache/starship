@@ -1,16 +1,26 @@
 /**
- * src/ui/hud.ts — Minimal sci-fi HUD (Phase 4).
+ * src/ui/hud.ts — Sci-fi HUD (Phase 4 + Phase 5 polish).
  *
- * Elements:
- *   • Ship clock  — top-left, monospace, teal
- *   • Energy bar  — top-left below clock, teal #46E0D8 fill on dark bg
- *   • Hunger bar  — top-left below energy
- *   • Interaction prompt — center-bottom, appears only when something is targeted
+ * Core elements owned here:
+ *   - Ship clock (top-left, monospace teal)
+ *   - Energy / hunger bars
+ *   - Crosshair (fixed-center 6px circle, teal glow when prompt visible)
+ *   - Interaction prompt (center-bottom)
+ *   - Fade overlay (black fullscreen for sleep/eat transitions)
  *
- * The fade overlay (DOM) is also created here for sleep/eat transitions.
+ * Toast / overlay elements live in hudOverlay.ts (re-exported here).
+ *
+ * Palette: cream #E8E2D4, orange #C7641E, teal #46E0D8, gunmetal #1C1E22
  */
 
 import { formatShipClock } from '../core/state.js';
+import {
+  initRoomToast, initSaveToast, initOverlay,
+} from './hudOverlay.js';
+export {
+  showRoomToast, showSaveToast,
+  showOverlay, hideOverlay,
+} from './hudOverlay.js';
 
 // ── DOM elements ──────────────────────────────────────────────────────────────
 
@@ -18,9 +28,10 @@ let clockEl: HTMLDivElement | null = null;
 let energyFill: HTMLDivElement | null = null;
 let hungerFill: HTMLDivElement | null = null;
 let promptEl: HTMLDivElement | null = null;
+let crosshairEl: HTMLDivElement | null = null;
 let fadeEl: HTMLDivElement | null = null;
 
-const TEAL = '#46E0D8';
+const TEAL   = '#46E0D8';
 const BAR_BG = 'rgba(10,11,16,0.85)';
 
 function makeDiv(styles: string): HTMLDivElement {
@@ -59,12 +70,7 @@ export function initHud(): void {
 
   // ── Bar row factory ─────────────────────────────────────────────────────────
   function makeBar(label: string): HTMLDivElement {
-    const row = makeDiv([
-      'display:flex',
-      'align-items:center',
-      'gap:6px',
-    ].join(';'));
-
+    const row = makeDiv('display:flex;align-items:center;gap:6px');
     const lbl = makeDiv([
       `color:${TEAL}`,
       'font-size:10px',
@@ -84,7 +90,6 @@ export function initHud(): void {
       'height:6px',
       'overflow:hidden',
     ].join(';'));
-
     const fill = makeDiv([
       `background:${TEAL}`,
       'height:100%',
@@ -94,7 +99,6 @@ export function initHud(): void {
     ].join(';'));
     track.appendChild(fill);
     row.appendChild(track);
-
     wrapper.appendChild(row);
     return fill;
   }
@@ -102,6 +106,22 @@ export function initHud(): void {
   energyFill = makeBar('ENERGY');
   hungerFill = makeBar('HUNGER');
   document.body.appendChild(wrapper);
+
+  // ── Crosshair (fixed center) ────────────────────────────────────────────────
+  crosshairEl = makeDiv([
+    'position:fixed',
+    'top:50%',
+    'left:50%',
+    'transform:translate(-50%,-50%)',
+    'width:6px',
+    'height:6px',
+    'border-radius:50%',
+    'border:1.5px solid rgba(255,255,255,0.4)',
+    'pointer-events:none',
+    'z-index:500',
+    'transition:border-color 0.15s ease, box-shadow 0.15s ease',
+  ].join(';'));
+  document.body.appendChild(crosshairEl);
 
   // ── Interaction prompt (center-bottom) ──────────────────────────────────────
   promptEl = makeDiv([
@@ -136,6 +156,11 @@ export function initHud(): void {
     'transition:opacity 0.35s ease',
   ].join(';'));
   document.body.appendChild(fadeEl);
+
+  // ── Toast + overlay elements (delegated to hudOverlay.ts) ──────────────────
+  initRoomToast();
+  initSaveToast();
+  initOverlay();
 }
 
 // ── Tick ──────────────────────────────────────────────────────────────────────
@@ -152,11 +177,21 @@ export function showPrompt(text: string): void {
   if (!promptEl) return;
   promptEl.textContent = text;
   promptEl.style.display = 'block';
+  // Teal crosshair glow when prompt visible
+  if (crosshairEl) {
+    crosshairEl.style.borderColor = TEAL;
+    crosshairEl.style.boxShadow = `0 0 6px ${TEAL}, 0 0 12px rgba(70,224,216,0.4)`;
+  }
 }
 
 export function clearPrompt(): void {
   if (!promptEl) return;
   promptEl.style.display = 'none';
+  // Reset crosshair to neutral
+  if (crosshairEl) {
+    crosshairEl.style.borderColor = 'rgba(255,255,255,0.4)';
+    crosshairEl.style.boxShadow = 'none';
+  }
 }
 
 // ── Fade transition ───────────────────────────────────────────────────────────

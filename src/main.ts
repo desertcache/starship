@@ -6,14 +6,15 @@ import {
   setActiveCamera,
   teleportToCamera,
 } from './core/cameras.js';
-import { tickState, getState } from './core/state.js';
+import { tickState, getState, loadState } from './core/state.js';
 import { initDebug, tickDebug } from './ui/debug.js';
-import { initHud, tickHud } from './ui/hud.js';
+import { initHud, tickHud, showRoomToast } from './ui/hud.js';
 import { assembleShip } from './world/assembly.js';
-import { initController, tickController, isMoving } from './player/controller.js';
+import { initController, tickController, isMoving, tickBob } from './player/controller.js';
 import { initInteract, registerInteractables, tickInteract, headlessInteract } from './player/interact.js';
 import { tickSway } from './fx/sway.js';
-import { initAudio } from './fx/audio.js';
+import { initAudio, getRoomForPosition, playOneShot } from './fx/audio.js';
+import type { RoomName } from './fx/audio.js';
 import { initBloom } from './fx/bloom.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
@@ -41,6 +42,9 @@ initPerf(renderer);
 initDebug(renderer, camera);
 initHud();
 
+// ── Load persisted state if available ────────────────────────────────────────
+loadState();
+
 // ── Audio (Phase 5) ───────────────────────────────────────────────────────────
 // initAudio attaches gesture listeners; the AudioContext starts suspended and
 // only resumes on the first user click/keydown. Safe if audio is blocked.
@@ -58,6 +62,24 @@ initController(camera, renderer, ship.colliders);
 
 // ── Interaction system ────────────────────────────────────────────────────────
 initInteract(camera, scene);
+
+// Wire one-shot SFX into existing interactable callbacks without touching world files.
+// Wrap onInteract for 'stove' (eat) and 'bunk-*' (sleep/ui confirm).
+for (const ia of ship.interactables) {
+  const originalOnInteract = ia.onInteract.bind(ia);
+  if (ia.id === 'stove') {
+    ia.onInteract = (ctx) => {
+      playOneShot('eat');
+      originalOnInteract(ctx);
+    };
+  } else if (ia.id === 'bunk-a' || ia.id === 'bunk-b') {
+    ia.onInteract = (ctx) => {
+      playOneShot('ui');
+      originalOnInteract(ctx);
+    };
+  }
+}
+
 registerInteractables(ship.interactables);
 
 // ── Start at corridor camera ──────────────────────────────────────────────────
@@ -116,6 +138,17 @@ const testAPI: TestAPI = {
 
 (window as unknown as Record<string, unknown>)['__test'] = testAPI;
 
+// ── Room tracking for ambient crossfade + toast ───────────────────────────────
+let lastRoom: RoomName = 'corridor';
+
+const ROOM_LABELS: Record<RoomName, string> = {
+  cockpit:     'COCKPIT',
+  corridor:    'CORRIDOR',
+  galley:      'GALLEY',
+  engineering: 'ENGINEERING',
+  cargo:       'CARGO',
+};
+
 // ── Render loop ───────────────────────────────────────────────────────────────
 let firstFrame = true;
 let lastFrameTime = performance.now();
@@ -136,12 +169,24 @@ function animate(now: number): void {
   const elapsed = (now - startTime) / 1000;
 
   tickController(now);
+
+  // Head-bob applied after collision resolution in tickController
+  tickBob(camera, elapsed, isMoving());
+
   tickState(dtSeconds);
   tickInteract();
   tickSway(camera, elapsed);
   ship.planet.tick(elapsed);
   tickDebug(now);
   audio.tick(isMoving());
+
+  // Room ambient crossfade + toast on room change
+  const currentRoom = getRoomForPosition(camera.position.z);
+  if (currentRoom !== lastRoom) {
+    audio.setRoom(currentRoom);
+    showRoomToast(ROOM_LABELS[currentRoom]);
+    lastRoom = currentRoom;
+  }
 
   const s = getState();
   tickHud(s.shipMinutes, s.energy, s.hunger);
