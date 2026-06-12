@@ -129,29 +129,15 @@ export function buildReactor(H: number): ReactorResult {
   const accRing = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.01, R + 0.01, 0.12, 16), accMat);
   accRing.position.set(CX, 0.30, CZ); attachPulse(accRing, accMat, 0.5, 1.0, Math.PI); g.add(accRing);
 
-  // Teal accent strips on reactor column (emissive, phase-lagged pulse via onBeforeRender)
-  const stripAngles = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2];
-  stripAngles.forEach((ang, i) => {
-    const stripMat = new THREE.MeshLambertMaterial({
-      color: 0x46e0d8,
-      emissive: new THREE.Color(0x46e0d8),
-      emissiveIntensity: 0.8,
-    });
-    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.04, H * 0.65, 0.02), stripMat);
-    strip.position.set(
-      CX + Math.sin(ang) * (R + 0.02),
-      CY,
-      CZ + Math.cos(ang) * (R + 0.02),
-    );
-    strip.rotation.y = -ang;
+  // Teal accent strips on reactor column (phase-lagged pulse)
+  [0, Math.PI/2, Math.PI, 3*Math.PI/2].forEach((ang, i) => {
+    const sm2 = new THREE.MeshLambertMaterial({ color: 0x46e0d8, emissive: new THREE.Color(0x46e0d8), emissiveIntensity: 0.8 });
+    const st2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, H*0.65, 0.02), sm2);
+    st2.position.set(CX+Math.sin(ang)*(R+0.02), CY, CZ+Math.cos(ang)*(R+0.02));
+    st2.rotation.y = -ang;
     const _i = i;
-    // Self-animating via onBeforeRender — time via performance.now().
-    // Phase-lagged vs structural reactor light pulse (phase offset 0.3 + per-strip stagger).
-    strip.onBeforeRender = (): void => {
-      const t = performance.now() * 0.001;
-      stripMat.emissiveIntensity = 0.8 + Math.sin(t * 2.1 + 0.3 + _i * 0.15) * 0.2;
-    };
-    g.add(strip);
+    st2.onBeforeRender = (): void => { sm2.emissiveIntensity = 0.8+Math.sin(performance.now()*0.0021+0.3+_i*0.15)*0.2; };
+    g.add(st2);
   });
 
   const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.35, 8), matGun());
@@ -262,6 +248,11 @@ export function buildBreakerCabinet(roomH: number, roomD: number, halfW: number)
 
 export interface CrateResult { group: THREE.Group; collider: AABB; }
 
+/** Module-level reference to crate-b group for slide tween (set by buildCrates). */
+let _crateBGroup: THREE.Group | null = null;
+/** Get crate-b group (available after buildCrates is called). */
+export function getCrateBGroup(): THREE.Group | null { return _crateBGroup; }
+
 function buildCrate(x: number, z: number, w: number, h: number, d: number, crateName: string): CrateResult {
   const g = new THREE.Group(); g.name = crateName;
   const T = 0.04;
@@ -285,27 +276,17 @@ function buildCrate(x: number, z: number, w: number, h: number, d: number, crate
 }
 
 function buildHiddenFloorPanel(g: THREE.Group, x: number, z: number, w: number, d: number): void {
-  const panel = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.04, d - 0.04), matFloorPanel());
-  panel.name = 'hidden-floor-panel';
-  panel.rotation.x = -Math.PI / 2;
-  panel.position.set(x, 0.001, z);
-  g.add(panel);
-
-  const seamMat = matFloorSeam();
-  const seamThick = 0.012;
-  const seamY = 0.002;
-  const seams: [number, number, number, number][] = [
-    [x, z - d/2 + seamThick/2, w - 0.04, seamThick],
-    [x, z + d/2 - seamThick/2, w - 0.04, seamThick],
-    [x - w/2 + seamThick/2, z, seamThick, d - 0.04],
-    [x + w/2 - seamThick/2, z, seamThick, d - 0.04],
-  ];
-  for (const [sx, sz, sw, sd] of seams) {
-    const seam = new THREE.Mesh(new THREE.PlaneGeometry(sw, sd), seamMat);
-    seam.rotation.x = -Math.PI / 2;
-    seam.position.set(sx, seamY, sz);
-    g.add(seam);
-  }
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(w-0.04, d-0.04), matFloorPanel());
+  panel.name = 'hidden-floor-panel'; panel.rotation.x = -Math.PI/2;
+  panel.position.set(x, 0.001, z); g.add(panel);
+  const sm = matFloorSeam(); const st = 0.012;
+  ([
+    [x, z-d/2+st/2, w-0.04, st], [x, z+d/2-st/2, w-0.04, st],
+    [x-w/2+st/2, z, st, d-0.04], [x+w/2-st/2, z, st, d-0.04],
+  ] as [number,number,number,number][]).forEach(([sx,sz,sw,sd]) => {
+    const s = new THREE.Mesh(new THREE.PlaneGeometry(sw, sd), sm);
+    s.rotation.x = -Math.PI/2; s.position.set(sx, 0.002, sz); g.add(s);
+  });
 }
 
 export function buildCrates(halfW: number, _halfD: number): CrateResult[] {
@@ -313,5 +294,6 @@ export function buildCrates(halfW: number, _halfD: number): CrateResult[] {
   const crateA = buildCrate(-halfW+0.65, -0.5, 0.70, 0.55, 0.55, 'crate-a');
   const crateB = buildCrate(CRATE_B_X, CRATE_B_Z, 0.55, 0.42, 0.55, 'crate-b');
   buildHiddenFloorPanel(crateB.group, CRATE_B_X, CRATE_B_Z, 0.55, 0.55);
+  _crateBGroup = crateB.group;
   return [crateA, crateB];
 }

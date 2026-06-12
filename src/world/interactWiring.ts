@@ -29,6 +29,8 @@ import {
   buildConsoleSystemsLines,
   buildConsolePlanetLines,
 } from './interactItems.js';
+import { getCrateBGroup } from './engineeringProps.js';
+import { createPropTween } from './propTween.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -177,10 +179,67 @@ function buildConsoleBankInteractable(): Interactable {
   };
 }
 
+// ── 4. Crate-B slide + hidden floor panel ─────────────────────────────────────
+
+// Engineering worldPos: (0,0,5.5). Crate-B local X≈-1.45, Z≈-0.3 → world≈(-1.45,0,5.2).
+const CRATE_B_SLIDE_DIST = 0.8; // metres, +X direction to reveal panel
+let _crateBSlid = false;
+let _panelRevealed = false;
+
+function buildCrateBInteractables(): Interactable[] {
+  // Tween built lazily on first interact so getCrateBGroup() is populated
+  let _crateTween: ReturnType<typeof createPropTween> | null = null;
+  function getCrateTween(): ReturnType<typeof createPropTween> {
+    if (!_crateTween) {
+      const cg = getCrateBGroup();
+      _crateTween = createPropTween(400, (v) => {
+        if (cg) cg.position.x = v * CRATE_B_SLIDE_DIST;
+      });
+    }
+    return _crateTween;
+  }
+
+  const crateIA: Interactable = {
+    id: 'crate-b',
+    prompt: 'Slide Crate',
+    radius: 2.0,
+    position: new THREE.Vector3(-1.45, 0.21, 5.2),
+    getPrompt(): string { return _crateBSlid ? 'Slide Crate Back' : 'Slide Crate'; },
+    onInteract(_ctx: InteractContext): void {
+      playOneShot('ui');
+      _crateBSlid = !_crateBSlid;
+      getCrateTween().start(_crateBSlid ? 0 : 1, _crateBSlid ? 1 : 0);
+      if (_crateBSlid) _panelRevealed = true;
+    },
+  };
+
+  const panelIA: Interactable = {
+    id: 'hidden-floor-panel',
+    prompt: 'Inspect Panel',
+    radius: 1.5,
+    position: new THREE.Vector3(-1.45, 0.01, 5.2),
+    getPrompt(): string { return _panelRevealed ? 'Inspect Panel' : ''; },
+    onInteract(_ctx: InteractContext): void {
+      if (!_panelRevealed) return;
+      playOneShot('ui');
+      showOverlay('MAINTENANCE LOG — STREL-7', [
+        'Cycle 1887. Deck plate 7-C replaced (stress fracture).',
+        'Previous patch: tape and hope. Not crew-rated.',
+        '',
+        'Note from prior shift: "If you are reading this,',
+        'the crate worked. Do not move the crate."',
+        '',
+        '— J. Okafor, Chief Engineer, STREL-7',
+      ]);
+    },
+  };
+  return [crateIA, panelIA];
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
- * Build and return all v0.2 interactables.
+ * Build and return all v0.3 interactables.
  * doorRecords must be populated (buildDoors called) before this runs.
  */
 export function buildAllInteractables(): Interactable[] {
@@ -193,5 +252,6 @@ export function buildAllInteractables(): Interactable[] {
     buildFridgeInteractable(),
     buildCoffeeCupInteractable(),
     buildSaveTerminalInteractable(),
+    ...buildCrateBInteractables(),
   ];
 }

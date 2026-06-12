@@ -16,6 +16,8 @@ A first-person walkable starship built entirely in Three.js — no external asse
 
 ![Quarters A — bunk, lockers, orange door frames](verify/shots/quarters-a.png)
 
+![Cargo bay — 5m ceiling, catwalk, mag-clamp anchors, crate stacks](verify/shots/cargo-bay.png)
+
 ---
 
 ## Controls
@@ -97,23 +99,34 @@ scripts/
 
 ## Performance Budget
 
-| Metric | Budget | v0.1 (headed, bloom on) |
+| Metric | Budget | v0.3 (headed, bloom on) |
 |---|---|---|
 | Average FPS | ≥ 60 | 144 |
 | p95 frame time | ≤ 18 ms | 7 ms |
-| Draw calls | ≤ 300 | 77 (63 with `?bloom=0`) |
-| Triangles | ≤ 500 k | 4 270 |
+| Draw calls | ≤ 300 | 91 |
+| Triangles | ≤ 500 k | 8 564 |
 
-Bloom (UnrealBloomPass) costs ~14 draw calls at 1280x720 and is on by default; use `?bloom=0` to compare.
+Flags: `?bloom=0` disables post-processing; `?materials=pbr` switches the material set to MeshStandard (experimental, default is the cel-comic Lambert look). The verify harness samples perf from the worst-case camera and records it as `perfCamera` in report.json.
 
 ---
 
 ## Interactions
 
-- **Sleep** — stand near a bunk in Quarters A or B, press `E`. Fades to black, advances the ship clock 8 hours, restores energy to 100.
-- **Eat** — stand near the stove in the Galley, press `E`. Brief fade, restores hunger to 100.
+Everything below is on `E` (prompts appear when you look at something within reach):
 
-The ship clock runs at 1 real-second = 1 ship-minute and is displayed in the top-left HUD.
+- **Sleep** — bunks in either crew quarters. Fade to black, clock +8h, energy restored. Restocks the fridge.
+- **Eat / Take Ration** — cook at the galley stove, or open the fridge (hinged door, 3 rations per cycle).
+- **Drink Coffee** — the teal cup on the galley counter. Energy +15.
+- **Sit** — pilot seats (canopy view) and galley mess benches. `E` again to stand.
+- **Doors** — all six room doors slide and toggle open/closed.
+- **Access Console** — the cockpit console bank cycles NAV / SYSTEMS / PLANET SCAN overlay modes.
+- **Read** — crew-log datapads in both quarters; a cargo manifest in engineering.
+- **Access Panel** — the engineering breaker cabinet offers coolant venting and reactor boosts (number keys).
+- **Open Locker** — one locker per quarters swings open.
+- **Save Log** — the corridor save terminal persists your clock/energy/hunger to localStorage.
+- And one crate in engineering that the maintenance log says you should *not* move.
+
+The ship clock runs at 1 real-second = 1 ship-minute and is displayed in the top-left HUD, along with energy/hunger bars. Walking changes footstep sound by deck surface, each room has its own ambient bed, and the room name toasts as you cross thresholds.
 
 ---
 

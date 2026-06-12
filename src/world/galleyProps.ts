@@ -1,20 +1,20 @@
 /**
- * Galley prop geometry — Phase 3b / v0.2 fill pass.
+ * Galley prop geometry — Phase 3b / v0.2 fill pass + v0.3 fridge hinge.
  * Counter along starboard wall (X = +3), doors fore/aft stay clear.
  * Port wall dressing and door-flank panels → galleyDressing.ts
  * FILE OWNERSHIP: only galley.ts and galleyProps.ts (+ galleyDressing.ts).
  *
- * v0.2 additions (counter/table area):
- *   - Mess table items: 2 trays, 2 cups (teal 'coffee-cup' + plain), food package
- *   - Stove: cooking pot (gunmetal cylinder, teal emissive on-pip)
- *   - Upper shelf above cabinets: 3 storage canisters (mustard/teal/gunmetal)
- *   - Fridge group named 'fridge'
- *   - Bench meshes named 'bench-fore' / 'bench-aft'
+ * v0.3 changes:
+ *   - buildFridge: frame+body + separate hinged door in a hinge Group.
+ *   - Interior: dark cavity, 2 shelf slabs, up to 3 ration box meshes.
+ *   - getFridgeHingeGroup / getFridgeRationMeshes exported for interactItems.ts.
  */
 import * as THREE from 'three';
 import type { AABB } from './types.js';
 import { matShipWall } from '../fx/shipMaterials.js';
 import { buildPortWall, buildDoorFlankPanels } from './galleyDressing.js';
+import { createPropTween } from './propTween.js';
+import type { PropTween } from './propTween.js';
 
 // Palette
 const C_GUNMETAL   = 0x1c1e22;
@@ -168,13 +168,73 @@ function buildStove(g: THREE.Group): void {
   g.add(pip);
 }
 
+// ── Fridge hinge state (module-level singletons) ───────────────────────────────
+
+let _fridgeHingeGroup: THREE.Group | null = null;
+let _fridgeRationMeshes: THREE.Mesh[] = [];
+let _fridgeTween: PropTween | null = null;
+
+/** World-space interactable position for wiring. */
+export const FRIDGE_INTERACT_POS = new THREE.Vector3(CTR_FACE - 0.30, FRIDGE_H * 0.55, FRIDGE_Z_CTR);
+
+/** Get the hinge group (door pivots around its +Z edge, swings -X into room). */
+export function getFridgeHingeGroup(): THREE.Group | null { return _fridgeHingeGroup; }
+
+/** Get ration box meshes (up to 3 visible when door is open). */
+export function getFridgeRationMeshes(): THREE.Mesh[] { return _fridgeRationMeshes; }
+
+/** Get the door tween for open/close animation. */
+export function getFridgeTween(): PropTween | null { return _fridgeTween; }
+
+function buildFridgeInterior(g: THREE.Group, bodyD: number, frameT: number): void {
+  const iW = bodyD - 0.04; const iZ = FRIDGE_Z_CTR; const iX = CTR_X - frameT / 2;
+  const iD = (FRIDGE_Z_MAX - FRIDGE_Z_MIN) - frameT * 2 - 0.04;
+  const darkMat = new THREE.MeshLambertMaterial({ color: 0x080a0c });
+  const shelfMat = new THREE.MeshLambertMaterial({ color: 0x1a1c20 });
+  const bp = new THREE.Mesh(new THREE.BoxGeometry(0.01, FRIDGE_H - frameT * 2 - 0.04, iD), darkMat);
+  bp.position.set(iX - iW / 2, FRIDGE_H / 2, iZ); g.add(bp);
+  for (const sy of [FRIDGE_H * 0.35, FRIDGE_H * 0.62]) {
+    const sh = new THREE.Mesh(new THREE.BoxGeometry(iW - 0.02, 0.018, iD - 0.02), shelfMat);
+    sh.position.set(iX, sy, iZ); g.add(sh);
+  }
+  _fridgeRationMeshes = [];
+  const rm = new THREE.MeshLambertMaterial({ color: 0x6a2a18 });
+  for (let i = 0; i < 3; i++) {
+    const r = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.07, 0.08), rm);
+    r.name = `fridge-ration-${i}`;
+    r.position.set(iX, FRIDGE_H * 0.35 + 0.053, FRIDGE_Z_MIN + frameT + 0.06 + i * 0.12);
+    r.visible = false; g.add(r); _fridgeRationMeshes.push(r);
+  }
+}
+
 function buildFridge(g: THREE.Group): AABB[] {
   const fLen = FRIDGE_Z_MAX - FRIDGE_Z_MIN;
-  const fridgeGroup = new THREE.Group(); fridgeGroup.name = 'fridge';
-  box(fridgeGroup, CTR_DEPTH, FRIDGE_H, fLen, CTR_X, FRIDGE_H / 2, FRIDGE_Z_CTR, matDark);
-  box(fridgeGroup, 0.030, FRIDGE_H * 0.88, 0.07, CTR_FACE - 0.015, FRIDGE_H * 0.50, FRIDGE_Z_CTR, matTealEmit);
-  box(fridgeGroup, 0.030, 0.045, 0.20, CTR_FACE - 0.02, FRIDGE_H * 0.72, FRIDGE_Z_CTR, matOrange);
-  g.add(fridgeGroup);
+  const fg = new THREE.Group(); fg.name = 'fridge';
+  const FT = 0.045; const BD = CTR_DEPTH - FT;
+  // Frame: back + top + bottom + fore/aft jambs
+  box(fg, BD, FRIDGE_H, fLen, CTR_X - FT/2, FRIDGE_H/2, FRIDGE_Z_CTR, matGunmetal);
+  box(fg, CTR_DEPTH, FT, fLen, CTR_X, FRIDGE_H - FT/2, FRIDGE_Z_CTR, matGunmetal);
+  box(fg, CTR_DEPTH, FT, fLen, CTR_X, FT/2, FRIDGE_Z_CTR, matGunmetal);
+  box(fg, CTR_DEPTH, FRIDGE_H-FT*2, FT, CTR_X, FRIDGE_H/2, FRIDGE_Z_MIN+FT/2, matGunmetal);
+  box(fg, CTR_DEPTH, FRIDGE_H-FT*2, FT, CTR_X, FRIDGE_H/2, FRIDGE_Z_MAX-FT/2, matGunmetal);
+  buildFridgeInterior(fg, BD, FT);
+  // Hinge group — pivot at X=CTR_FACE+DW/2, Z=FRIDGE_Z_MIN+FT
+  const DW = CTR_DEPTH - FT; const DH = FRIDGE_H - FT*2 - 0.008; const DD = fLen - FT*2;
+  _fridgeHingeGroup = new THREE.Group(); _fridgeHingeGroup.name = 'fridge-hinge';
+  _fridgeHingeGroup.position.set(CTR_FACE + DW/2, 0, FRIDGE_Z_MIN + FT);
+  const dp = new THREE.Mesh(new THREE.BoxGeometry(DW, DH, DD), matGunmetal);
+  dp.position.set(-DW/2, FRIDGE_H/2, DD/2); _fridgeHingeGroup.add(dp);
+  const st = new THREE.Mesh(new THREE.BoxGeometry(0.022, DH*0.88, 0.06), matTealEmit);
+  st.position.set(-DW - 0.012, FRIDGE_H/2, DD/2); _fridgeHingeGroup.add(st);
+  const hnd = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.045, 0.20), matOrange);
+  hnd.position.set(-DW - 0.018, FRIDGE_H*0.72, DD/2); _fridgeHingeGroup.add(hnd);
+  fg.add(_fridgeHingeGroup);
+  // Tween: hinge.rotation.y 0→PI/2
+  const hr = _fridgeHingeGroup;
+  _fridgeTween = createPropTween(400, (v) => { hr.rotation.y = v * (Math.PI / 2); });
+  const tw = _fridgeTween;
+  dp.onBeforeRender = (): void => { tw.tick(); };
+  g.add(fg);
   return [{ minX: CTR_FACE, minY: 0, minZ: FRIDGE_Z_MIN, maxX: WALL_X, maxY: FRIDGE_H, maxZ: FRIDGE_Z_MAX }];
 }
 

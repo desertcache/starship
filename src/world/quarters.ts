@@ -23,10 +23,11 @@
  */
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
-import type { RoomModule, AABB, Interactable } from './types.js';
+import type { RoomModule, AABB, Interactable, InteractContext } from './types.js';
 import {
   buildBunk,
   buildLockers,
+  buildLockerWithDoor,
   buildNightstand,
   matBlanketA,
   matBlanketB,
@@ -44,6 +45,8 @@ import {
 } from './quartersDressing.js';
 import { advanceShipClock, setEnergy } from '../core/state.js';
 import { fadeTransition } from '../ui/hud.js';
+import { restockFridge } from './interactItems.js';
+import { playOneShot } from '../fx/audio.js';
 
 // ── Room constants ─────────────────────────────────────────────────────────────
 
@@ -99,13 +102,17 @@ export function buildQuartersA(): RoomModule {
   // ── Wall-bolted tablet — port outer wall, beside bunk, Y=1.4 ─────────────
   buildWallTablet(group, -2.5, -0.8, 'datapad-a');
 
-  // ── Lockers against aft wall ──────────────────────────────────────────────
-  const lockA = buildLockers(2, 0, 'lockers-a');
+  // ── Lockers against aft wall — one interactive + one decorative ──────────────
+  // Decorative locker (offset +0.27 from center)
+  const lockA = buildLockers(2, 0.27, 'lockers-a-deco');
   lockA.group.position.set(0, 0, 2.5);
   group.add(lockA.group);
-  for (const c of lockA.colliders) {
-    propColliders.push(shiftAABB(c, 0, 0, 2.5));
-  }
+  for (const c of lockA.colliders) propColliders.push(shiftAABB(c, 0, 0, 2.5));
+  // Interactive locker (offset -0.27 from center)
+  const iLockA = buildLockerWithDoor(-0.27, 'locker-a', 'A');
+  iLockA.group.position.set(0, 0, 2.5);
+  group.add(iLockA.group);
+  propColliders.push(shiftAABB(iLockA.collider, 0, 0, 2.5));
 
   // ── Nightstand beside bunk head (starboard side) ──────────────────────────
   const nsA = buildNightstand();
@@ -132,7 +139,24 @@ export function buildQuartersA(): RoomModule {
       void fadeTransition(() => {
         advanceShipClock(480); // 8 ship-hours = 480 ship-minutes
         setEnergy(100);
+        restockFridge();
       });
+    },
+  };
+
+  // ── Locker interactable (locker-a, world space added in assembly) ────────────
+  let _lockerAOpen = false;
+  const lockerATween = iLockA.tween;
+  const lockerAInteractable: Interactable = {
+    id: 'locker-a',
+    prompt: 'Open Locker',
+    radius: 1.8,
+    position: new THREE.Vector3(-0.27, 0.93, 2.5), // updated in assembly
+    getPrompt(): string { return _lockerAOpen ? 'Close Locker' : 'Open Locker'; },
+    onInteract(_ctx: InteractContext): void {
+      _lockerAOpen = !_lockerAOpen;
+      playOneShot('door');
+      lockerATween.start(_lockerAOpen ? 0 : 1, _lockerAOpen ? 1 : 0);
     },
   };
 
@@ -143,7 +167,7 @@ export function buildQuartersA(): RoomModule {
   return {
     group,
     colliders: [...colliders, ...propColliders],
-    interactables: [bunkAInteractable],
+    interactables: [bunkAInteractable, lockerAInteractable],
     cameras: [{ name: 'quarters-a', position: camPos, lookAt: camLook }],
   };
 }
@@ -185,13 +209,15 @@ export function buildQuartersB(): RoomModule {
   // ── Wall-bolted tablet — starboard outer wall, Y=1.4 ─────────────────────
   buildWallTablet(group, 2.5, -0.8, 'datapad-b');
 
-  // ── Lockers against aft wall — 3 lockers ──────────────────────────────────
-  const lockB = buildLockers(3, 0, 'lockers-b');
+  // ── Lockers against aft wall — one interactive + two decorative ──────────────
+  const lockB = buildLockers(2, 0.54, 'lockers-b-deco');
   lockB.group.position.set(0, 0, 2.5);
   group.add(lockB.group);
-  for (const c of lockB.colliders) {
-    propColliders.push(shiftAABB(c, 0, 0, 2.5));
-  }
+  for (const c of lockB.colliders) propColliders.push(shiftAABB(c, 0, 0, 2.5));
+  const iLockB = buildLockerWithDoor(-0.54, 'locker-b', 'B');
+  iLockB.group.position.set(0, 0, 2.5);
+  group.add(iLockB.group);
+  propColliders.push(shiftAABB(iLockB.collider, 0, 0, 2.5));
 
   // ── Nightstand — port side of bunk (mirrored vs room A) ───────────────────
   const nsB = buildNightstand();
@@ -233,7 +259,24 @@ export function buildQuartersB(): RoomModule {
       void fadeTransition(() => {
         advanceShipClock(480); // 8 ship-hours = 480 ship-minutes
         setEnergy(100);
+        restockFridge();
       });
+    },
+  };
+
+  // ── Locker interactable (locker-b) ────────────────────────────────────────
+  let _lockerBOpen = false;
+  const lockerBTween = iLockB.tween;
+  const lockerBInteractable: Interactable = {
+    id: 'locker-b',
+    prompt: 'Open Locker',
+    radius: 1.8,
+    position: new THREE.Vector3(-0.54, 0.93, 2.5), // updated in assembly
+    getPrompt(): string { return _lockerBOpen ? 'Close Locker' : 'Open Locker'; },
+    onInteract(_ctx: InteractContext): void {
+      _lockerBOpen = !_lockerBOpen;
+      playOneShot('door');
+      lockerBTween.start(_lockerBOpen ? 0 : 1, _lockerBOpen ? 1 : 0);
     },
   };
 
@@ -244,7 +287,7 @@ export function buildQuartersB(): RoomModule {
   return {
     group,
     colliders: [...colliders, ...propColliders],
-    interactables: [bunkBInteractable],
+    interactables: [bunkBInteractable, lockerBInteractable],
     cameras: [{ name: 'quarters-b', position: camPos, lookAt: camLook }],
   };
 }

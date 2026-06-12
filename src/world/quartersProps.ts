@@ -76,6 +76,9 @@ const geoCup       = new THREE.BoxGeometry(0.09, 0.14, 0.09);
 const geoPadBody   = new THREE.BoxGeometry(0.30, 0.026, 0.22);
 const geoPadScr    = new THREE.BoxGeometry(0.24, 0.029, 0.16);
 
+import { createPropTween } from './propTween.js';
+import type { PropTween } from './propTween.js';
+
 // ── Helper ─────────────────────────────────────────────────────────────────────
 
 function b(geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh {
@@ -190,6 +193,67 @@ export function buildLockers(count: 2 | 3, xCenter = 0, namePrefix = 'lockers'):
   }
 
   return { group: g, colliders };
+}
+
+// ── Single interactable locker with hinged door ────────────────────────────────
+
+export interface LockerWithDoorResult {
+  group: THREE.Group;
+  collider: AABB;
+  tween: PropTween;
+  /** Locker id — used by interactWiring to name the interactable. */
+  id: string;
+}
+
+/** Build one interactable locker with hinged door. roomKind='A'→toolbox, 'B'→photo. */
+export function buildLockerWithDoor(
+  xCenter: number, lockerId: string, roomKind: 'A' | 'B',
+): LockerWithDoorResult {
+  const LW = 0.50; const LH = 1.86; const LD = 0.35; const FT = 0.03;
+  const g = new THREE.Group(); g.name = lockerId;
+  const fm = matLockerBody;
+  // Frame: back panel + top + bottom + two jambs
+  const panels: [number,number,number,number,number,number][] = [
+    [xCenter+LW/2-FT/2, LH/2, -LD/2, FT, LH, LD],
+    [xCenter, LH-FT/2, -LD/2, LW, FT, LD],
+    [xCenter, FT/2, -LD/2, LW, FT, LD],
+    [xCenter-LW/2+FT/2, LH/2, -LD+FT/2, FT, LH-FT*2, FT],
+    [xCenter+LW/2-FT/2, LH/2, -LD+FT/2, FT, LH-FT*2, FT],
+  ];
+  for (const [px,py,pz,pw,ph,pd] of panels) {
+    const m = b(new THREE.BoxGeometry(pw,ph,pd), fm);
+    m.position.set(px,py,pz); g.add(m);
+  }
+  // Interior: jacket silhouette + shelf
+  const jm = b(new THREE.BoxGeometry(0.04, 0.38, 0.24),
+    new THREE.MeshLambertMaterial({ color: 0x2a1a0a }));
+  jm.position.set(xCenter, LH*0.6, -LD/2); g.add(jm);
+  const sh = b(new THREE.BoxGeometry(LW-FT*3, FT, LD-FT*2), fm);
+  sh.position.set(xCenter, LH*0.38, -LD/2); g.add(sh);
+  if (roomKind === 'A') {
+    const tb = b(new THREE.BoxGeometry(0.18, 0.12, 0.15), matGunmetal);
+    tb.position.set(xCenter, LH*0.38+FT+0.06, -LD/2); g.add(tb);
+  } else {
+    const ph2 = b(new THREE.BoxGeometry(0.01, 0.18, 0.14),
+      new THREE.MeshLambertMaterial({ color: 0x2a1a0a }));
+    ph2.position.set(xCenter+LW/2-FT, LH*0.55, -LD/2); g.add(ph2);
+  }
+  // Hinge group: pivot at -X edge, Z face. Door swings +X (along wall = no trap risk).
+  const hg = new THREE.Group(); hg.name = `${lockerId}-hinge`;
+  hg.position.set(xCenter-LW/2, 0, -LD+FT);
+  const DW = LW-FT; const DH = LH-FT*2;
+  const door = b(new THREE.BoxGeometry(DW, DH, FT), fm);
+  door.position.set(DW/2, LH/2, 0); hg.add(door);
+  const st = b(new THREE.BoxGeometry(0.022, DH*0.8, FT+0.005), matLockerHandle);
+  st.position.set(DW-0.04, LH/2, 0); hg.add(st);
+  g.add(hg);
+  const tween = createPropTween(400, (v) => { hg.rotation.y = -v*(Math.PI/2); });
+  const tw = tween;
+  door.onBeforeRender = (): void => { tw.tick(); };
+  const collider: AABB = {
+    minX: xCenter-LW/2, maxX: xCenter+LW/2, minY: 0, maxY: LH, minZ: -LD, maxZ: 0,
+  };
+  return { group: g, collider, tween, id: lockerId };
 }
 
 // ── Nightstand ─────────────────────────────────────────────────────────────────

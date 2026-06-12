@@ -16,6 +16,7 @@ import { tickSway } from './fx/sway.js';
 import { initAudio, getRoomForPosition, playOneShot } from './fx/audio.js';
 import type { RoomName } from './fx/audio.js';
 import { buildAllInteractables } from './world/interactWiring.js';
+import { getFridgeStateForTest, resetFridgeForTest } from './world/interactItems.js';
 import { isDoorOpen } from './world/doors.js';
 import { initBloom } from './fx/bloom.js';
 import { tickStarfield } from './fx/starfield.js';
@@ -121,6 +122,8 @@ interface TestAPI {
   interact(): boolean;
   getState(): { clock: number; energy: number; hunger: number; clockString: string };
   getDoorOpen(id: string): boolean;
+  getFridgeState(): { state: string; stock: number };
+  resetFridge(): void;
 }
 
 const EYE_HEIGHT_MAIN = 1.7;
@@ -145,6 +148,12 @@ const testAPI: TestAPI = {
   },
   getDoorOpen(id: string): boolean {
     return isDoorOpen(id);
+  },
+  getFridgeState(): { state: string; stock: number } {
+    return getFridgeStateForTest();
+  },
+  resetFridge(): void {
+    resetFridgeForTest();
   },
 };
 
