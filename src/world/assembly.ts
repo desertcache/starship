@@ -158,55 +158,70 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   );
 
   // ── Lighting ─────────────────────────────────────────────────────────────
-  // Ship total: 10 PointLights
-  //   Existing (6): cockpit, junction, corridor-mid, galley, engineering, threshold
-  //   Stray in engineering.ts (+1 = 7): local reactor glow light (do NOT remove)
-  //   New (+3): 2x dedicated quarters + 1 cargo bay  → total = 10
+  // v0.5 Stage 2 (lighting mood) — DARK / POOLED / CINEMATIC.
+  // Reference: a corridor that is mostly shadow with warm light POOLS under
+  // ceiling fixtures, emissive accents punching through, glossy floor catching
+  // each pool. The big move is cutting the global fill HARD and tightening every
+  // PointLight into a discrete pool with real falloff (decay=2, short distance).
   //
-  // Changes vs prior assembly:
-  //   - Junction light retargeted: int3.5/dist24 → int1.8/dist14
-  //   - Corridor/galley lights lowered Y: 2.8 → 2.0 (wall-wash + floor-pool)
-  //   - Engineering reactor light now animated via onBeforeRender dummy mesh
-  //   - +2 dedicated quarters lights at (±4, 2.6, -16)
-  //   - +1 cargo bay light at (0, 4.2, 13.5)
+  // Ship total: 10 PointLights (HARD CAP — unchanged count)
+  //   1 cockpit (under-console teal uplight)  5 galley
+  //   2 quarters-junction (corridor pool A)   6 engineering reactor (red-orange)
+  //   3 quarters port                         7 corridor threshold (pool B, fore)
+  //   3b quarters starboard                   9 cargo bay
+  //   4 corridor mid (pool C, aft)            + engineering.ts stray (#8)
+  //
+  // Pool palette: warm tungsten 0xffe2c0 for ceiling fixtures; reactor red-orange;
+  // cockpit under-console cool teal so the console screens own the room.
+  // decay=2 (physical inverse-square) makes pools fall off fast → shadow between.
 
-  const hemi = new THREE.HemisphereLight(0xfff4e0, 0x1a1a2e, 0.45);
+  const WARM = 0xffe2c0; // tungsten ceiling-pool colour
+
+  // Global fill — cut ~73% (hemi 0.45→0.12) / ~75% (ambient 0.20→0.05).
+  // Ground hemisphere colour darkened/cooled so floors don't get a free lift.
+  const hemi = new THREE.HemisphereLight(0xffe9d0, 0x10121c, 0.12);
   scene.add(hemi);
 
-  // 1. Cockpit
-  const cockpitPt = new THREE.PointLight(0xfff4e0, 1.8, 18);
-  cockpitPt.position.set(0, 2.8, -22.5);
+  // 1. Cockpit — console-WASH teal light. Sits in open cabin air just aft of and
+  //    above the console bank so it grazes the console face + pilot seats with a
+  //    cool glow without embedding in geometry (embedded + decay=2 → bloom blowout).
+  //    Dim so the emissive console screens (toneMapped=false) own the room. (ref-05)
+  const cockpitPt = new THREE.PointLight(0x5fcfe0, 1.4, 3.4, 2);
+  cockpitPt.position.set(0, 1.25, -23.6);
   configureShadowCaster(cockpitPt);
   scene.add(cockpitPt);
 
-  // 2. Quarters junction — RETARGETED (was int3.5 dist24)
-  const junctionPt = new THREE.PointLight(0xfff8f0, 1.8, 14);
-  junctionPt.position.set(0, 2.8, -16);
+  // 2. Quarters junction — CORRIDOR POOL A (aft of the cockpit door, ~Z=-16).
+  //    Tight pool: this is the bright spot where the two quarters doors meet.
+  const junctionPt = new THREE.PointLight(WARM, 5.0, 7.0, 2);
+  junctionPt.position.set(0, 2.5, -16);
   scene.add(junctionPt);
 
-  // 3a. Dedicated quarters port  (+1 of budget 3)
-  const qPortPt = new THREE.PointLight(0xfff4e0, 1.3, 11);
-  qPortPt.position.set(-4, 2.6, -16);
+  // 3a. Dedicated quarters port — intimate, tucked low so the bunk side glows
+  //     and the far corners fall into shadow (moody crew bunk, not a lit cell).
+  const qPortPt = new THREE.PointLight(WARM, 2.0, 4.4, 2);
+  qPortPt.position.set(-4, 2.2, -16);
   scene.add(qPortPt);
 
-  // 3b. Dedicated quarters starboard  (+2 of budget 3)
-  const qStbdPt = new THREE.PointLight(0xfff4e0, 1.3, 11);
-  qStbdPt.position.set(4, 2.6, -16);
+  // 3b. Dedicated quarters starboard.
+  const qStbdPt = new THREE.PointLight(WARM, 2.0, 4.4, 2);
+  qStbdPt.position.set(4, 2.2, -16);
   scene.add(qStbdPt);
 
-  // 4. Corridor mid — LOWERED to Y=2.0
-  const corridorPt = new THREE.PointLight(0xfff4e0, 1.6, 18);
-  corridorPt.position.set(0, 2.0, -8);
+  // 4. Corridor mid — POOL C (aft end of the corridor, by the galley door ~Z=-8).
+  const corridorPt = new THREE.PointLight(WARM, 4.6, 6.5, 2);
+  corridorPt.position.set(0, 2.4, -8.5);
   scene.add(corridorPt);
 
-  // 5. Galley — LOWERED to Y=2.0
-  const galleyPt = new THREE.PointLight(0xfff4e0, 1.6, 18);
-  galleyPt.position.set(0, 2.0, -1);
+  // 5. Galley — single warm ceiling pool over the counter run.
+  const galleyPt = new THREE.PointLight(WARM, 4.6, 7.0, 2);
+  galleyPt.position.set(0.5, 2.4, -1);
   scene.add(galleyPt);
 
-  // 6. Engineering reactor (warm orange) — ANIMATED below via dummy mesh
-  const reactorPt = new THREE.PointLight(0xff7733, 1.6, 18);
-  reactorPt.position.set(0, 2.8, 5.5);
+  // 6. Engineering reactor (RED-ORANGE) — ANIMATED below via dummy mesh.
+  //    Pulsing hot core mood; tight so the corners stay dark around the column.
+  const reactorPt = new THREE.PointLight(0xff5a22, 5.2, 7.5, 2);
+  reactorPt.position.set(0, 2.4, 5.5);
   configureShadowCaster(reactorPt);
   scene.add(reactorPt);
 
@@ -216,22 +231,23 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
     new THREE.PlaneGeometry(0.001, 0.001),
     new THREE.MeshBasicMaterial({ visible: false }),
   );
-  reactorDummy.position.set(0, 2.8, 5.5);
+  reactorDummy.position.set(0, 2.4, 5.5);
   reactorDummy.onBeforeRender = (): void => {
     const t = performance.now() / 1000;
-    reactorPt.intensity = 1.6 + Math.sin(t * 2.1) * 0.35;
+    reactorPt.intensity = 5.2 + Math.sin(t * 2.1) * 1.0;
   };
   scene.add(reactorDummy);
 
-  // 7. Corridor fore / cockpit threshold
-  const thresholdPt = new THREE.PointLight(0xfff4e0, 1.2, 18);
-  thresholdPt.position.set(0, 2.8, -19);
+  // 7. Corridor threshold — POOL B (fore end, by the cockpit door ~Z=-19).
+  //    Dimmer than A/C so the eye reads a bright-mid-dim rhythm down the hall.
+  const thresholdPt = new THREE.PointLight(WARM, 3.0, 5.5, 2);
+  thresholdPt.position.set(0, 2.4, -19);
   scene.add(thresholdPt);
 
   // (engineering.ts stray reactor glow = light #8 — counted in ship total)
 
-  // 9. Cargo bay — warm-neutral (#FFF0D8), Y=4.2 to reach the 5H ceiling (+3 of budget 3)
-  const cargoPt = new THREE.PointLight(0xfff0d8, 1.6, 16);
+  // 9. Cargo bay — single high warm pool (5H room), dark corners.
+  const cargoPt = new THREE.PointLight(0xffe0c0, 6.0, 9.5, 2);
   cargoPt.position.set(0, 4.2, 13.5);
   scene.add(cargoPt);
 
@@ -250,8 +266,9 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   };
   scene.add(doorDummy);
 
-  // Ambient fill
-  const ambient = new THREE.AmbientLight(0xffffff, 0.20);
+  // Ambient fill — cut hard (0.20 → 0.05). Just enough floor to keep deep
+  // shadow legible (nothing pitch black) without flattening the pools.
+  const ambient = new THREE.AmbientLight(0xfff0e0, 0.05);
   scene.add(ambient);
 
   // QUALITY_HIGH: flag room meshes to cast/receive shadows (no-op by default).

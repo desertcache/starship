@@ -152,7 +152,10 @@ export const matTealStrip: THREE.MeshBasicMaterial = new THREE.MeshBasicMaterial
  */
 export const matCeilingLight: THREE.MeshBasicMaterial = new THREE.MeshBasicMaterial({
   map: makeCeilingLightTexture(),
-  color: 0xFFFFFF,   // pure white to guarantee > 0.90 luminance for bloom
+  // v0.5 Stage 2: warm amber tint (was pure white). The hot texture core still
+  // clears the 0.90 bloom threshold so fixtures halo, but the panel body reads
+  // as a dim warm tungsten housing — matching the WARM pools — not a white slab.
+  color: 0xF6DCB4,
   side: THREE.FrontSide,
   toneMapped: false,
 });

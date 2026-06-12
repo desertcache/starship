@@ -33,7 +33,9 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 // Filmic grade: ACES gives deep blacks + rolling highlights, exposure lifts
 // interior contrast without blowing emissives.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+// v0.5 Stage 2 (lighting mood): exposure trimmed 1.15 → 1.05 so the darkened
+// interior sits low and emissives (toneMapped=false) punch against shadow.
+renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 // QUALITY_HIGH (?quality=high) enables soft shadow maps. Default (verify) is a
 // strict no-op so the shipped budget is unaffected.
@@ -55,7 +57,9 @@ scene.background = new THREE.Color(0x0a0b10);
   pmrem.compileEquirectangularShader();
   const envTexture = pmrem.fromScene(new RoomEnvironment()).texture;
   scene.environment = envTexture;
-  scene.environmentIntensity = 0.4;
+  // v0.5 Stage 2: trimmed 0.4 → 0.28 — env still gives PBR materials specular
+  // life on the glossy floor / metals, but no longer fights the dark mood.
+  scene.environmentIntensity = 0.28;
   pmrem.dispose();
 }
 

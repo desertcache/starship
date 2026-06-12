@@ -58,11 +58,11 @@ export function buildEngineering(): RoomModule {
     colliders.push(cc);
   }
 
-  // ── Warm-orange point light toward reactor ─────────────────────────────────
-  // NOTE: engineering already gets one point light from the room spec baseline.
-  // We position it near the reactor to make the orange glow read clearly.
-  const reactorLight = new THREE.PointLight(0xC7641E, 1.2, 4.5);
-  reactorLight.position.set(0, 1.6, 1.0);
+  // ── Warm red-orange point light at the reactor base ────────────────────────
+  // v0.5 Stage 2: this is the reactor's hot-core uplight. Brighter + redder +
+  // decay=2 so it glows the column and hazard ring while corners fall dark.
+  const reactorLight = new THREE.PointLight(0xff5519, 3.0, 5.5, 2);
+  reactorLight.position.set(0, 1.2, 1.0);
   group.add(reactorLight);
 
   // ── Camera: frame the glowing reactor column as the hero ──────────────────

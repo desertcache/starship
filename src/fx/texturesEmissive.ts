@@ -39,7 +39,11 @@ export function makeTealStripTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Emissive ceiling light panel — warm white (#FFF8E8) with soft radial falloff.
+ * Emissive ceiling light panel — warm tungsten fixture with soft radial falloff.
+ * v0.5 Stage 2: warmer core (#FFEAC8 not #FFF8E8) and a darker, deeper edge
+ * vignette so each panel reads as a FIXTURE (bright warm centre, dim rim) rather
+ * than a flat clinical light-box. The hand-placed warm PointLight below it makes
+ * the actual pool on the floor; the panel just needs to glow warm, not flood.
  * 256×128. Used on ceiling panel geometry via MeshBasicMaterial.
  */
 export function makeCeilingLightTexture(): THREE.CanvasTexture {
@@ -51,12 +55,18 @@ export function makeCeilingLightTexture(): THREE.CanvasTexture {
     canvas.height = H;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = '#FFF8E8';
+    // Warm tungsten base — amber, not near-white, so the panel sits as a dim
+    // fixture against the dark room. A small hot centre still clears bloom.
+    ctx.fillStyle = '#F2C892';
     ctx.fillRect(0, 0, W, H);
 
-    const grad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.6);
-    grad.addColorStop(0, 'rgba(255,255,255,0.0)');
-    grad.addColorStop(1, 'rgba(180,160,120,0.25)');
+    // Small hot core (clears 0.90 bloom threshold) so each fixture still halos,
+    // surrounded by a deep amber rim that reads as housing, not a flat slab.
+    const grad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.62);
+    grad.addColorStop(0.0, 'rgba(255,248,235,0.55)');   // hot bloom-clearing core
+    grad.addColorStop(0.30, 'rgba(255,235,200,0.10)');
+    grad.addColorStop(0.70, 'rgba(150,110,65,0.30)');
+    grad.addColorStop(1.0, 'rgba(90,60,30,0.70)');      // dark housing rim
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
