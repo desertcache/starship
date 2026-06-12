@@ -1,15 +1,20 @@
 {
   "avgFps": 60,
   "p95FrameTime": 16.8,
-  "drawCalls": 6,
-  "triangles": 12,
-  "geometries": 4,
+  "drawCalls": 9,
+  "triangles": 18,
+  "geometries": 56,
   "textures": 0,
-  "sampleDurationMs": 5002.20000000298,
+  "sampleDurationMs": 5015.9000000059605,
   "headless": true,
   "cameras": [
-    "seed-room",
-    "seed-room-corner"
+    "cockpit",
+    "cockpit-canopy",
+    "corridor",
+    "quarters-a",
+    "quarters-b",
+    "galley",
+    "engineering"
   ],
-  "timestamp": "2026-06-12T00:57:24.603Z"
+  "timestamp": "2026-06-12T01:10:29.787Z"
 }

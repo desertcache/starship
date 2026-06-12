@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { initPerf, recordFrame, installPerfGlobal } from './core/perf.js';
 import {
-  registerCam,
-  setActiveCamera,
   getRegisteredCamNames,
   installCameraGlobal,
+  setActiveCamera,
+  teleportToCamera,
 } from './core/cameras.js';
 import { initDebug, tickDebug } from './ui/debug.js';
-import { buildSeedRoom } from './world/seedRoom.js';
+import { assembleShip } from './world/assembly.js';
+import { initController, tickController } from './player/controller.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -33,19 +34,19 @@ setActiveCamera(camera);
 initPerf(renderer);
 initDebug(renderer, camera);
 
-// ── Seed room ─────────────────────────────────────────────────────────────────
-buildSeedRoom(scene);
+// ── Assemble ship ─────────────────────────────────────────────────────────────
+const ship = assembleShip(scene);
 
-// ── Named cameras ─────────────────────────────────────────────────────────────
-registerCam('seed-room', { x: 0, y: 1.7, z: 3 }, { x: 0, y: 1.7, z: 0 });
-registerCam('seed-room-corner', { x: -3, y: 1.7, z: 4 }, { x: 0, y: 1.5, z: 0 });
+// ── Player controller ─────────────────────────────────────────────────────────
+initController(camera, renderer, ship.colliders);
 
-// Start at first camera and expose cam list for verify harness
+// ── Start at corridor camera ──────────────────────────────────────────────────
 const camNames = getRegisteredCamNames();
 (window as unknown as Record<string, unknown>)['__camNames'] = camNames;
-const firstCam = camNames[0];
-if (firstCam) {
-  (window as unknown as Record<string, (name: string) => boolean>)['__setCam'](firstCam);
+
+const startCam = camNames.includes('corridor') ? 'corridor' : camNames[0];
+if (startCam) {
+  teleportToCamera(startCam);
 }
 
 // ── Resize ────────────────────────────────────────────────────────────────────
@@ -66,6 +67,7 @@ let firstFrame = true;
 function animate(now: number): void {
   requestAnimationFrame(animate);
   recordFrame(now);
+  tickController(now);
   tickDebug(now);
   renderer.render(scene, camera);
   if (firstFrame) {

@@ -27,12 +27,14 @@ console.log('[verify] Building…');
 execSync('npm run build', { cwd: ROOT, stdio: 'inherit' });
 
 // ── 2. Serve vite preview ─────────────────────────────────────────────────────
-// Find a free port starting from 4173
+// Find a free port starting from 4173.
+// Bind 127.0.0.1 explicitly — vite preview binds IPv4, and an IPv6-only probe
+// reports "free" while a stale IPv4 server still holds the port.
 async function findFreePort(start) {
   const { createServer } = await import('node:net');
   return new Promise((resolve) => {
     const s = createServer();
-    s.listen(start, () => {
+    s.listen(start, '127.0.0.1', () => {
       const { port } = s.address();
       s.close(() => resolve(port));
     });
@@ -44,15 +46,30 @@ PREVIEW_PORT = await findFreePort(4173);
 BASE_URL = `http://localhost:${PREVIEW_PORT}`;
 
 console.log(`[verify] Starting preview server on port ${PREVIEW_PORT}…`);
-const server = spawn('npx', ['vite', 'preview', '--port', String(PREVIEW_PORT), '--strictPort'], {
-  cwd: ROOT,
-  stdio: 'inherit',
-  shell: true,
+// Spawn vite directly (no shell): on Windows, shell:true makes server.kill()
+// kill the cmd wrapper and orphan the real server, which then serves stale
+// builds to the next verify run.
+const VITE_BIN = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
+const server = spawn(
+  process.execPath,
+  [VITE_BIN, 'preview', '--port', String(PREVIEW_PORT), '--strictPort'],
+  { cwd: ROOT, stdio: 'inherit' },
+);
+
+let serverExited = false;
+server.on('exit', (code) => {
+  serverExited = true;
+  if (code !== 0 && code !== null) {
+    console.error(`[verify] Preview server exited with code ${code}`);
+  }
 });
 
 async function waitForServer(url, maxMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
+    if (serverExited) {
+      throw new Error('Preview server died during startup (port conflict?). Refusing to verify against a stale server.');
+    }
     try {
       const resp = await fetch(url);
       if (resp.ok || resp.status < 500) return;
