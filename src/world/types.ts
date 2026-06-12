@@ -10,12 +10,19 @@ export interface AABB {
   maxZ: number;
 }
 
+export interface InteractContext {
+  /** World-space camera (player) position at time of interaction. */
+  playerPos: THREE.Vector3;
+}
+
 export interface Interactable {
   id: string;
   prompt: string;
+  /** Radius in world units within which the interactable is reachable. */
   radius: number;
+  /** World-space centre of the interactable mesh. */
   position: THREE.Vector3;
-  onInteract(): void;
+  onInteract(ctx: InteractContext): void;
 }
 
 export interface RoomModule {

@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
-import type { RoomModule } from './types.js';
+import type { RoomModule, Interactable } from './types.js';
 import { addGalleyProps } from './galleyProps.js';
+import { setHunger } from '../core/state.js';
+import { fadeTransition } from '../ui/hud.js';
 
 /** Galley / mess — 6W x 3H x 6D. */
 export function buildGalley(): RoomModule {
@@ -26,6 +28,21 @@ export function buildGalley(): RoomModule {
   const { colliders: propColliders } = addGalleyProps(group);
   colliders.push(...propColliders);
 
+  // ── Stove interactable — "Eat" ─────────────────────────────────────────────
+  // Stove cooktop local position: X≈2.725, Y≈0.91, Z≈-0.60 (STOVE_Z_CTR).
+  // World position filled in by assembly.ts offset.
+  const stoveInteractable: Interactable = {
+    id: 'stove',
+    prompt: 'Eat',
+    radius: 2.5,
+    position: new THREE.Vector3(2.725, 0.91, -0.60), // updated to world space in assembly
+    onInteract: () => {
+      void fadeTransition(() => {
+        setHunger(100);
+      }, 280, 150);
+    },
+  };
+
   // Camera: angled to frame counter + upper cabinets + fridge + stove glow.
   // Position on port side looking toward starboard counter run.
   const localCamPos  = new THREE.Vector3(-1.8, 1.55, -0.4);
@@ -34,7 +51,7 @@ export function buildGalley(): RoomModule {
   return {
     group,
     colliders,
-    interactables: [],
+    interactables: [stoveInteractable],
     cameras: [
       {
         name: 'galley',

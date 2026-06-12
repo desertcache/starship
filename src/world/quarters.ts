@@ -15,7 +15,7 @@
  */
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
-import type { RoomModule, AABB } from './types.js';
+import type { RoomModule, AABB, Interactable } from './types.js';
 import {
   buildBunk,
   buildLockers,
@@ -23,6 +23,8 @@ import {
   matBlanketA,
   matBlanketB,
 } from './quartersProps.js';
+import { advanceShipClock, setEnergy } from '../core/state.js';
+import { fadeTransition } from '../ui/hud.js';
 
 // ── Room constants ─────────────────────────────────────────────────────────────
 
@@ -84,6 +86,23 @@ export function buildQuartersA(): RoomModule {
   group.add(nsA.group);
   propColliders.push(shiftAABB(nsA.collider, 1.30, 0, -2.0));
 
+  // ── Bunk interactable — "Sleep" ────────────────────────────────────────────
+  // World position set later by assembly.ts; we use a placeholder here and
+  // assembly will translateInteractable positions when it offsets the group.
+  // Bunk world-local centre: x=0, y=0.84, z=-1.98 (group origin).
+  const bunkAInteractable: Interactable = {
+    id: 'bunk-a',
+    prompt: 'Sleep',
+    radius: 2.5,
+    position: new THREE.Vector3(0, 0.84, -1.98), // updated to world space in assembly
+    onInteract: () => {
+      void fadeTransition(() => {
+        advanceShipClock(480); // 8 ship-hours = 480 ship-minutes
+        setEnergy(100);
+      });
+    },
+  };
+
   // ── Camera: doorway (starboard wall), looking straight across to port ──────
   // "Entering the room" perspective. Bunk fore-left, lockers aft-right,
   // porthole on the far port wall, teal strips on floor, ceiling panels above.
@@ -93,7 +112,7 @@ export function buildQuartersA(): RoomModule {
   return {
     group,
     colliders: [...colliders, ...propColliders],
-    interactables: [],
+    interactables: [bunkAInteractable],
     cameras: [{ name: 'quarters-a', position: camPos, lookAt: camLook }],
   };
 }
@@ -150,6 +169,20 @@ export function buildQuartersB(): RoomModule {
     minZ: -2.19, maxZ: -1.81,
   });
 
+  // ── Bunk interactable — "Sleep" ────────────────────────────────────────────
+  const bunkBInteractable: Interactable = {
+    id: 'bunk-b',
+    prompt: 'Sleep',
+    radius: 2.5,
+    position: new THREE.Vector3(0, 0.84, -1.98), // updated to world space in assembly
+    onInteract: () => {
+      void fadeTransition(() => {
+        advanceShipClock(480); // 8 ship-hours = 480 ship-minutes
+        setEnergy(100);
+      });
+    },
+  };
+
   // ── Camera: doorway (port wall), looking straight across to starboard ──────
   const camPos  = new THREE.Vector3(-2.1, 1.65,  0.0);
   const camLook = new THREE.Vector3( 2.1, 1.45,  0.0);
@@ -157,7 +190,7 @@ export function buildQuartersB(): RoomModule {
   return {
     group,
     colliders: [...colliders, ...propColliders],
-    interactables: [],
+    interactables: [bunkBInteractable],
     cameras: [{ name: 'quarters-b', position: camPos, lookAt: camLook }],
   };
 }

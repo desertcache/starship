@@ -24,7 +24,15 @@ mkdirSync(SHOTS_DIR, { recursive: true });
 
 // ── 1. Build ──────────────────────────────────────────────────────────────────
 console.log('[verify] Building…');
-execSync('npm run build', { cwd: ROOT, stdio: 'inherit' });
+// Use node + local vite binary directly to avoid Windows PATH issues
+// when node_modules was installed via WSL (no .cmd wrappers exist).
+const VITE_BIN_PATH = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
+try {
+  execSync(`node "${VITE_BIN_PATH}" build`, { cwd: ROOT, stdio: 'inherit' });
+} catch {
+  // Fallback to npm run build (works in WSL / Unix environments)
+  execSync('npm run build', { cwd: ROOT, stdio: 'inherit' });
+}
 
 // ── 2. Serve vite preview ─────────────────────────────────────────────────────
 // Find a free port starting from 4173.
@@ -147,6 +155,83 @@ async function run() {
 
     writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
     console.log('[verify] report.json written:', report);
+
+    // ── 7. Functional tests (Phase 4) ──────────────────────────────────────────
+    console.log('\n[verify] ── Phase 4 functional tests ──');
+
+    // Helpers
+    const sleep = (ms) => page.waitForTimeout(ms);
+
+    function assert(condition, message) {
+      if (!condition) {
+        throw new Error(`ASSERTION FAILED: ${message}`);
+      }
+    }
+
+    // ── Test 1: Sleep (bunk-a in quarters-a) ───────────────────────────────────
+    // quarters-a world offset: (-4, 0, -16).
+    // Bunk world centre: (-4, 0.84, -17.98). Teleport player adjacent, within radius.
+    console.log('[verify] Test 1: Sleep (bunk-a)');
+    const preState = await page.evaluate(() => window.__test.getState());
+    console.log(`  pre-sleep  — clock=${preState.clock.toFixed(1)} energy=${preState.energy.toFixed(1)}`);
+
+    // Drain energy below 100 so we can verify it was restored
+    await page.evaluate(() => window.__test.teleport(-4, 1.7, -16.5));
+    await sleep(150); // let a frame render so raycast has position
+
+    // Headless: proximity interact (no pointer lock needed)
+    const interacted1 = await page.evaluate(() => window.__test.interact());
+    assert(interacted1, 'interact() returned false — no interactable found near bunk-a');
+
+    // Wait for fade out + hold + fade in (~350+250+350 = 950ms; add 600ms buffer)
+    console.log('[verify] Waiting for sleep fade animation (1600ms)…');
+    await sleep(1600);
+
+    const postSleep = await page.evaluate(() => window.__test.getState());
+    console.log(`  post-sleep — clock=${postSleep.clock.toFixed(1)} energy=${postSleep.energy.toFixed(1)}`);
+
+    const clockDelta = postSleep.clock - preState.clock;
+    console.log(`  clock delta: ${clockDelta.toFixed(1)} ship-minutes (expected ~480 + a few ticks)`);
+    // Allow up to 10 extra ship-minutes for real-time ticking during the wait period
+    // (1 real-s = 1 ship-min, so 1.6s wait = ~1.6 extra ticks; 10 gives plenty of headroom).
+    assert(
+      clockDelta >= 479 && clockDelta <= 492,
+      `clock did not advance ~480 ship-minutes; delta=${clockDelta.toFixed(2)}`,
+    );
+    // Energy was set to 100 but decays slightly during the wait period (~0.1/s × 1.6s = 0.16)
+    assert(
+      postSleep.energy >= 99.5,
+      `energy was not restored to ~100; got ${postSleep.energy}`,
+    );
+    console.log('[verify] Test 1 PASSED ✓ (sleep advanced clock 8h, energy=100)');
+
+    // ── Test 2: Eat (stove in galley) ──────────────────────────────────────────
+    // galley world offset: (0, 0, -1).
+    // Stove world centre: (2.725, 0.91, -1.60). Teleport player nearby.
+    console.log('[verify] Test 2: Eat (stove in galley)');
+    const preEat = await page.evaluate(() => window.__test.getState());
+    console.log(`  pre-eat  — hunger=${preEat.hunger.toFixed(1)}`);
+
+    await page.evaluate(() => window.__test.teleport(1.0, 1.7, -1.6));
+    await sleep(150);
+
+    const interacted2 = await page.evaluate(() => window.__test.interact());
+    assert(interacted2, 'interact() returned false — no interactable found near stove');
+
+    // Brief fade: 280+150+280 = 710ms + buffer
+    console.log('[verify] Waiting for eat fade animation (1000ms)…');
+    await sleep(1000);
+
+    const postEat = await page.evaluate(() => window.__test.getState());
+    console.log(`  post-eat — hunger=${postEat.hunger.toFixed(1)}`);
+    // Hunger was set to 100 but decays slightly during wait period (~0.07/s × 1s = 0.07)
+    assert(
+      postEat.hunger >= 99.5,
+      `hunger was not restored to ~100; got ${postEat.hunger}`,
+    );
+    console.log('[verify] Test 2 PASSED ✓ (hunger=100 after eat)');
+
+    console.log('[verify] All Phase 4 functional tests PASSED ✓\n');
 
     await browser.close();
     console.log('[verify] Done. ✓');

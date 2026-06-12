@@ -7,7 +7,7 @@ import { buildGalley } from './galley.js';
 import { buildEngineering } from './engineering.js';
 import { buildStarfield } from '../fx/starfield.js';
 import { buildPlanet } from '../fx/planet.js';
-import type { AABB, RoomModule } from './types.js';
+import type { AABB, RoomModule, Interactable } from './types.js';
 import type { PlanetResult } from '../fx/planet.js';
 
 /**
@@ -41,6 +41,7 @@ function translateAABB(aabb: AABB, offset: THREE.Vector3): AABB {
 export interface ShipAssembly {
   groups: THREE.Group[];
   colliders: AABB[];
+  interactables: Interactable[];
   planet: PlanetResult;
 }
 
@@ -55,6 +56,7 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   ];
 
   const allColliders: AABB[] = [];
+  const allInteractables: Interactable[] = [];
   const groups: THREE.Group[] = [];
 
   for (const { module, worldPos } of placements) {
@@ -70,6 +72,12 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
       const worldPos2 = cam.position.clone().add(worldPos);
       const worldLook = cam.lookAt.clone().add(worldPos);
       registerCam(cam.name, worldPos2, worldLook);
+    }
+
+    // Translate interactable positions to world space
+    for (const ia of module.interactables) {
+      ia.position.add(worldPos);
+      allInteractables.push(ia);
     }
   }
 
@@ -119,5 +127,5 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   const ambient = new THREE.AmbientLight(0xffffff, 0.20);
   scene.add(ambient);
 
-  return { groups, colliders: allColliders, planet };
+  return { groups, colliders: allColliders, interactables: allInteractables, planet };
 }

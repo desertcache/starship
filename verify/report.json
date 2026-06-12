@@ -5,7 +5,7 @@
   "triangles": 4256,
   "geometries": 302,
   "textures": 12,
-  "sampleDurationMs": 5002.699999988079,
+  "sampleDurationMs": 5000.5,
   "headless": false,
   "cameras": [
     "cockpit",
@@ -16,5 +16,5 @@
     "galley",
     "engineering"
   ],
-  "timestamp": "2026-06-12T02:55:01.360Z"
+  "timestamp": "2026-06-12T03:09:03.778Z"
 }
