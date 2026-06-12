@@ -5,7 +5,10 @@ import { buildCorridor } from './corridor.js';
 import { buildQuartersA, buildQuartersB } from './quarters.js';
 import { buildGalley } from './galley.js';
 import { buildEngineering } from './engineering.js';
+import { buildStarfield } from '../fx/starfield.js';
+import { buildPlanet } from '../fx/planet.js';
 import type { AABB, RoomModule } from './types.js';
+import type { PlanetResult } from '../fx/planet.js';
 
 /**
  * Ship layout — all positions are world-space (Y=0 is deck level).
@@ -38,6 +41,7 @@ function translateAABB(aabb: AABB, offset: THREE.Vector3): AABB {
 export interface ShipAssembly {
   groups: THREE.Group[];
   colliders: AABB[];
+  planet: PlanetResult;
 }
 
 export function assembleShip(scene: THREE.Scene): ShipAssembly {
@@ -72,8 +76,16 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
     }
   }
 
-  // Lighting: HemisphereLight + point lights along the ship spine
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x303040, 0.5);
+  // ── Space environment ──────────────────────────────────────────────────────
+  const starfield = buildStarfield();
+  scene.add(starfield);
+
+  const planet = buildPlanet();
+  scene.add(planet.mesh);
+
+  // ── Lighting ──────────────────────────────────────────────────────────────
+  // HemisphereLight: sky = warm white, ground = cool dark — gives interior warmth
+  const hemi = new THREE.HemisphereLight(0xfff4e0, 0x1a1a2e, 0.4);
   scene.add(hemi);
 
   // Point lights: cockpit, corridor mid, quarters area, galley, engineering (max 5)
@@ -86,14 +98,14 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   ];
 
   for (const [px, py, pz, color] of pointDefs) {
-    const light = new THREE.PointLight(color, 1.5, 14);
+    const light = new THREE.PointLight(color, 1.8, 16);
     light.position.set(px, py, pz);
     scene.add(light);
   }
 
-  // Ambient fill to prevent absolute black
-  const ambient = new THREE.AmbientLight(0xffffff, 0.25);
+  // Ambient fill to prevent absolute black in corners
+  const ambient = new THREE.AmbientLight(0xffffff, 0.2);
   scene.add(ambient);
 
-  return { groups, colliders: allColliders };
+  return { groups, colliders: allColliders, planet };
 }

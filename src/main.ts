@@ -9,6 +9,7 @@ import {
 import { initDebug, tickDebug } from './ui/debug.js';
 import { assembleShip } from './world/assembly.js';
 import { initController, tickController } from './player/controller.js';
+import { tickSway } from './fx/sway.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -24,7 +25,7 @@ const camera = new THREE.PerspectiveCamera(
   75,
   window.innerWidth / window.innerHeight,
   0.1,
-  1000,
+  2000, // Extended far plane to see starfield at radius 800
 );
 
 // ── Global hook installs ──────────────────────────────────────────────────────
@@ -61,14 +62,23 @@ let readyResolve: () => void;
 const readyPromise = new Promise<void>((res) => { readyResolve = res; });
 (window as unknown as Record<string, unknown>)['__ready'] = readyPromise;
 
+// ── Start time for elapsed-based animations ───────────────────────────────────
+const startTime = performance.now();
+
 // ── Render loop ───────────────────────────────────────────────────────────────
 let firstFrame = true;
 
 function animate(now: number): void {
   requestAnimationFrame(animate);
   recordFrame(now);
+
+  const elapsed = (now - startTime) / 1000;
+
   tickController(now);
+  tickSway(camera, elapsed);
+  ship.planet.tick(elapsed);
   tickDebug(now);
+
   renderer.render(scene, camera);
   if (firstFrame) {
     firstFrame = false;

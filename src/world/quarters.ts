@@ -13,6 +13,8 @@ function buildQuarter(
 
   // The door connects to the corridor on the inner wall
   const innerWall: 'port' | 'starboard' = side === 'port' ? 'starboard' : 'port';
+  // The porthole goes in the outer wall (faces space)
+  const outerWall: 'port' | 'starboard' = side;
 
   const { group, colliders } = buildRoom({
     width: W,
@@ -21,17 +23,27 @@ function buildQuarter(
     doors: [
       { wall: innerWall, gapW: 1.4, gapH: 2.2, offset: 0 },
     ],
+    windows: [
+      {
+        wall: outerWall,
+        w: 1.0,    // porthole width
+        h: 0.8,    // porthole height
+        yBot: 1.2, // mid-wall height
+        offset: 0, // centered
+      },
+    ],
   });
 
   group.name = `quarters-${side === 'port' ? 'a' : 'b'}`;
 
-  // Camera positioned on outer wall, looking inward toward the door gap
+  // Camera positioned near the inner wall, looking toward the porthole
   const localCamPos = side === 'port'
-    ? new THREE.Vector3(-1.5, 1.7, 0)  // near port (outer) wall
-    : new THREE.Vector3(1.5, 1.7, 0);  // near starboard (outer) wall
+    ? new THREE.Vector3(1.5, 1.7, 0)   // near starboard (inner) wall
+    : new THREE.Vector3(-1.5, 1.7, 0); // near port (inner) wall
+  // Look toward the outer wall porthole
   const localCamLook = side === 'port'
-    ? new THREE.Vector3(2.5, 1.2, 0)   // looking at starboard door gap
-    : new THREE.Vector3(-2.5, 1.2, 0); // looking at port door gap
+    ? new THREE.Vector3(-2.5, 1.6, 0)  // looking at port outer wall
+    : new THREE.Vector3(2.5, 1.6, 0);  // looking at starboard outer wall
 
   return {
     group,
