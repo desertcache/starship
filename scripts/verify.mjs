@@ -1,0 +1,145 @@
+/**
+ * verify.mjs — Phase-gate verification harness
+ * Builds, serves vite preview, screenshots every named camera, samples perf.
+ * Usage:
+ *   node scripts/verify.mjs             (headless)
+ *   node scripts/verify.mjs --headed    (headed Chromium, fps authoritative)
+ */
+
+import { execSync, spawn } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from '@playwright/test';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(__dirname, '..');
+const SHOTS_DIR = resolve(ROOT, 'verify', 'shots');
+const REPORT_PATH = resolve(ROOT, 'verify', 'report.json');
+let PREVIEW_PORT = 4173;
+let BASE_URL = `http://localhost:${PREVIEW_PORT}`;
+const headed = process.argv.includes('--headed');
+
+mkdirSync(SHOTS_DIR, { recursive: true });
+
+// ── 1. Build ──────────────────────────────────────────────────────────────────
+console.log('[verify] Building…');
+execSync('npm run build', { cwd: ROOT, stdio: 'inherit' });
+
+// ── 2. Serve vite preview ─────────────────────────────────────────────────────
+// Find a free port starting from 4173
+async function findFreePort(start) {
+  const { createServer } = await import('node:net');
+  return new Promise((resolve) => {
+    const s = createServer();
+    s.listen(start, () => {
+      const { port } = s.address();
+      s.close(() => resolve(port));
+    });
+    s.on('error', () => resolve(findFreePort(start + 1)));
+  });
+}
+
+PREVIEW_PORT = await findFreePort(4173);
+BASE_URL = `http://localhost:${PREVIEW_PORT}`;
+
+console.log(`[verify] Starting preview server on port ${PREVIEW_PORT}…`);
+const server = spawn('npx', ['vite', 'preview', '--port', String(PREVIEW_PORT), '--strictPort'], {
+  cwd: ROOT,
+  stdio: 'inherit',
+  shell: true,
+});
+
+async function waitForServer(url, maxMs = 15000) {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok || resp.status < 500) return;
+    } catch {
+      // not up yet
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  throw new Error(`Server at ${url} did not come up within ${maxMs}ms`);
+}
+
+async function run() {
+  try {
+    await waitForServer(BASE_URL);
+    console.log('[verify] Preview server ready.');
+
+    const browser = await chromium.launch({ headless: !headed });
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 720 },
+    });
+    const page = await context.newPage();
+
+    // Capture console errors
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') console.error('[page error]', msg.text());
+    });
+
+    console.log('[verify] Navigating…');
+    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+
+    // ── 3. Await __ready ────────────────────────────────────────────────────────
+    console.log('[verify] Awaiting __ready…');
+    await page.waitForFunction(() => window.__ready instanceof Promise, { timeout: 15000 });
+    await page.evaluate(() => window.__ready);
+    console.log('[verify] __ready resolved.');
+
+    // ── 4. Discover registered cameras ─────────────────────────────────────────
+    const camNames = await page.evaluate(() => {
+      // __setCam is registered; peek at window for cam list via the helper
+      // We expose the list through a temp call pattern — the registry is internal,
+      // so we iterate by trying known names. Instead, we added __camNames in main.
+      return window.__camNames ?? [];
+    });
+
+    // Fallback: try both seed cameras
+    const toShoot = camNames.length > 0
+      ? camNames
+      : ['seed-room', 'seed-room-corner'];
+
+    // ── 5. Screenshot each camera ───────────────────────────────────────────────
+    for (const name of toShoot) {
+      console.log(`[verify] Camera: ${name}`);
+      const ok = await page.evaluate((n) => window.__setCam(n), name);
+      if (!ok) {
+        console.warn(`[verify] __setCam(${name}) returned false — cam not registered?`);
+      }
+      await page.waitForTimeout(800);
+      const shotPath = resolve(SHOTS_DIR, `${name}.png`);
+      await page.screenshot({ path: shotPath });
+      console.log(`[verify] Shot saved: ${shotPath}`);
+    }
+
+    // ── 6. Perf sample (5 s) ────────────────────────────────────────────────────
+    const firstCam = toShoot[0];
+    console.log(`[verify] Perf sample (5000ms) from '${firstCam}'…`);
+    await page.evaluate((n) => window.__setCam(n), firstCam);
+    await page.waitForTimeout(200);
+
+    const report = await page.evaluate(
+      () => window.__perf.sample(5000),
+    );
+    report.headless = !headed;
+    report.cameras = toShoot;
+    report.timestamp = new Date().toISOString();
+
+    writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
+    console.log('[verify] report.json written:', report);
+
+    await browser.close();
+    console.log('[verify] Done. ✓');
+  } finally {
+    server.kill();
+  }
+}
+
+run().catch((err) => {
+  console.error('[verify] FAILED:', err);
+  server.kill();
+  process.exit(1);
+});
