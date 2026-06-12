@@ -180,20 +180,24 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
 
   // ── Lighting ─────────────────────────────────────────────────────────────
   // v0.5 Stage 2 (lighting mood) — DARK / POOLED / CINEMATIC.
+  // v0.6 P2: console teal PointLight added as hero focal anchor (ref-05 gap).
+  //          Orchestrator-approved cap raised to 11 for this hero light.
   // Reference: a corridor that is mostly shadow with warm light POOLS under
   // ceiling fixtures, emissive accents punching through, glossy floor catching
   // each pool. The big move is cutting the global fill HARD and tightening every
   // PointLight into a discrete pool with real falloff (decay=2, short distance).
   //
-  // Ship total: 10 PointLights (HARD CAP — unchanged count)
-  //   1 cockpit (under-console teal uplight)  5 galley
-  //   2 quarters-junction (corridor pool A)   6 engineering reactor (red-orange)
-  //   3 quarters port                         7 corridor threshold (pool B, fore)
-  //   3b quarters starboard                   9 cargo bay
-  //   4 corridor mid (pool C, aft)            + engineering.ts stray (#8)
+  // Ship total: 11 PointLights (cap amended to 11 — console teal hero)
+  //   1  cockpit old uplight (removed — replaced by hero teal below)
+  //   1h cockpit console HERO teal (0x46E0D8, intensity 2.5, dist 1.2) ← new
+  //   2  quarters-junction (corridor pool A)   6 engineering reactor (red-orange)
+  //   3  quarters port                         7 corridor threshold (pool B, fore)
+  //   3b quarters starboard                    9 cargo bay
+  //   4  corridor mid (pool C, aft)            + engineering.ts stray (#8)
+  //   5  galley
   //
   // Pool palette: warm tungsten 0xffe2c0 for ceiling fixtures; reactor red-orange;
-  // cockpit under-console cool teal so the console screens own the room.
+  // cockpit console hero teal 0x46E0D8 so console is the brightest in-world element.
   // decay=2 (physical inverse-square) makes pools fall off fast → shadow between.
 
   const WARM = 0xffe2c0; // tungsten ceiling-pool colour
@@ -203,12 +207,15 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   const hemi = new THREE.HemisphereLight(0xffe9d0, 0x10121c, 0.12);
   scene.add(hemi);
 
-  // 1. Cockpit — console-WASH teal uplight. PointLight (no shadow) so the
-  //    under-console glow reads as fill; the emissive console screens own the room.
-  //    Shadow removed here because the cockpit spot below (junctionSpot) already
-  //    grounds the corridor, and a shadow PointLight here costs 6 extra renders.
-  const cockpitPt = new THREE.PointLight(0x5fcfe0, 1.4, 3.4, 2);
-  cockpitPt.position.set(0, 1.25, -23.6);
+  // 1h. Cockpit HERO — teal console PointLight, positioned ~0.05 m proud of the
+  //     console face to visibly wash the console top + forward bulkhead.
+  //     v0.6 P2: color=0x46E0D8, intensity=2.5, distance=1.2, decay=2.
+  //     (Orchestrator cap amended to 11 for this hero — see header comment.)
+  // v0.6 P2 final: intensity 3.0, distance 1.5 for visible teal spill on console top.
+  const cockpitPt = new THREE.PointLight(0x46E0D8, 3.0, 1.5, 2);
+  // Console face is at local Z ≈ -2.48+0.55 = -1.93, world Z = -22.5 + -1.93 = -24.43
+  // Move light ~0.05m proud: world Z ≈ -24.38, Y at screen height ≈ 1.15
+  cockpitPt.position.set(0, 1.15, -24.38);
   scene.add(cockpitPt);
 
   // 2. Quarters junction — CORRIDOR POOL A: downward SpotLight at (0,2.5,-16).
@@ -233,12 +240,14 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   scene.add(qStbdPt);
 
   // 4. Corridor mid — POOL C (aft end of the corridor, by the galley door ~Z=-8).
-  const corridorPt = new THREE.PointLight(WARM, 4.6, 6.5, 2);
+  // v0.6 P1: intensity 4.6→3.2, distance 6.5→5.0 so pools don't overlap into a wash.
+  const corridorPt = new THREE.PointLight(WARM, 3.2, 5.0, 2);
   corridorPt.position.set(0, 2.4, -8.5);
   scene.add(corridorPt);
 
   // 5. Galley — single warm ceiling pool over the counter run.
-  const galleyPt = new THREE.PointLight(WARM, 4.6, 7.0, 2);
+  // v0.6 P1: intensity 4.6→3.4 so wall bases fall to shadow.
+  const galleyPt = new THREE.PointLight(WARM, 3.4, 7.0, 2);
   galleyPt.position.set(0.5, 2.4, -1);
   scene.add(galleyPt);
 
@@ -267,15 +276,17 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   scene.add(reactorDummy);
 
   // 7. Corridor threshold — POOL B (fore end, by the cockpit door ~Z=-19).
-  //    Dimmer than A/C so the eye reads a bright-mid-dim rhythm down the hall.
-  const thresholdPt = new THREE.PointLight(WARM, 3.0, 5.5, 2);
+  // v0.6 P1: intensity 3.0→2.0, distance 5.5→5.0 — dimmer than A/C so the eye
+  // reads a bright-dim-bright rhythm with shadow between pools.
+  const thresholdPt = new THREE.PointLight(WARM, 2.0, 5.0, 2);
   thresholdPt.position.set(0, 2.4, -19);
   scene.add(thresholdPt);
 
   // (engineering.ts stray reactor glow = light #8 — counted in ship total)
 
   // 9. Cargo bay — single high warm pool (5H room), dark corners.
-  const cargoPt = new THREE.PointLight(0xffe0c0, 6.0, 9.5, 2);
+  // v0.6 P1: intensity 6.0→4.5 so wall bases fall to shadow.
+  const cargoPt = new THREE.PointLight(0xffe0c0, 4.5, 9.5, 2);
   cargoPt.position.set(0, 4.2, 13.5);
   scene.add(cargoPt);
 

@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AABB } from './types.js';
 import { makeLiveScreenMat, liveScreenTick } from './cockpitScreens.js';
+import type { ScreenType } from './cockpitScreens.js';
 
 export { liveScreenTick };
 
@@ -109,26 +110,43 @@ export function buildConsoleBank(group: THREE.Group): ConsoleBankResult {
   stripe.position.set(0, BH + 0.015, CZ);
   group.add(stripe);
 
-  // 3 live screens (canvas-based)
+  // 3 live screens (canvas-based) — v0.6 P2: differentiated types per position
+  // left=waveform, center=radar/scope, right=bar-graph
   const SW = 1.18, SH = 0.34;
   const SZ = FZ + BD + 0.005, SY = BH + TH * 0.5;
-  for (const sx of [-1.45, 0, 1.45]) {
+  const SCREEN_TYPES: ScreenType[] = ['waveform', 'radar', 'bargraph'];
+  const screenXPositions = [-1.45, 0, 1.45] as const;
+  for (let si = 0; si < screenXPositions.length; si++) {
+    const sx = screenXPositions[si];
     const bezel = new THREE.Mesh(new THREE.BoxGeometry(SW + 0.06, SH + 0.06, 0.025), matGunmetal);
     bezel.position.set(sx, SY, SZ);
     group.add(bezel);
-    const scrMat = makeLiveScreenMat();
+    const scrMat = makeLiveScreenMat(SCREEN_TYPES[si]);
     const scr = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), scrMat);
     scr.position.set(sx, SY, SZ + 0.014);
     group.add(scr);
   }
 
-  // Orange indicator dots along top edge
+  // Orange indicator dots along top edge (existing)
   const dotGeo = new THREE.SphereGeometry(0.018, 6, 4);
   const indMat = new THREE.MeshBasicMaterial({ color: COL_ORANGE });
   for (let i = 0; i < 5; i++) {
     const d = new THREE.Mesh(dotGeo, indMat);
     d.position.set(-1.8 + i * 0.9, BH + TH + 0.025, FZ + BD - 0.04);
     group.add(d);
+  }
+
+  // v0.6 P2: teal + amber emissive status dots along the console FRONT EDGE —
+  // 4 small dots, alternating teal/amber, give the ref-05 "live console" feel.
+  const frontDotGeo = new THREE.SphereGeometry(0.015, 6, 4);
+  const frontDotColors = [COL_TEAL, COL_ORANGE, COL_TEAL, COL_ORANGE];
+  for (let i = 0; i < 4; i++) {
+    const fd = new THREE.Mesh(
+      frontDotGeo,
+      new THREE.MeshBasicMaterial({ color: frontDotColors[i] }),
+    );
+    fd.position.set(-0.9 + i * 0.6, BH * 0.5, FZ + 0.01); // front face, mid-height
+    group.add(fd);
   }
 
   // Teal underlight strip

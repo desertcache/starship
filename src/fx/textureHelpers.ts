@@ -6,7 +6,9 @@ import * as THREE from 'three';
 
 // ── Palette ────────────────────────────────────────────────────────────────────
 export const PAL = {
-  cream:   '#E8E2D4',
+  // v0.6 P1: cream darkened ~75% (E8E2D4 → 383430) — near-charcoal to match
+  // ref-02 wall tone. Hue preserved (warm dark), luminance only.
+  cream:   '#383430',
   orange:  '#C7641E',
   teal:    '#46E0D8',
   gunmetal:'#1C1E22',

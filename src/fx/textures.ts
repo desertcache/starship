@@ -215,7 +215,8 @@ export function makeGunmetalCeilingTexture(): THREE.CanvasTexture {
     canvas.height = S;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = '#25282e';
+    // v0.6 P1: ceiling base darkened to reduce secondary uplight bounce off ceiling
+    ctx.fillStyle = '#1a1c20';
     ctx.fillRect(0, 0, S, S);
 
     drawSeams(ctx, S, S, 128, 128, 'rgba(0,0,0,0.6)', 2);

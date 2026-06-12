@@ -55,18 +55,20 @@ export function makeCeilingLightTexture(): THREE.CanvasTexture {
     canvas.height = H;
     const ctx = canvas.getContext('2d')!;
 
-    // Warm tungsten base — amber, not near-white, so the panel sits as a dim
-    // fixture against the dark room. A small hot centre still clears bloom.
-    ctx.fillStyle = '#F2C892';
+    // v0.6 P1: base darkened to #C89850 (amber housing, not near-white).
+    // The tint color in shipMaterials.ts is 0xF6DCB4 and toneMapped=false —
+    // the hot core below still clears 0.90 bloom so fixtures halo; the housing
+    // reads as warm tungsten casing, not a white slab.
+    ctx.fillStyle = '#C89850';
     ctx.fillRect(0, 0, W, H);
 
-    // Small hot core (clears 0.90 bloom threshold) so each fixture still halos,
-    // surrounded by a deep amber rim that reads as housing, not a flat slab.
+    // Tight hot core: only the very centre clears bloom threshold.
+    // Falloff steepened so housing stays dim amber, not white.
     const grad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.62);
-    grad.addColorStop(0.0, 'rgba(255,248,235,0.55)');   // hot bloom-clearing core
-    grad.addColorStop(0.30, 'rgba(255,235,200,0.10)');
-    grad.addColorStop(0.70, 'rgba(150,110,65,0.30)');
-    grad.addColorStop(1.0, 'rgba(90,60,30,0.70)');      // dark housing rim
+    grad.addColorStop(0.0, 'rgba(255,248,235,0.80)');   // hot bloom-clearing core
+    grad.addColorStop(0.18, 'rgba(255,235,200,0.20)');  // tighter falloff
+    grad.addColorStop(0.45, 'rgba(140,95,40,0.40)');
+    grad.addColorStop(1.0, 'rgba(60,35,10,0.80)');      // dark housing rim
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
