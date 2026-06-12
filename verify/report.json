@@ -1,11 +1,11 @@
 {
   "avgFps": 3.2,
-  "p95FrameTime": 316.7,
-  "drawCalls": 511,
-  "triangles": 17519,
-  "geometries": 576,
-  "textures": 76,
-  "sampleDurationMs": 5576.5999999940395,
+  "p95FrameTime": 333.4,
+  "drawCalls": 515,
+  "triangles": 19167,
+  "geometries": 583,
+  "textures": 77,
+  "sampleDurationMs": 5031.4000000059605,
   "headless": true,
   "qualityHigh": false,
   "cameras": [
@@ -24,5 +24,5 @@
     "qa-jitter-b"
   ],
   "perfCamera": "engineering",
-  "timestamp": "2026-06-12T18:31:17.793Z"
+  "timestamp": "2026-06-12T18:33:13.580Z"
 }
