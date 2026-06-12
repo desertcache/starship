@@ -169,12 +169,12 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   scene.add(planet.mesh);
 
   // Starboard-quarters porthole view onto the passing cruise (verify cross-flow).
-  // Camera pulled back to ~3.5m inside the room from the outer wall face (X=6.5)
-  // so the bezel ring (~0.44m outer radius) occupies ~60-70% of frame height and
-  // space is clearly visible through the open aperture.
+  // v0.6 P4: camera moved to X=5.8 (was 3.0) — ~0.7m inside the outer wall face
+  // (X=6.5, bezel outer radius ~0.44m) so the bezel fills ~80-90% of frame height
+  // and space is clearly legible through the aperture.
   registerCam(
     'porthole-space',
-    new THREE.Vector3(3.0, 1.6, -16.0),
+    new THREE.Vector3(5.8, 1.6, -16.0),
     new THREE.Vector3(20, 1.6, -16.0),
   );
 

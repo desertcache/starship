@@ -10,6 +10,12 @@ const CREAM   = '#E8E2D4';
 const GUNMETAL = '#1C1E22';
 const TOAST_BG = 'rgba(28,30,34,0.82)';
 
+/** When ?toasts=0 is in the URL, room toasts are suppressed (verify harness use). */
+const TOASTS_ENABLED: boolean = (() => {
+  if (typeof window === 'undefined') return true;
+  return new URLSearchParams(window.location.search).get('toasts') !== '0';
+})();
+
 function makeDiv(styles: string): HTMLDivElement {
   const d = document.createElement('div');
   d.style.cssText = styles;
@@ -24,9 +30,9 @@ let _toastTimer: ReturnType<typeof setTimeout> | null = null;
 export function initRoomToast(): void {
   toastEl = makeDiv([
     'position:fixed',
-    'top:50%',
+    'top:18%',
     'left:50%',
-    'transform:translate(-50%, -120px)',
+    'transform:translateX(-50%)',
     `color:${CREAM}`,
     'font-family:monospace',
     'font-size:18px',
@@ -50,7 +56,7 @@ export function initRoomToast(): void {
  * @param name - The room name string to display (e.g. "COCKPIT", "GALLEY")
  */
 export function showRoomToast(name: string): void {
-  if (!toastEl) return;
+  if (!toastEl || !TOASTS_ENABLED) return;
   if (_toastTimer !== null) { clearTimeout(_toastTimer); _toastTimer = null; }
   toastEl.textContent = name;
   toastEl.style.transition = 'opacity 0.2s ease';

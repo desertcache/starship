@@ -32,7 +32,9 @@ let crosshairEl: HTMLDivElement | null = null;
 let fadeEl: HTMLDivElement | null = null;
 let flightStripEl: HTMLDivElement | null = null;
 
-const TEAL   = '#46E0D8';
+// v0.6 P6: HUD teal slightly desaturated (80% brightness of #46E0D8 → #38B3AD)
+// so the HUD recedes behind the world rather than competing with it.
+const TEAL   = '#38B3AD';
 const BAR_BG = 'rgba(10,11,16,0.85)';
 
 function makeDiv(styles: string): HTMLDivElement {
@@ -43,6 +45,8 @@ function makeDiv(styles: string): HTMLDivElement {
 
 export function initHud(): void {
   // ── Wrapper container (top-left) ────────────────────────────────────────────
+  // v0.6 P6: faint dark scrim behind the group (padding 6px, radius 4px) so the
+  // HUD block reads as a unified element that subordinates to the world.
   const wrapper = makeDiv([
     'position:fixed',
     'top:14px',
@@ -53,17 +57,19 @@ export function initHud(): void {
     'pointer-events:none',
     'z-index:500',
     'font-family:monospace',
+    'background:rgba(10,11,16,0.85)',
+    'padding:6px',
+    'border-radius:4px',
   ].join(';'));
 
   // ── Clock ───────────────────────────────────────────────────────────────────
+  // v0.6 P6: background removed — scrim is on the wrapper; text-shadow toned down
+  // to match the desaturated teal.
   clockEl = makeDiv([
     `color:${TEAL}`,
     'font-size:15px',
     'letter-spacing:0.08em',
-    'text-shadow:0 0 8px rgba(70,224,216,0.6)',
-    `background:${BAR_BG}`,
-    'padding:3px 8px',
-    'border-radius:3px',
+    'text-shadow:0 0 6px rgba(56,179,173,0.5)',
     'width:fit-content',
   ].join(';'));
   clockEl.textContent = '07:00';

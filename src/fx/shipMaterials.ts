@@ -138,9 +138,14 @@ export const matRedAccent: THREE.MeshLambertMaterial = new THREE.MeshLambertMate
  * toneMapped=false ensures the emissive value never gets tone-compressed
  * below the bloom threshold after the threshold raise to 0.90.
  */
+// v0.6 P6: color stepped down from 0x55FFEE toward 0x46E0D8 (nav-accent, not
+// the brightest teal in frame). Using 0x4FFAEA — a mid-point that reduces the
+// over-saturated white-teal while keeping enough brightness to clear bloom
+// threshold 0.90 via the toneMapped:false path + texture centre highlight.
+// If strips go flat in verify shots, step back up toward 0x55FFEE.
 export const matTealStrip: THREE.MeshBasicMaterial = new THREE.MeshBasicMaterial({
   map: makeTealStripTexture(),
-  color: 0x55FFEE,   // slightly boosted from 0x46E0D8 to clear threshold 0.90
+  color: 0x4FFAEA,
   side: THREE.FrontSide,
   toneMapped: false,
 });

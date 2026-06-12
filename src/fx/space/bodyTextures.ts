@@ -33,8 +33,14 @@ function finalize(canvas: HTMLCanvasElement): THREE.CanvasTexture {
 // rather than flat unlit spheres. Lit side keeps full brightness; the dark side
 // falls to DARK_FLOOR. U wraps around the equator, so a horizontal gradient is a
 // real day/night terminator. lightU = seeded sub-solar longitude (0..1).
+//
+// v0.6 P5 — strengthened: DARK_FLOOR 0.25→0.30, falloff power 0.85→2.2, gradient
+// coverage extended so ~45% of the disc is in deep shadow. The steeper power curve
+// keeps the lit hemisphere bright while creating a crisp, visible terminator line
+// rather than the previous near-uniform tint. Consistent sun direction is implicit
+// since lightU is seeded per-body and the gradient is always left→right (U axis).
 
-const DARK_FLOOR = 0.25; // dark side falls to 25% brightness
+const DARK_FLOOR = 0.30; // dark side floor (30% brightness — readable shadow)
 
 function applyTerminator(
   canvas: HTMLCanvasElement,
@@ -49,8 +55,12 @@ function applyTerminator(
     let d = x / size - lightU;
     if (d > 0.5) d -= 1;
     if (d < -0.5) d += 1;
-    const lit = (Math.cos(d * Math.PI * 2) + 1) * 0.5; // 1 sub-solar → 0 antisolar
-    const shade = DARK_FLOOR + (1 - DARK_FLOOR) * Math.pow(lit, 0.85);
+    // cos maps sub-solar (d=0) → lit=1, anti-solar (d=±0.5) → lit=0.
+    // Power 2.2 steepens the falloff: lit hemisphere stays near-white until
+    // ~35% longitude from the terminator, then drops fast into shadow.
+    // This pushes ~45% of the disc below the midpoint for clear shadow coverage.
+    const lit = (Math.cos(d * Math.PI * 2) + 1) * 0.5;
+    const shade = DARK_FLOOR + (1 - DARK_FLOOR) * Math.pow(lit, 2.2);
     const g = Math.round(shade * 255);
     ctx.fillStyle = `rgb(${g},${g},${g})`;
     ctx.fillRect(x, 0, 1, size);

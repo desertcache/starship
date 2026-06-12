@@ -27,8 +27,13 @@ let BASE_URL = `http://localhost:${PREVIEW_PORT}`;
 const headed  = process.argv.includes('--headed');
 /** When true, appends ?quality=high to every URL opened by the harness. */
 const quality = process.argv.includes('--quality');
-/** Build the full page URL, optionally appending the quality param. */
-function pageUrl(base) { return quality ? `${base}/?quality=high` : base; }
+/** Build the full page URL, always suppressing room toasts (?toasts=0) and
+ *  optionally appending the quality param. Toasts are suppressed so screenshots
+ *  never capture mid-display "COCKPIT" / "CREW QUARTERS" labels over subjects. */
+function pageUrl(base) {
+  const params = quality ? 'toasts=0&quality=high' : 'toasts=0';
+  return `${base}/?${params}`;
+}
 
 mkdirSync(SHOTS_DIR, { recursive: true });
 
@@ -128,6 +133,11 @@ async function run() {
     await page.waitForFunction(() => window.__ready instanceof Promise, { timeout: 15000 });
     await page.evaluate(() => window.__ready);
     console.log('[verify] __ready resolved.');
+
+    // Allow a couple of render frames to stabilise after the first frame signal.
+    // Without this, the first camera screenshot can capture a blank WebGL canvas
+    // (preserveDrawingBuffer is false — backbuffer cleared between frames).
+    await page.waitForTimeout(600);
 
     // ── 4. Discover registered cameras ─────────────────────────────────────────
     const camNames = await page.evaluate(() => {

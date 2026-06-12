@@ -228,13 +228,14 @@ export function createSpaceDirector(
       }),
     );
 
-    // (2) Porthole secondary — moon at large +X near z≈-16 (the porthole cam at
-    // (5.8,1.6,-16) looks toward +X). Drifts slowly +Z so it stays in frame for
-    // the first ~30s. radius ~32 (within the 25-40 brief).
+    // (2) Porthole secondary — ringed gas giant at large +X bearing, framed to be
+    // visible through the starboard porthole (porthole cam at (5.8,1.6,-16) looks
+    // toward +X). RINGED matches ref-08's signature porthole body. Drifts slowly
+    // +Z so it stays in frame for the first ~30s.
     addEntry(
       spawnHero(rng, {
-        kind: 'MOON',
-        radius: 32,
+        kind: 'RINGED',
+        radius: 80,
         at: new THREE.Vector3(640, 30, -120),
         driftSpeed: 4,
         vx: 0,
