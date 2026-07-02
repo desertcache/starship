@@ -174,7 +174,7 @@ export function makeCreamWallTexture(): THREE.CanvasTexture {
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(1, 1);
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR diffuse — decode as sRGB
 }
 
 /**
@@ -215,5 +215,5 @@ export function makeCreamOrangeBandTexture(): THREE.CanvasTexture {
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(1, 1);
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR diffuse — decode as sRGB
 }

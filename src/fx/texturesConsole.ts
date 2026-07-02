@@ -101,5 +101,5 @@ export function makeConsoleScreenTexture(): THREE.CanvasTexture {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR emissive readout — decode as sRGB
 }

@@ -52,7 +52,7 @@ export function makeTealStripTexture(): THREE.CanvasTexture {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR emissive — decode as sRGB
 }
 
 /**
@@ -94,7 +94,7 @@ export function makeCeilingLightTexture(): THREE.CanvasTexture {
     ctx.fillRect(0, 0, W, H);
 
     return new THREE.CanvasTexture(canvas);
-  });
+  }, true); // v0.9 B1: COLOR emissive — decode as sRGB
 }
 
 /**
@@ -171,7 +171,7 @@ export function makeOrangeFrameTexture(): THREE.CanvasTexture {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR diffuse — decode as sRGB
 }
 
 /**
@@ -204,7 +204,7 @@ export function makeHazardStripingTexture(): THREE.CanvasTexture {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR diffuse — decode as sRGB
 }
 
 /**
@@ -229,6 +229,6 @@ export function makeRedAccentTexture(): THREE.CanvasTexture {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR diffuse — decode as sRGB
 }
 

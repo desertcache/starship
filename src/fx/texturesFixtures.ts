@@ -58,7 +58,7 @@ export function makeFixtureDiffuserTexture(): THREE.CanvasTexture {
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR emissive — decode as sRGB
 }
 
 // ── Housing / gunmetal texture ─────────────────────────────────────────────────
@@ -99,7 +99,7 @@ export function makeFixtureHousingTexture(): THREE.CanvasTexture {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR diffuse — decode as sRGB
 }
 
 // ── Material singletons ────────────────────────────────────────────────────────

@@ -1,35 +1,60 @@
 /**
- * src/fx/bloom.ts — Post-processing: UnrealBloom + SSAO (default) + vignette.
+ * src/fx/bloom.ts — Post-processing orchestration: GTAO + UnrealBloom +
+ * SMAA + vignette/grain.
+ *
+ * v0.9 B1 (RADIANCE — post stack + color pipeline): replaces the v0.5–v0.8
+ * SSAOPass with GTAOPass (see postfx/ao.ts for the why + tuning), adds
+ * SMAAPass (no anti-aliasing existed in the composer path before — jagged
+ * teal-strip/panel-seam edges), and folds animated film grain into the
+ * existing vignette ShaderPass (see postfx/vignetteGrain.ts) so the pass
+ * count doesn't grow for that item.
+ *
+ * Pipeline order: RenderPass → GTAOPass → UnrealBloomPass → OutputPass →
+ * SMAAPass → vignette+grain ShaderPass (last).
+ *   - GTAO before bloom: occlusion darkening feeds bloom's threshold test,
+ *     same reasoning as the old SSAO-before-bloom order it replaces.
+ *   - OutputPass before SMAA and vignette/grain (display-referred effects):
+ *     SMAA's edge-detection thresholds are tuned for LDR/display-referred
+ *     input — running it on tone-mapped, sRGB-encoded output detects the
+ *     same edges a viewer sees, not linear-HDR luminance discontinuities
+ *     that don't correspond 1:1 to a perceptual edge.
+ *   - Grain is LAST, after SMAA: an early implementation folded grain into
+ *     the OLD pre-OutputPass vignette pass and it read as heavy chunky
+ *     static on the walls, not subtle dither — ACES + sRGB encoding is a
+ *     steep curve near black, so a fixed-percentage linear-space noise
+ *     addition gets non-linearly amplified in shadow (exactly where the
+ *     luminance weighting made it strongest). Grain must be added to
+ *     display-referred (post-tonemap) values for the "~1.5-2%" amplitude
+ *     spec to mean what it says. Running it after SMAA also avoids feeding
+ *     SMAA's edge detector a pre-noised image (grain looks like false edges
+ *     to a luma-difference detector).
  *
  * Kill switch: URL param ?bloom=0 disables bloom entirely.
  *   e.g. http://localhost:5173/?bloom=0
  *
- * SSAO debug flags:
- *   ?ssao=0      — skip SSAOPass entirely (isolation run)
- *   ?ssao=only   — render SSAO buffer directly (tuning view; no bloom/vignette)
- *   ?ssao=1      — opt-in to SSAO when quality=low would otherwise skip it
+ * AO debug flags (?ssao=... kept as the primary name for compatibility;
+ * ?ao=... accepted as an alias — see mission brief):
+ *   ?ssao=0 / ?ao=0      — skip GTAOPass entirely (isolation run)
+ *   ?ssao=only / ?ao=only — render the denoised AO term alone (tuning view;
+ *                           no bloom/vignette/grain composited on top)
+ *   ?quality=low          — skips AO (existing behavior, unchanged) and SMAA
  *
- * SSAO: DEFAULT ON (v0.5 Stage 3 promotion). Disable with ?quality=low or ?ssao=0.
- *   v0.8 retune: kernelRadius/minDistance/maxDistance are FRACTIONS of the
- *   camera near→far depth range (camera.far=2000). Previous values
- *   (radius=8, min=0.002, max=0.08) mapped to kernel 8 view-space-metres and
- *   occluder range 4–160m in a 3m room → giant black wedges at every depth
- *   discontinuity (doorway headers vs far-room walls), shimmering on movement.
- *   Corrected values produce soft contact darkening only, no large silhouettes:
- *     kernelRadius 0.3  — ~0.6m view-space kernel, fits a 3m room
- *     minDistance  0.00005 — ignore micro-occluders (avoids self-shadow acne)
- *     maxDistance  0.0006  — ~1.2m occluder search; clamps well inside rooms
+ * Grain flag: ?grain=0 zeroes grain amplitude without removing the pass
+ * (see postfx/vignetteGrain.ts).
+ * AA isolation flag: ?aa=0 skips SMAAPass (debug only; SMAA is cheap and on
+ * by default whenever the composer runs).
  *
- * Composer is built when (bloomEnabled || ssaoEnabled):
- *   - Always: RenderPass, OutputPass
- *   - Unless ?quality=low or ?ssao=0: SSAOPass (before bloom, contact darkening)
- *   - If bloom enabled: UnrealBloomPass
- *
- * Bloom tuning constants (left AS-IS per v0.4 brief; re-tune post space-lane merge):
- *   threshold: 0.90 — cream walls (luminance ≈0.77) never bloom.
- *              Emissive teal (0x55FFEE, lum ≈0.93) clears this.
- *   strength:  0.45 — subtle, not blowout.
- *   radius:    0.55 — tight halo.
+ * Bloom tuning (v0.9 B1 retune — post color-pipeline fix + A2 hot emissive
+ * cores): threshold lowered 0.90 → 0.84 and strength/radius raised so
+ * ceiling-fixture and teal-strip hot cores halo softly against the now-
+ * correctly-dark (post item 1) interior, while cream walls / HUD glass
+ * still sit safely under threshold.
+ *   threshold: 0.84 — clears emissive hot cores (≥0.98 luminance after the
+ *              colorSpace fix) and fixture cores; cream walls (~0.6-0.7
+ *              luminance post-darkening) stay under.
+ *   strength:  0.60 — visible soft halo, not a blowout.
+ *   radius:    0.65 — halo reaches a few texels past the hot core, doesn't
+ *              wash the whole panel.
  */
 
 import * as THREE from 'three';
@@ -38,70 +63,16 @@ import { RenderPass }      from 'three/examples/jsm/postprocessing/RenderPass.js
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass }      from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass }      from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { SSAOPass }        from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import { SMAAPass }        from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { QUALITY_LOW }     from '../core/perf.js';
+import { createAOPass, type AOHandle } from './postfx/ao.js';
+import { VignetteGrainShader } from './postfx/vignetteGrain.js';
 
 // ── Bloom tuning ───────────────────────────────────────────────────────────────
 
-const BLOOM_THRESHOLD = 0.90;
-const BLOOM_STRENGTH  = 0.45;
-const BLOOM_RADIUS    = 0.55;
-
-// ── Vignette shader ────────────────────────────────────────────────────────────
-//
-// Darkens screen corners ~18% with a smooth radial falloff.
-// One fullscreen quad — negligible GPU cost.
-// Applied BEFORE OutputPass so it composites into the tone-mapped result.
-
-const VignetteShader = {
-  name: 'VignetteShader',
-  uniforms: {
-    tDiffuse:   { value: null as THREE.Texture | null },
-    /** Falloff power — higher = tighter vignette edge (2.0 = cosine-like). */
-    uFalloff:   { value: 2.0 },
-    /** Darkness at the very corners (0 = none, 1 = black). */
-    // Stage C: 0.18→0.12 — reduce corner crush that compounds with darker walls.
-    uStrength:  { value: 0.12 },
-  },
-  vertexShader: /* glsl */`
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: /* glsl */`
-    uniform sampler2D tDiffuse;
-    uniform float uFalloff;
-    uniform float uStrength;
-    varying vec2 vUv;
-    void main() {
-      vec4 color = texture2D(tDiffuse, vUv);
-      // Distance from centre in UV space, normalised so corner = 1.0
-      vec2 uv = vUv - 0.5;
-      float dist = length(uv) * 1.4142; // scale so corner touches 1.0
-      float vignette = 1.0 - uStrength * pow(dist, uFalloff);
-      gl_FragColor = vec4(color.rgb * vignette, color.a);
-    }
-  `,
-};
-
-// ── SSAO tuning (room scale ≈3m, camera.far=2000) ─────────────────────────────
-//
-// three.js SSAOPass treats minDistance/maxDistance as FRACTIONS of the camera
-// near→far depth range, NOT absolute view-space distances. With camera.far=2000:
-//   minDistance 0.00005 → 0.1m  (micro-occluder cutoff, avoids self-shadow acne)
-//   maxDistance 0.0006  → 1.2m  (max occluder search; stays well inside 3m rooms)
-//   kernelRadius 0.3    → ~0.6m view-space sampling kernel (fits a 3m corridor)
-//
-// Prior values (radius=8, min=0.002→4m, max=0.08→160m) created giant black wedges
-// at depth discontinuities (e.g. doorway header vs far wall) that shimmered on
-// camera movement — the dominant visible artifact in v0.7. Now corrected.
-// Full resolution (no half-res). Expected cost: +2-4ms @1280x720.
-
-const SSAO_KERNEL_RADIUS  = 0.3;
-const SSAO_MIN_DISTANCE   = 0.00005;
-const SSAO_MAX_DISTANCE   = 0.0006;
+const BLOOM_THRESHOLD = 0.84;
+const BLOOM_STRENGTH  = 0.60;
+const BLOOM_RADIUS    = 0.65;
 
 // ── BloomSystem interface ──────────────────────────────────────────────────────
 
@@ -124,12 +95,19 @@ export function initBloom(
 ): BloomSystem {
   const params       = new URLSearchParams(window.location.search);
   const bloomEnabled = params.get('bloom') !== '0';
-  // SSAO debug flags: ?ssao=0 skips SSAOPass; ?ssao=only renders SSAO buffer only
-  // (useful for tuning — confirms kernel/distance values show soft contact shadow).
-  const ssaoParam    = params.get('ssao');
-  const ssaoEnabled  = !QUALITY_LOW && ssaoParam !== '0';
-  const ssaoOnly     = ssaoParam === 'only';
-  const needComposer = bloomEnabled || ssaoEnabled;
+
+  // AO debug flags — ?ssao=... is the compatibility name (SSAOPass's old
+  // kill switch), ?ao=... is accepted as an alias per the B1 brief.
+  const ssaoParam  = params.get('ssao');
+  const aoParam    = params.get('ao');
+  const aoOff      = ssaoParam === '0' || aoParam === '0';
+  const aoOnlyView = ssaoParam === 'only' || aoParam === 'only';
+  const aoEnabled  = !QUALITY_LOW && !aoOff;
+
+  const aaEnabled = !QUALITY_LOW && params.get('aa') !== '0';
+  const grainEnabled = params.get('grain') !== '0';
+
+  const needComposer = bloomEnabled || aoEnabled;
 
   // ── Fast-path: no composer needed ─────────────────────────────────────────
   if (!needComposer) {
@@ -147,22 +125,14 @@ export function initBloom(
   // 1. RenderPass — always first
   composer.addPass(new RenderPass(scene, camera));
 
-  // 2. SSAOPass — default-on (before bloom so SSAO affects bloom input).
-  //    Disabled only when ?quality=low.
-  let ssaoPass: SSAOPass | null = null;
-  if (ssaoEnabled) {
+  // 2. GTAOPass — default-on, before bloom (contact darkening feeds the
+  //    bloom threshold test). Disabled only by ?quality=low or ?ssao=0/?ao=0.
+  let aoHandle: AOHandle | null = null;
+  if (aoEnabled) {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    ssaoPass = new SSAOPass(scene, camera, w, h);
-    ssaoPass.kernelRadius  = SSAO_KERNEL_RADIUS;
-    ssaoPass.minDistance   = SSAO_MIN_DISTANCE;
-    ssaoPass.maxDistance   = SSAO_MAX_DISTANCE;
-    // ?ssao=only: render raw SSAO buffer for tuning. Should show soft grey
-    // contact darkening near corners/baseboards ONLY — no large wedges.
-    if (ssaoOnly) {
-      ssaoPass.output = SSAOPass.OUTPUT.SSAO;
-    }
-    composer.addPass(ssaoPass);
+    aoHandle = createAOPass(scene, camera, w, h, aoOnlyView);
+    composer.addPass(aoHandle.pass);
   }
 
   // 3. UnrealBloomPass — only when bloom is enabled
@@ -173,32 +143,57 @@ export function initBloom(
     composer.addPass(bloomPass);
   }
 
-  // 4. Vignette — subtle corner darkening (~18%), active whenever composer runs.
-  //    Off when ?bloom=0 (no composer path) keeps plain render unaffected.
-  const vigPass = new ShaderPass(VignetteShader);
-  composer.addPass(vigPass);
-
-  // 5. OutputPass — tone-mapping + sRGB conversion, always last
+  // 4. OutputPass — tone-mapping + sRGB conversion. Everything after this
+  //    point operates on display-referred values (see file header).
   composer.addPass(new OutputPass());
+
+  // 5. SMAAPass — after tone-mapped/encoded output, before grain (see file
+  //    header). Default on whenever the composer runs; ?aa=0 / ?quality=low
+  //    skip it.
+  let smaaPass: SMAAPass | null = null;
+  if (aaEnabled) {
+    smaaPass = new SMAAPass(window.innerWidth, window.innerHeight);
+    composer.addPass(smaaPass);
+  }
+
+  // 6. Vignette + grain — LAST. Subtle corner darkening + animated dither,
+  //    active whenever the composer runs. Off when ?bloom=0 AND AO off (no
+  //    composer path at all) keeps the plain render unaffected, same as
+  //    before B1.
+  const grainPass = new ShaderPass(VignetteGrainShader);
+  if (!grainEnabled) {
+    grainPass.material.uniforms.uGrainAmount.value = 0;
+  }
+  composer.addPass(grainPass);
 
   return {
     render(): void {
+      // Animate grain — cheap uniform update, no-op cost when amount is 0.
+      grainPass.material.uniforms.uTime.value = performance.now() / 1000;
       composer.render();
     },
 
     resize(width: number, height: number): void {
+      // composer.setSize() resizes every added pass (RenderPass, GTAOPass,
+      // vignette/grain ShaderPass, OutputPass, SMAAPass) via its internal
+      // per-pass setSize() loop. UnrealBloomPass.setSize() additionally
+      // needs its `.resolution` Vector2 kept in sync manually (it doesn't
+      // update that field from the setSize() args itself).
       composer.setSize(width, height);
       if (bloomPass) {
         bloomPass.resolution.set(width, height);
       }
-      if (ssaoPass) {
-        ssaoPass.setSize(width, height);
-      }
     },
 
     dispose(): void {
+      // EffectComposer.dispose() only frees its own ping-pong render
+      // targets + internal copyPass — it does NOT dispose passes added via
+      // addPass(). Each pass here owns GPU resources (GTAOPass especially:
+      // 3 render targets + 2 noise textures), so dispose them explicitly.
+      for (const pass of composer.passes) {
+        pass.dispose();
+      }
       composer.dispose();
-      // SSAOPass and UnrealBloomPass are disposed by composer.dispose()
     },
 
     enabled: bloomEnabled,

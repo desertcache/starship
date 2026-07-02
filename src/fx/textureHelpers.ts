@@ -120,9 +120,31 @@ const _cache = new Map<string, THREE.CanvasTexture>();
 // call site needing to know about the renderer.
 const _registry: THREE.CanvasTexture[] = [];
 
-export function cached(key: string, build: () => THREE.CanvasTexture): THREE.CanvasTexture {
+/**
+ * Build (or return the cached) CanvasTexture for `key`.
+ *
+ * v0.9 B1 (RADIANCE — color pipeline): `srgb` tags the texture as authored
+ * COLOR data (diffuse/emissive albedo) — three then decodes it correctly
+ * under the sRGB output transform. Every other CanvasTexture in this codebase
+ * (normal maps, roughness maps) is DATA, not color, and must stay linear
+ * (srgb=false, the default) or the GPU double-applies a gamma curve to
+ * values that were never meant to represent light.
+ *
+ * Before this flag existed, every interior color texture rendered as if it
+ * were linear data — three's sRGB output transform then re-brightened the
+ * already-correct authored albedo by roughly 2x (measured: authored #452421
+ * seat fabric rendered as ≈#8F6B66, a washed-out mauve instead of oxblood).
+ */
+export function cached(
+  key: string,
+  build: () => THREE.CanvasTexture,
+  srgb = false,
+): THREE.CanvasTexture {
   if (!_cache.has(key)) {
     const tex = build();
+    if (srgb) {
+      tex.colorSpace = THREE.SRGBColorSpace;
+    }
     _registry.push(tex);
     _cache.set(key, tex);
   }

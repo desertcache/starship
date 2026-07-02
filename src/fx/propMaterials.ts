@@ -84,7 +84,7 @@ function makeBrushedDiffuse(
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR diffuse — decode as sRGB
 }
 
 /** Worn fabric diffuse — crosshatch weave noise + scuffed wear. */
@@ -115,7 +115,7 @@ function makeFabricDiffuse(key: string, baseHex: string, seed: number): THREE.Ca
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR diffuse — decode as sRGB
 }
 
 /** Drab olive-gunmetal crate shell + a worn orange stencil band. */
@@ -147,7 +147,7 @@ function makeCrateDiffuse(key: string, baseHex: string, seed: number): THREE.Can
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     return tex;
-  });
+  }, true); // v0.9 B1: COLOR diffuse — decode as sRGB
 }
 
 /** Generic roughness-variation map — blotchy patches around a base gray. */
