@@ -14,6 +14,28 @@
  *       corridorPt 3.2→2.8, cargoPt 5.2→5.0 (dist extended 9.5→11.0),
  *       thresholdPt 2.0→1.8.
  *   - Corridor bright-dim-bright rhythm preserved; reactor + cockpit teal unchanged.
+ *
+ * v0.9 B3 (RADIANCE lighting-and-grade art pass — judged on HEADED shots vs
+ * refs-v08/ref-5). Every prior value above was graded on 2x-too-bright albedo
+ * (v0.1 color-space bug, fixed B1) AND darker SwiftShader headless shots — so
+ * on honest GPU the ship read evenly-lit and flat. Prop albedo floors (≥#20232a)
+ * now let shadows carve much deeper without 0-RGB voids. Changes this pass:
+ *   - GLOBAL FILL CUT (the flat-bright culprit): hemi 0.10→0.05, ambient
+ *     0.07→0.03 (env 0.34→0.18 + exposure 1.05→1.00 in main.ts). Pools now
+ *     pool; deepest shadow sits blue-grey (hemi ground 0x171a20), not black.
+ *   - ENGINEERING red mood: reactorSpot was a downward SpotLight self-shadowed
+ *     by the reactor column standing inside its own cone (SwiftShader hid it) →
+ *     converted to a red PointLight at reactor mid-height (0,1.5,5.5), no shadow.
+ *     Radiates through the (non-shadowing) column to wash all walls red; the
+ *     column's outward-facing surface stays dark (lit from inside) so the teal
+ *     emissive core reads AGAINST the red room-glow. Breathes in-phase as before.
+ *   - GALLEY: the warm ceiling POINT light was replaced by a SpotLight aimed at
+ *     the starboard counter/backsplash. A point light flooded the open glossy
+ *     floor and threw a hot specular blob into the foreground; the spot lights
+ *     only the workspace (ref-6 warm-dominant counter) and leaves the floor dark.
+ *   - SHADOWS: casting spot map 1024→2048. Two casters: junctionSpot (corridor)
+ *     and galleySpot (counter cookware contact shadow). reactorSpot no longer
+ *     casts (it's the red room-glow point now). Cheap on the measured headroom.
  */
 
 import * as THREE from 'three';
@@ -34,7 +56,10 @@ const WARM = 0xffe2c0; // tungsten ceiling-pool colour
 function configureSpotShadow(light: THREE.SpotLight): void {
   if (QUALITY_LOW || SHADOWS_OFF) return;
   light.castShadow = true;
-  light.shadow.mapSize.set(1024, 1024);
+  // v0.9 B3: 1024→2048. Only junctionSpot casts now (reactorSpot demoted to a
+  // non-shadowing PointLight for the red room-glow), and the headed perf sample
+  // has deep headroom — spend it on a crisper contact shadow.
+  light.shadow.mapSize.set(2048, 2048);
   light.shadow.camera.near = 0.5;
   light.shadow.camera.far  = 8;
   light.shadow.bias        = -0.0003;
@@ -51,8 +76,8 @@ export interface LightingRigHandles {
   qPortPt: THREE.PointLight;
   qStbdPt: THREE.PointLight;
   corridorPt: THREE.PointLight;
-  galleyPt: THREE.PointLight;
-  reactorSpot: THREE.SpotLight;
+  galleySpot: THREE.SpotLight;
+  reactorSpot: THREE.PointLight;
   thresholdPt: THREE.PointLight;
   cargoPt: THREE.PointLight;
 }
@@ -63,15 +88,17 @@ export interface LightingRigHandles {
  */
 export function buildLightingRig(scene: THREE.Scene): LightingRigHandles {
   // ── Global fill ──────────────────────────────────────────────────────────────
-  // Stage D re-carve: hemi 0.16→0.10 — deepen inter-pool shadow to create
-  // bright-under-fixture → dark-between falloff matching refs. Ground 0x171a20
-  // kept (sets deepest-shadow floor colour without 0-RGB crush).
-  const hemi = new THREE.HemisphereLight(0xffe9d0, 0x171a20, 0.10);
+  // v0.9 B3: hemi 0.10→0.05. On honest-albedo GPU the hemisphere fill was
+  // lifting every upward-facing surface into an even bright wash that fought all
+  // pooling. Halved. Ground 0x171a20 kept — it sets the blue-grey deepest-shadow
+  // floor colour (targets ~#101418 in the deepest corners, never 0-RGB).
+  const hemi = new THREE.HemisphereLight(0xffe9d0, 0x171a20, 0.05);
   scene.add(hemi);
 
-  // Ambient: Stage D 0.09→0.07 — pools carry the pooled light, ambient prevents
-  // 0-RGB crush in deep shadows (galley foreground, quarters, cargo floor).
-  const ambient = new THREE.AmbientLight(0xfff0e0, 0.07);
+  // Ambient: v0.9 B3 0.07→0.03. Flat omnidirectional fill is the enemy of pools;
+  // cut hard. Prop albedo floors (≥#20232a) + hemi ground carry the anti-crush
+  // job now, so ambient only needs to keep the very deepest shadows off 0-RGB.
+  const ambient = new THREE.AmbientLight(0xfff0e0, 0.03);
   scene.add(ambient);
 
   // ── 1h. Cockpit HERO — teal console PointLight ────────────────────────────
@@ -108,20 +135,44 @@ export function buildLightingRig(scene: THREE.Scene): LightingRigHandles {
   corridorPt.position.set(0, 2.4, -8.5);
   scene.add(corridorPt);
 
-  // ── 5. Galley — warm ceiling pool over counter run ────────────────────────
-  // Stage D boost: 3.0→3.8 (+27%). Galley cam near Z=-0.4; must light foreground.
-  const galleyPt = new THREE.PointLight(WARM, 3.8, 8.0, 2);
-  galleyPt.position.set(0.5, 2.4, -1.5);
-  scene.add(galleyPt);
+  // ── 5. Galley — warm SPOT on the counter run (v0.9 B3 round 2) ────────────
+  // R1 moved a POINT light onto the counter, but a point light still floods the
+  // open floor → a hot specular blob on the glossy foreground (the camera catches
+  // its mirror reflection). A SpotLight AIMED at the counter/backsplash (world
+  // face X≈2.45, top Y≈0.9) lights only the workspace — ref-6's warm-dominant
+  // counter — and leaves the open centre floor dark, so the blob has no light to
+  // reflect. Also restores the 2nd shadow caster (item 7): cookware casts a soft
+  // contact shadow on the counter. angle 0.85 rad (~49°), penumbra 0.5, decay 2.
+  // R3: tightened (0.85→0.6 rad) and pulled over the counter (X 1.65→2.0),
+  // aimed steeper at the backsplash (target Y 1.05→1.15). A wider/forward cone
+  // still spilled onto the open glossy floor in front of the counter and the
+  // camera caught that specular patch; the tighter, steeper, wall-hugging cone
+  // keeps all direct light on the counter/backsplash/cabinets so the open floor
+  // stays dark and has nothing to mirror.
+  const galleySpot = new THREE.SpotLight(WARM, 5.2, 7.0, 0.6, 0.45, 2);
+  galleySpot.position.set(2.0, 2.75, -1.4);
+  galleySpot.target.position.set(2.6, 1.15, -1.4);
+  scene.add(galleySpot);
+  scene.add(galleySpot.target);
+  configureSpotShadow(galleySpot);
 
-  // ── 6. Engineering reactor (RED-ORANGE) — animated SpotLight ──────────────
-  // angle=1.0 rad (~57°), penumbra=0.3, decay=2. UNCHANGED — keeps character.
-  const reactorSpot = new THREE.SpotLight(0xff5a22, 5.2, 8.0, 1.0, 0.3, 2);
-  reactorSpot.position.set(0, 2.4, 5.5);
-  reactorSpot.target.position.set(0, 0, 5.5);
+  // ── 6. Engineering reactor (RED-ORANGE) — animated room-glow PointLight ────
+  // v0.9 B3: was a downward SpotLight at (0,2.4,5.5) pointing straight down the
+  // reactor column — the column (radius 0.45, floor-to-ceiling at that XZ) stood
+  // inside its own cone and self-shadowed it, so on GPU the room got NO red glow
+  // (only a blown white disc on the base). Converted to a PointLight at the
+  // column mid-height. It does NOT cast shadow, so it radiates freely through the
+  // column to wash all four walls + ceiling red; the column's outward faces are
+  // lit from the inside (NdotL≤0) and stay dark, so the teal emissive core reads
+  // AGAINST the red room-glow — the signature engineering contrast. Breathes
+  // in-phase (2.1 rad/s) with the teal reactor-glow light in engineeringProps.ts.
+  // R2: raised 1.5→1.85 + intensity 4.0→3.4. At y=1.5 the light sat close to the
+  // pale hazard-stripe base disc and blew it near-white; raising it (further from
+  // the disc, ~unchanged horizontal throw to the walls) calms the disc more than
+  // the wall wash, so the room keeps its red mood while the base reads red not white.
+  const reactorSpot = new THREE.PointLight(0xff5a22, 3.4, 10.0, 2);
+  reactorSpot.position.set(0, 1.85, 5.5);
   scene.add(reactorSpot);
-  scene.add(reactorSpot.target);
-  configureSpotShadow(reactorSpot);
 
   // Animate reactor intensity via self-animating invisible mesh (no main.ts edit).
   const reactorDummy = new THREE.Mesh(
@@ -131,7 +182,7 @@ export function buildLightingRig(scene: THREE.Scene): LightingRigHandles {
   reactorDummy.position.set(0, 2.4, 5.5);
   reactorDummy.onBeforeRender = (): void => {
     const t = performance.now() / 1000;
-    reactorSpot.intensity = 5.2 + Math.sin(t * 2.1) * 1.0;
+    reactorSpot.intensity = 3.4 + Math.sin(t * 2.1) * 1.0;
   };
   scene.add(reactorDummy);
 
@@ -157,7 +208,7 @@ export function buildLightingRig(scene: THREE.Scene): LightingRigHandles {
     qPortPt,
     qStbdPt,
     corridorPt,
-    galleyPt,
+    galleySpot,
     reactorSpot,
     thresholdPt,
     cargoPt,

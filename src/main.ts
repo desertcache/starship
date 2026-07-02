@@ -42,7 +42,11 @@ applyMaxAnisotropy(renderer);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 // v0.5 Stage 2 (lighting mood): exposure trimmed 1.15 → 1.05 so the darkened
 // interior sits low and emissives (toneMapped=false) punch against shadow.
-renderer.toneMappingExposure = 1.05;
+// v0.9 B3 (RADIANCE art pass): 1.05 → 1.00. The pre-B1 fill stack was graded
+// on 2x-too-bright albedo + darker SwiftShader; on honest GPU the interior read
+// evenly-lit. Fill cut hard in lightingRig.ts; exposure trimmed a touch to sit
+// the tone-mapped surfaces lower so emissives (toneMapped:false) punch harder.
+renderer.toneMappingExposure = 1.00;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 // Shadow maps: DEFAULT ON (promoted in v0.5 Stage 3 after headed measurement
 // showed negligible cost). Disable with ?quality=low or ?shadows=0 (isolation).
@@ -68,7 +72,11 @@ scene.background = new THREE.Color(0x0a0b10);
   // life on the glossy floor / metals, but no longer fights the dark mood.
   // Stage C: 0.28→0.34 — new cream panels + glossier floors need more specular
   // life; bezels and metals pick up environment highlights.
-  scene.environmentIntensity = 0.34;
+  // v0.9 B3 (RADIANCE art pass): 0.34 → 0.18. The RoomEnvironment IBL was the
+  // single biggest contributor to the flat, evenly-bright cream walls (a neutral
+  // omnidirectional fill fights all pooling). Cut substantially; 0.18 still gives
+  // bezels/metals/glossy-floor specular life without lifting the whole shell.
+  scene.environmentIntensity = 0.18;
   pmrem.dispose();
 }
 

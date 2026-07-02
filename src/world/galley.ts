@@ -31,11 +31,13 @@ export function buildGalley(): RoomModule {
   colliders.push(...propColliders);
 
   // Volumetric light shaft (v0.9 B2 glow build) — hero counter pool, under
-  // galleyPt (world 0.5,2.4,-1.5). Local Z = world Z - (-1).
+  // galleyPt. v0.9 B3: galleyPt moved onto the counter (world 1.9,2.55,-1.5);
+  // shaft follows so the godray sits over the workspace, not the open floor.
+  // Local Z = world Z - (-1); local X = world X (galley X-offset is 0).
   buildLightShaft(group, {
-    x: 0.5, z: -0.5, topY: 2.4, bottomY: 0.4,
-    sourceAtTop: true, radiusSource: 0.14, radiusFar: 0.48,
-    color: 0xffe2c0, peakOpacity: 0.032, moteCount: 60, seed: 13,
+    x: 2.0, z: -0.4, topY: 2.6, bottomY: 0.5,
+    sourceAtTop: true, radiusSource: 0.14, radiusFar: 0.42,
+    color: 0xffe2c0, peakOpacity: 0.028, moteCount: 60, seed: 13,
   });
 
   // ── Stove interactable — "Eat" ─────────────────────────────────────────────

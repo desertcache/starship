@@ -16,7 +16,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { matFixtureEmissive, matFixtureHousing } from '../fx/texturesFixtures.js';
+import { matFixtureEmissive, matFixtureEmissiveCool, matFixtureHousing } from '../fx/texturesFixtures.js';
 import { addFixtureHalation } from '../fx/glow.js';
 import {
   identifyRoom,
@@ -56,6 +56,12 @@ export function buildCeilingFixtures(
   const isPendant   = room === 'cargo';
   const pendantDrop = isPendant ? 0.15 : 0.0;
 
+  // v0.9 B3: cargo's fixtures use the cool-white lens (+ cool halo) so the
+  // SOURCE matches its cool-white pool light (cargoPt 0xe8eef2). Every other
+  // room keeps the warm amber lens + warm halo.
+  const emissiveMat = isPendant ? matFixtureEmissiveCool : matFixtureEmissive;
+  const haloColor   = isPendant ? 0xd0e4f2 : undefined;
+
   const housingGeos: THREE.BufferGeometry[]  = [];
   const emissiveGeos: THREE.BufferGeometry[] = [];
 
@@ -91,7 +97,7 @@ export function buildCeilingFixtures(
   if (emissiveGeos.length > 0) {
     const merged = mergeGeometries(emissiveGeos);
     for (const g of emissiveGeos) g.dispose();
-    const mesh = new THREE.Mesh(merged, matFixtureEmissive);
+    const mesh = new THREE.Mesh(merged, emissiveMat);
     mesh.name = `ceiling-emissive-${room}`;
     group.add(mesh);
   }
@@ -99,5 +105,5 @@ export function buildCeilingFixtures(
   // ── Halation (v0.9 B2 glow build) — one glow quad per fixture, floating
   // just below the lens. Shared geometry/material live in fx/glow.ts.
   const diffuserY = (H - pendantDrop) - RECESS_DEPTH;
-  addFixtureHalation(group, specs.map(({ x, z }) => ({ x, z })), diffuserY);
+  addFixtureHalation(group, specs.map(({ x, z }) => ({ x, z })), diffuserY, haloColor);
 }

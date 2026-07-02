@@ -4,10 +4,12 @@
  * texturesEmissive.ts (those files are locked to other lanes).
  *
  * Exports:
- *   makeFixtureDiffuserTexture()  — warm emissive diffuser (hot core for bloom)
- *   makeFixtureHousingTexture()   — dark gunmetal housing frame
- *   matFixtureEmissive            — MeshBasicMaterial singleton (toneMapped:false)
- *   matFixtureHousing             — MeshLambertMaterial singleton (dark gunmetal)
+ *   makeFixtureDiffuserTexture()      — warm emissive diffuser (hot core for bloom)
+ *   makeFixtureDiffuserCoolTexture()  — cool-white variant (v0.9 B3, cargo bay)
+ *   makeFixtureHousingTexture()       — dark gunmetal housing frame
+ *   matFixtureEmissive                — MeshBasicMaterial singleton (warm, toneMapped:false)
+ *   matFixtureEmissiveCool            — MeshBasicMaterial singleton (cool-white, cargo)
+ *   matFixtureHousing                 — MeshLambertMaterial singleton (dark gunmetal)
  *
  * v0.9 A2: `cached()` now comes from textureHelpers.ts (neutral shared utility,
  * not another lane's file) so these textures register into the anisotropy
@@ -51,6 +53,46 @@ export function makeFixtureDiffuserTexture(): THREE.CanvasTexture {
     grad.addColorStop(0.35, 'rgba(200,150,60,0.30)');
     grad.addColorStop(0.65, 'rgba(80,45,8,0.60)');
     grad.addColorStop(1.00, 'rgba(20,10,2,0.85)');     // dark cavity rim
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    return tex;
+  }, true); // v0.9 B1: COLOR emissive — decode as sRGB
+}
+
+/**
+ * Cool blue-white emissive diffuser — cargo bay industrial identity (v0.9 B3).
+ * Same hot-white core (bloom gate) as the warm variant, but the cavity and
+ * falloff are cool blue-grey instead of amber, so the fixture SOURCE matches the
+ * cool-white pool light (cargoPt 0xe8eef2) it casts — no more warm-lens /
+ * cool-light diegetic mismatch.
+ */
+export function makeFixtureDiffuserCoolTexture(): THREE.CanvasTexture {
+  return cached('fixture-diffuser-cool', () => {
+    const W = 128;
+    const H = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width  = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d')!;
+
+    // Cool steel-blue cavity base
+    ctx.fillStyle = '#1B3038';
+    ctx.fillRect(0, 0, W, H);
+
+    const cx = W / 2;
+    const cy = H / 2;
+    const r  = Math.max(W, H) * 0.55;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grad.addColorStop(0.00, 'rgba(255,255,255,1.00)'); // bloom-clearing hot core, RGB≥250
+    grad.addColorStop(0.08, 'rgba(238,246,252,0.85)'); // tight cool-white falloff
+    grad.addColorStop(0.20, 'rgba(200,224,240,0.50)'); // cool falloff
+    grad.addColorStop(0.35, 'rgba(120,168,196,0.30)');
+    grad.addColorStop(0.65, 'rgba(30,60,76,0.60)');
+    grad.addColorStop(1.00, 'rgba(6,16,22,0.85)');     // dark cavity rim
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
@@ -112,6 +154,17 @@ export function makeFixtureHousingTexture(): THREE.CanvasTexture {
 export const matFixtureEmissive: THREE.MeshBasicMaterial = new THREE.MeshBasicMaterial({
   map: makeFixtureDiffuserTexture(),
   color: 0xF0C878,   // warm amber tint — aligns with existing warm PointLight pools
+  side: THREE.FrontSide,
+  toneMapped: false, // must stay false — bloom gate
+});
+
+/**
+ * Cool-white diffuser material — cargo bay only (v0.9 B3). toneMapped:false so
+ * the hot core still clears bloom. Cool tint matches the cargo cool-white pool.
+ */
+export const matFixtureEmissiveCool: THREE.MeshBasicMaterial = new THREE.MeshBasicMaterial({
+  map: makeFixtureDiffuserCoolTexture(),
+  color: 0xD8E8F2,   // cool blue-white — matches cargoPt (0xe8eef2)
   side: THREE.FrontSide,
   toneMapped: false, // must stay false — bloom gate
 });

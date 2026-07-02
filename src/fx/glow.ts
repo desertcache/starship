@@ -63,17 +63,26 @@ function makeHalationTexture(): THREE.CanvasTexture {
   }, true);
 }
 
-let _matHalation: THREE.MeshBasicMaterial | null = null;
-function matHalation(): THREE.MeshBasicMaterial {
-  return _matHalation ?? (_matHalation = new THREE.MeshBasicMaterial({
-    map: makeHalationTexture(),
-    color: 0xffe0b0,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false,
-    side: THREE.DoubleSide, // reads from oblique angles too
-  }));
+const HALATION_WARM = 0xffe0b0;
+// v0.9 B3: color-keyed cache so cargo can request a cool-white halo that matches
+// its cool lens + pool (no more warm halo over a cool source). Default preserves
+// the warm halo for every other room — backward compatible.
+const _matHalationCache = new Map<number, THREE.MeshBasicMaterial>();
+function matHalation(color: number = HALATION_WARM): THREE.MeshBasicMaterial {
+  let m = _matHalationCache.get(color);
+  if (!m) {
+    m = new THREE.MeshBasicMaterial({
+      map: makeHalationTexture(),
+      color,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+      side: THREE.DoubleSide, // reads from oblique angles too
+    });
+    _matHalationCache.set(color, m);
+  }
+  return m;
 }
 
 let _haloGeo: THREE.PlaneGeometry | null = null;
@@ -93,9 +102,10 @@ export function addFixtureHalation(
   group: THREE.Group,
   fixtures: ReadonlyArray<{ x: number; z: number }>,
   diffuserY: number,
+  haloColor: number = HALATION_WARM,
 ): void {
   if (!GLOW_ENABLED || fixtures.length === 0) return;
-  const mesh = new THREE.InstancedMesh(haloGeo(), matHalation(), fixtures.length);
+  const mesh = new THREE.InstancedMesh(haloGeo(), matHalation(haloColor), fixtures.length);
   mesh.name = 'fixture-halation';
   const y = diffuserY - HALATION_DROP;
   const m4 = new THREE.Matrix4();
