@@ -100,8 +100,12 @@ function makeFabricDiffuse(key: string, baseHex: string, seed: number): THREE.Ca
     for (let y = 0; y < S; y += step) {
       for (let x = 0; x < S; x += step) {
         const v = (rand() - 0.5) * 0.16;
+        // Gate fix (orchestrator): weave highlight was near-white (255,225,210)
+        // at up to ~20% alpha over half the texels — it dragged ANY base hue
+        // toward salmon under GPU lighting. Highlights now stay in the fabric's
+        // own warm-dark family and at lower strength; the base hex wins.
         ctx.fillStyle = v > 0
-          ? `rgba(255,225,210,${(v * 2.5).toFixed(3)})`
+          ? `rgba(126,74,66,${(v * 1.6).toFixed(3)})`
           : `rgba(15,4,2,${(-v * 2.5).toFixed(3)})`;
         ctx.fillRect(x, y, step, step * 0.5);
       }
@@ -195,13 +199,16 @@ export const matCounterTop: THREE.MeshStandardMaterial = new THREE.MeshStandardM
   side: THREE.FrontSide,
 });
 
-/** Worn oxblood seat fabric. */
+/** Worn oxblood seat fabric.
+ * Gate fix (orchestrator): #6B332B read SALMON-PINK on headed GPU under the
+ * bright cockpit wash — deepened to true oxblood and trimmed env pickup
+ * (fabric shouldn't catch the RoomEnvironment the way metal does). */
 export const matSeatFabric: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
-  map: makeFabricDiffuse('prop-seat', '#6B332B', 421),
+  map: makeFabricDiffuse('prop-seat', '#452421', 421),
   roughnessMap: makeRoughnessVariation('prop-seat-rough', 210, 422),
-  roughness: 0.85,
+  roughness: 0.9,
   metalness: 0.0,
-  envMapIntensity: 0.4,
+  envMapIntensity: 0.25,
   side: THREE.FrontSide,
 });
 
