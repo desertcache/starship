@@ -23,8 +23,8 @@ import {
   buildForeConduits,
   buildAftWallDressing,
 } from './engineeringDressing.js';
+import { matReactorHousing, matPipeDark, matCrateShell, matConsoleHousing } from '../fx/propMaterials.js';
 
-const COL_GUNMETAL = 0x1C1E22;
 const COL_TEAL     = 0x46E0D8;
 const COL_ORANGE   = 0xC7641E;
 const COL_STA_G    = 0x22DD88;
@@ -40,18 +40,6 @@ function mkGunTex(): THREE.CanvasTexture {
     for (let x = 64; x < S; x += 64) { c.beginPath(); c.moveTo(x,0); c.lineTo(x,S); c.stroke(); }
     for (let y = 64; y < S; y += 64) { c.beginPath(); c.moveTo(0,y); c.lineTo(S,y); c.stroke(); }
     addGrime(c, S, S, 17, 0.18);
-    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
-  });
-}
-
-function mkHousingTex(): THREE.CanvasTexture {
-  return cached('eng-housing', () => {
-    const W = 512; const H = 256; const cv = document.createElement('canvas');
-    cv.width = W; cv.height = H;
-    const c = cv.getContext('2d')!; c.fillStyle = '#1C1E22'; c.fillRect(0, 0, W, H);
-    c.strokeStyle = 'rgba(255,255,255,0.06)'; c.lineWidth = 1;
-    for (let x = 32; x < W; x += 32) { c.beginPath(); c.moveTo(x,0); c.lineTo(x,H); c.stroke(); }
-    addGrime(c, W, H, 333, 0.16);
     const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
   });
 }
@@ -75,10 +63,10 @@ let _mFloorSeam: THREE.MeshBasicMaterial | null = null;
 const matFloorSeam = (): THREE.MeshBasicMaterial =>
   _mFloorSeam ?? (_mFloorSeam = new THREE.MeshBasicMaterial({ color: 0x46e0d8, side: THREE.FrontSide }));
 
-// FIX: matHou hoisted to module-level singleton — was allocating fresh per buildReactor() call.
-let _mHou: THREE.MeshLambertMaterial | null = null;
-const matHou = (): THREE.MeshLambertMaterial =>
-  _mHou ?? (_mHou = new THREE.MeshLambertMaterial({ color: COL_GUNMETAL, map: mkHousingTex() }));
+// Reactor column housing — confirmed void offender. Was a flat near-black
+// Lambert (#1C1E22 + faint grid texture); now the shared propMaterials
+// reactor-housing PBR singleton (v0.9 A-bridge).
+const matHou = (): THREE.MeshStandardMaterial => matReactorHousing;
 
 const mkCoreMat = (): THREE.MeshBasicMaterial =>
   new THREE.MeshBasicMaterial({ color: new THREE.Color(COL_TEAL), transparent: true, opacity: 1.0 });
@@ -107,8 +95,7 @@ export function buildReactor(H: number): ReactorResult {
   hm.position.set(CX, CY, CZ); g.add(hm);
 
   const ribGeo = new THREE.TorusGeometry(R + 0.04, 0.04, 6, 20);
-  const ribMat = new THREE.MeshLambertMaterial({ color: COL_GUNMETAL });
-  const ribInst = new THREE.InstancedMesh(ribGeo, ribMat, 7);
+  const ribInst = new THREE.InstancedMesh(ribGeo, matReactorHousing, 7);
   const dm = new THREE.Object3D();
   for (let i = 0; i < 7; i++) {
     dm.position.set(CX, (i + 1) * H / 8, CZ); dm.rotation.set(Math.PI / 2, 0, 0); dm.updateMatrix();
@@ -162,7 +149,9 @@ export function buildReactorRail(_H: number): RailResult {
   const g = new THREE.Group(); g.name = 'reactor-rail';
   const RAIL_R = 0.85; const POST_H = 0.90; const CX = 0; const CZ = 1.0;
   const angles = [-130, -90, -45, 0, 45, 90, 130].map((d) => d * Math.PI / 180);
-  const postMat = new THREE.MeshLambertMaterial({ color: COL_GUNMETAL });
+  // Guard-rail posts + rail segments — confirmed void offender ("the black
+  // vertical posts around the reactor"). Dark pipe-metal PBR family.
+  const postMat = matPipeDark;
 
   const postInst = new THREE.InstancedMesh(
     new THREE.CylinderGeometry(0.035, 0.035, POST_H, 6), postMat, angles.length);
@@ -219,7 +208,9 @@ export function buildBreakerCabinet(roomH: number, roomD: number, halfW: number)
   const CW = 1.20; const CH = 0.80; const CD = 0.22;
   const px = -halfW + CD/2; const py = roomH*0.3 + CH/2; const pz = -roomD/2 + 1.8;
 
-  const body = new THREE.Mesh(new THREE.BoxGeometry(CD, CH, CW), matGun());
+  // Breaker cabinet body — same wall-mounted electrical-box pattern as the
+  // corridor junction boxes; console-housing PBR family.
+  const body = new THREE.Mesh(new THREE.BoxGeometry(CD, CH, CW), matConsoleHousing);
   body.position.set(px, py, pz); g.add(body);
 
   const scr = new THREE.Mesh(new THREE.PlaneGeometry(CW*0.7, CH*0.55), matConsoleScreen);
@@ -260,7 +251,8 @@ function buildCrate(x: number, z: number, w: number, h: number, d: number, crate
   const g = new THREE.Group(); g.name = crateName;
   const T = 0.04;
   const sm = matCrateOrange();
-  const bm = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), matGun());
+  // Crate shell — confirmed void offender ("crate shells"). Crate-shell PBR family.
+  const bm = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), matCrateShell);
   bm.position.set(x, h/2, z); g.add(bm);
   ([
     [x, h-T/2, z-d/2+T/2, w,T,T], [x, h-T/2, z+d/2-T/2, w,T,T],

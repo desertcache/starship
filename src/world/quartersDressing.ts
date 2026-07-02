@@ -11,6 +11,7 @@ import { cached } from '../fx/textureHelpers.js';
 import {
   matGunmetal, matCream, matTealEmit, matOrange,
 } from './quartersProps.js';
+import { matConsoleHousing } from '../fx/propMaterials.js';
 import { buildPortholeStarDisc } from './corridorPortholes.js';
 
 // Re-export Room-A/B cosmetic builders so quarters.ts import stays unchanged
@@ -228,7 +229,9 @@ export function buildOverheadCabinet(roomGroup: THREE.Group, xWall: number, bunk
   const sign = xWall < 0 ? 1 : -1;
   const cabX = xWall + sign * CD / 2;
 
-  const body = bx(new THREE.BoxGeometry(CD, CH, CW), matGunmetal);
+  // Console-housing family — this is a large flat cabinet mass, not thin
+  // structural trim, so it gets the cabinet-specific PBR singleton.
+  const body = bx(new THREE.BoxGeometry(CD, CH, CW), matConsoleHousing);
   body.position.set(cabX, Y + CH / 2, bunkZPos);
   roomGroup.add(body);
 
@@ -255,7 +258,7 @@ export function buildWallTablet(
   const sign = xWall < 0 ? 1 : -1;
   const D = 0.03; const WT = 0.30; const HT = 0.22;
 
-  const body = bx(new THREE.BoxGeometry(D, HT, WT), matGunmetal, dataPadName);
+  const body = bx(new THREE.BoxGeometry(D, HT, WT), matConsoleHousing, dataPadName);
   body.position.set(xWall + sign * D / 2, 1.4, tabletZ);
   roomGroup.add(body);
 

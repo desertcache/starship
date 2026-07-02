@@ -5,16 +5,17 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { matCatwalkSteel, matCrateShell } from '../fx/propMaterials.js';
 import type { AABB } from './types.js';
 
-const COL_GUNMETAL = 0x1C1E22;
 const COL_ORANGE   = 0xC7641E;
 const COL_TEAL     = 0x46E0D8;
 const CREAM_STR    = '#E8E2D4';
 
-let _mGun: THREE.MeshLambertMaterial | null = null;
-const mGun = (): THREE.MeshLambertMaterial =>
-  _mGun ?? (_mGun = new THREE.MeshLambertMaterial({ color: COL_GUNMETAL }));
+// Wall conduits, breaker box, hanging hook/chain — same catwalk-steel PBR
+// family as cargoBayProps.ts's matGun() (v0.9 A-bridge; was flat near-black
+// Lambert #1C1E22, a confirmed void offender in this room).
+const mGun = (): THREE.MeshStandardMaterial => matCatwalkSteel;
 let _mOrg: THREE.MeshLambertMaterial | null = null;
 const mOrg = (): THREE.MeshLambertMaterial =>
   _mOrg ?? (_mOrg = new THREE.MeshLambertMaterial({ color: COL_ORANGE }));
@@ -29,7 +30,8 @@ function buildMidFloorCrates(group: THREE.Group): AABB[] {
   crateA.position.set(CX, CS / 2, CZ);
   group.add(crateA);
 
-  const crateB = new THREE.Mesh(new THREE.BoxGeometry(CS, CS * 0.88, CS), mGun());
+  // Floor crate — confirmed void offender ("floor crates"); crate-shell PBR family.
+  const crateB = new THREE.Mesh(new THREE.BoxGeometry(CS, CS * 0.88, CS), matCrateShell);
   crateB.rotation.y = Math.PI / 6;
   crateB.position.set(CX + 0.85, CS * 0.44, CZ + 0.1);
   group.add(crateB);

@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildCargoBayDensity } from './cargoBayDensity.js';
+import { matCatwalkSteel, matCrateShell } from '../fx/propMaterials.js';
 import type { AABB } from './types.js';
 
 const COL_GUNMETAL = 0x1C1E22;
@@ -20,9 +21,9 @@ const COL_RUST     = 0x7A2C1F;
 
 // ── Lazy materials ─────────────────────────────────────────────────────────────
 
-let _matGun: THREE.MeshLambertMaterial | null = null;
-const matGun = (): THREE.MeshLambertMaterial =>
-  _matGun ?? (_matGun = new THREE.MeshLambertMaterial({ color: COL_GUNMETAL }));
+// Catwalk deck/rails/ladder — confirmed void offender ("catwalk band, ladder").
+// Catwalk-grating-steel PBR family (v0.9 A-bridge).
+const matGun = (): THREE.MeshStandardMaterial => matCatwalkSteel;
 
 let _matOrange: THREE.MeshLambertMaterial | null = null;
 const matOrange = (): THREE.MeshLambertMaterial =>
@@ -167,7 +168,9 @@ function buildCrateColumns(group: THREE.Group, D: number): void {
       group.add(m); // 1 draw call per column for rust crates
     }
     if (gunGeos.length > 0) {
-      const m = new THREE.Mesh(mergeGeometries(gunGeos), matGun());
+      // Crate shells — confirmed void offender; crate-shell PBR family
+      // (distinct from the catwalk-steel matGun() used elsewhere in this file).
+      const m = new THREE.Mesh(mergeGeometries(gunGeos), matCrateShell);
       for (const g of gunGeos) g.dispose();
       group.add(m); // 1 draw call per column for gun crates
     }

@@ -8,17 +8,21 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { AABB } from './types.js';
 import { makeLiveScreenMat, liveScreenTick } from './cockpitScreens.js';
 import type { ScreenType } from './cockpitScreens.js';
+import { matConsoleHousing } from '../fx/propMaterials.js';
 
 export { liveScreenTick };
 
 // ── Palette ────────────────────────────────────────────────────────────────────
-const COL_GUNMETAL = 0x1c1e22;
 const COL_TEAL     = 0x46e0d8;
 const COL_ORANGE   = 0xc7641e;
 const COL_CREAM    = 0xe8e2d4;
 
 // ── Module-level material singletons ──────────────────────────────────────────
-const matGunmetal    = new THREE.MeshLambertMaterial({ color: COL_GUNMETAL });
+// v0.9 A-bridge: was flat near-black Lambert (#1C1E22) — the console bank body,
+// screen bezels, side-console masses and switch panel are confirmed void
+// offenders ("console housings", "side console masses"). Now the shared
+// propMaterials console-housing PBR singleton.
+const matGunmetal: THREE.MeshStandardMaterial = matConsoleHousing;
 const matOrange      = new THREE.MeshLambertMaterial({ color: COL_ORANGE });
 const matTealDot     = new THREE.MeshBasicMaterial({ color: COL_TEAL });
 const matCream       = new THREE.MeshLambertMaterial({ color: COL_CREAM });

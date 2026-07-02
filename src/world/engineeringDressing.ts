@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { matShipWall, matHazardStriping, matRedAccent } from '../fx/shipMaterials.js';
 import { cached, addGrime } from '../fx/textureHelpers.js';
+import { matPipeDark } from '../fx/propMaterials.js';
 
 // ── Textures ───────────────────────────────────────────────────────────────────
 
@@ -27,18 +28,6 @@ function mkConduitTex(): THREE.CanvasTexture {
     c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 2;
     for (let x = 128; x < S; x += 128) { c.beginPath(); c.moveTo(x,0); c.lineTo(x,S); c.stroke(); }
     addGrime(c, S, S, 443, 0.22);
-    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
-  });
-}
-
-function mkGunTex(): THREE.CanvasTexture {
-  return cached('eng-gun', () => {
-    const S = 256; const cv = document.createElement('canvas'); cv.width = cv.height = S;
-    const c = cv.getContext('2d')!; c.fillStyle = '#1C1E22'; c.fillRect(0, 0, S, S);
-    c.strokeStyle = 'rgba(0,0,0,0.7)'; c.lineWidth = 2;
-    for (let x = 64; x < S; x += 64) { c.beginPath(); c.moveTo(x,0); c.lineTo(x,S); c.stroke(); }
-    for (let y = 64; y < S; y += 64) { c.beginPath(); c.moveTo(0,y); c.lineTo(S,y); c.stroke(); }
-    addGrime(c, S, S, 17, 0.18);
     const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
   });
 }
@@ -72,9 +61,10 @@ function matCon(): THREE.MeshLambertMaterial {
   return _mCon ?? (_mCon = new THREE.MeshLambertMaterial({ map: mkConduitTex() }));
 }
 
-let _mGun: THREE.MeshLambertMaterial | null = null;
-function matGun(): THREE.MeshLambertMaterial {
-  return _mGun ?? (_mGun = new THREE.MeshLambertMaterial({ map: mkGunTex() }));
+// Aft-wall pipe manifold + output conduits — confirmed void offender
+// ("wall pipe runs"). Dark pipe-metal PBR family (v0.9 A-bridge).
+function matGun(): THREE.MeshStandardMaterial {
+  return matPipeDark;
 }
 
 // ── Fore-quadrant extra conduit panels ────────────────────────────────────────

@@ -17,15 +17,18 @@ import {
   addDecal,
   liveScreenTick,
 } from './cockpitConsoles.js';
+import { matConsoleHousing, matSeatFabric } from '../fx/propMaterials.js';
 
 export { liveScreenTick };
 
 // ── Palette ────────────────────────────────────────────────────────────────────
-const COL_GUNMETAL = 0x1c1e22;
 const COL_ORANGE   = 0xc7641e;
 const COL_CREAM    = 0xe8e2d4;
 
-const matGunmetal  = new THREE.MeshLambertMaterial({ color: COL_GUNMETAL });
+// v0.9 A-bridge: was flat near-black Lambert (#1C1E22) — pedestal/armrest
+// metal shell, confirmed void offender ("console housings"). Cushioned seat
+// surfaces (pan/back/headrest) are split out to matSeatFabric in buildSeat().
+const matGunmetal: THREE.MeshStandardMaterial = matConsoleHousing;
 const matOrange    = new THREE.MeshLambertMaterial({ color: COL_ORANGE });
 const matCream     = new THREE.MeshLambertMaterial({ color: COL_CREAM });
 
@@ -33,18 +36,27 @@ const matCream     = new THREE.MeshLambertMaterial({ color: COL_CREAM });
 
 function buildSeat(group: THREE.Group, x: number, ry: number, name: string): AABB {
   const Z = 0.3;
+  // Metal pedestal (floor-bolted base) — console-housing family.
   const ped = new THREE.BoxGeometry(0.18, 0.42, 0.18); ped.translate(0, 0.21, 0);
+  const pedMesh = new THREE.Mesh(ped, matGunmetal);
+  pedMesh.position.set(x, 0, Z);
+  pedMesh.rotation.y = ry;
+
+  // Cushioned surfaces (pan + backrest + headrest) — confirmed void offender
+  // ("pilot seats"); split out to the oxblood seat-fabric PBR singleton so the
+  // seat reads as a padded cushion, not a metal-shell silhouette.
   const pan = new THREE.BoxGeometry(0.52, 0.08, 0.50); pan.translate(0, 0.45, 0);
   const bk  = new THREE.BoxGeometry(0.52, 0.58, 0.09); bk.translate(0, 0.75, -0.21);
   const hd  = new THREE.BoxGeometry(0.36, 0.22, 0.09); hd.translate(0, 1.30, -0.21);
-  const seatGeos = [ped, pan, bk, hd];
-  const body = new THREE.Mesh(mergeGeometries(seatGeos), matGunmetal);
-  for (const g of seatGeos) g.dispose();
-  body.position.set(x, 0, Z);
-  body.rotation.y = ry;
+  const cushionGeos = [pan, bk, hd];
+  const cushionMesh = new THREE.Mesh(mergeGeometries(cushionGeos), matSeatFabric);
+  for (const g of cushionGeos) g.dispose();
+  cushionMesh.position.set(x, 0, Z);
+  cushionMesh.rotation.y = ry;
+
   const seatGroup = new THREE.Group();
   seatGroup.name = name;
-  seatGroup.add(body);
+  seatGroup.add(pedMesh, cushionMesh);
 
   // Orange accent stripe
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.06, 0.10), matOrange);

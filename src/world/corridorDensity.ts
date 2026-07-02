@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { matWall } from './materials.js';
+import { matPipeDark } from '../fx/propMaterials.js';
 import type { AABB } from './types.js';
 
 const BB_H = 0.18;  // baseboard height
@@ -18,8 +19,13 @@ const RIB_W = 0.16;
 const RIB_D = 0.05;
 const RIB_ZS = [-6, -3, 0, 3, 6] as const;
 
-// Module-level material singleton — do not allocate inside functions
-const _matGunmetal = new THREE.MeshLambertMaterial({ color: 0x1C1E22 });
+// Module-level material singleton — do not allocate inside functions.
+// v0.9 A-bridge: was flat near-black Lambert (#1C1E22) — the vertical ribs in
+// particular were confirmed on real-GPU screenshots as a solid black bar
+// slicing through the aft porthole (rib at Z=3 aligns exactly with the
+// porthole at P1_Z=3.0). Dark pipe-metal PBR family, same as the corridor's
+// other structural trim fixes.
+const _matGunmetal = matPipeDark;
 
 // Junction widening constants
 const JCT_Z_FORE = -3.0;

@@ -13,25 +13,33 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildCorridorSignage } from './corridorSignage.js';
 import { buildCornerConduits } from './corridorCornerConduits.js';
+import { matPipeDark, matConsoleHousing } from '../fx/propMaterials.js';
 
 // ── Palette constants ──────────────────────────────────────────────────────────
-const COL_GUNMETAL  = 0x1c1e22;
 const COL_ORANGE    = 0xc7641e;
 const COL_TEAL      = 0x46e0d8;
-const COL_DARK_PIPE = 0x2a2e36;
 
 // ── Material singletons — hoisted to module level (never re-allocated per call) ─
+// v0.9 A-bridge: pipe/clamp/conduit (ceiling pipe runs) and gunmetal (junction
+// boxes, cable trays, save-terminal shell — "wall-mounted black boxes/panels,
+// read as rectangular holes on the walls") were flat near-black Lambert —
+// confirmed void offenders. Redirected to the shared propMaterials PBR family.
 
 const _mats = {
-  pipe:       new THREE.MeshLambertMaterial({ color: COL_DARK_PIPE }),
-  clamp:      new THREE.MeshLambertMaterial({ color: COL_GUNMETAL }),
+  pipe:       matPipeDark,
+  clamp:      matPipeDark,
   orangePipe: new THREE.MeshLambertMaterial({ color: COL_ORANGE }),
-  vent:       new THREE.MeshLambertMaterial({ color: 0x0e0f12 }),
-  ventSlat:   new THREE.MeshLambertMaterial({ color: COL_GUNMETAL }),
+  // v0.9 A-bridge: was flat near-black Lambert (#0E0F12) with zero texture —
+  // confirmed on real-GPU screenshots as a solid rectangular black hole on the
+  // wall ("wall-mounted black boxes/panels"). Vent recess + slats now use two
+  // different lit PBR families so the grille reads as a lit recess with raised
+  // bars, not a void.
+  vent:       matPipeDark,
+  ventSlat:   matConsoleHousing,
   status:     new THREE.MeshBasicMaterial({ color: COL_TEAL }),
   handle:     new THREE.MeshLambertMaterial({ color: COL_ORANGE }),
-  conduit:    new THREE.MeshLambertMaterial({ color: 0x111316 }),
-  gunmetal:   new THREE.MeshLambertMaterial({ color: COL_GUNMETAL }),
+  conduit:    matPipeDark,
+  gunmetal:   matConsoleHousing,
   orange:     new THREE.MeshLambertMaterial({ color: COL_ORANGE }),
   tealBasic:  new THREE.MeshBasicMaterial({ color: COL_TEAL }),
   orangeBasic: new THREE.MeshBasicMaterial({ color: COL_ORANGE }),

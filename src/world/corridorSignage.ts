@@ -124,7 +124,7 @@ export function buildCorridorSignage(
   H: number,
   DOOR_FORE_Z: number,
   DOOR_AFT_Z: number,
-  gunmetalMat: THREE.MeshLambertMaterial,
+  gunmetalMat: THREE.Material,
 ): void {
   // ── 8. SIGNAGE DECALS ─────────────────────────────────────────────────────────
 

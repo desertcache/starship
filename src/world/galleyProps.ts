@@ -16,13 +16,12 @@ import { matShipWall } from '../fx/shipMaterials.js';
 import { buildPortWall, buildDoorFlankPanels, matCabFaceCream, matCabFaceGunmetal, matCabFaceOrange, matWarmAmber } from './galleyDressing.js';
 import { createPropTween } from './propTween.js';
 import type { PropTween } from './propTween.js';
+import { matCounterTop, matLockerBody, matPipeDark } from '../fx/propMaterials.js';
 
 // Palette
-const C_GUNMETAL   = 0x1c1e22;
 const C_CREAM      = 0xe8e2d4;
 const C_ORANGE     = 0xc7641e;
 const C_TEAL       = 0x46e0d8;
-const C_DARK       = 0x111214;
 const C_RED_BASE   = 0x7a2c1f;
 const C_RED_GLOW   = 0xcc3322;
 const C_MUSTARD    = 0xc8931f;
@@ -33,10 +32,14 @@ const lm = (c: number): THREE.MeshLambertMaterial =>
 const bm = (c: number): THREE.MeshBasicMaterial =>
   new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
 
-const matGunmetal  = lm(C_GUNMETAL);
+// v0.9 A-bridge: counter/table/shelf/cookware gunmetal was flat near-black
+// Lambert (#1C1E22) — crushed to a void under pooled lights. Now the shared
+// propMaterials brushed dark-steel PBR singleton (lit, textured, envMap-aware).
+const matGunmetal: THREE.MeshStandardMaterial = matCounterTop;
 const matCream     = lm(C_CREAM);
 const matOrange    = lm(C_ORANGE);
-const matDark      = lm(C_DARK);
+// Kickboard + bench-top trim — was near-black (#111214) flat Lambert.
+const matDark: THREE.MeshStandardMaterial = matCounterTop;
 const matRedBase   = lm(C_RED_BASE);
 const matTealEmit  = bm(C_TEAL);
 const matCoilGlow  = bm(C_RED_GLOW);
@@ -219,8 +222,11 @@ export function getFridgeTween(): PropTween | null { return _fridgeTween; }
 function buildFridgeInterior(g: THREE.Group, bodyD: number, frameT: number): void {
   const iW = bodyD - 0.04; const iZ = FRIDGE_Z_CTR; const iX = CTR_X - frameT / 2;
   const iD = (FRIDGE_Z_MAX - FRIDGE_Z_MIN) - frameT * 2 - 0.04;
-  const darkMat = new THREE.MeshLambertMaterial({ color: 0x080a0c });
-  const shelfMat = new THREE.MeshLambertMaterial({ color: 0x1a1c20 });
+  // Interior is visible whenever the fridge door is open (interactable) — was
+  // near-0-RGB flat Lambert; lifted into the same lit PBR families as the
+  // shell so the cavity doesn't read as a black void when opened.
+  const darkMat = matPipeDark;
+  const shelfMat = matCounterTop;
   const bp = new THREE.Mesh(new THREE.BoxGeometry(0.01, FRIDGE_H - frameT * 2 - 0.04, iD), darkMat);
   bp.position.set(iX - iW / 2, FRIDGE_H / 2, iZ); g.add(bp);
   for (const sy of [FRIDGE_H * 0.35, FRIDGE_H * 0.62]) {
@@ -242,17 +248,20 @@ function buildFridge(g: THREE.Group): AABB[] {
   const fg = new THREE.Group(); fg.name = 'fridge';
   const FT = 0.045; const BD = CTR_DEPTH - FT;
   // Frame: back + top + bottom + fore/aft jambs
-  box(fg, BD, FRIDGE_H, fLen, CTR_X - FT/2, FRIDGE_H/2, FRIDGE_Z_CTR, matGunmetal);
-  box(fg, CTR_DEPTH, FT, fLen, CTR_X, FRIDGE_H - FT/2, FRIDGE_Z_CTR, matGunmetal);
-  box(fg, CTR_DEPTH, FT, fLen, CTR_X, FT/2, FRIDGE_Z_CTR, matGunmetal);
-  box(fg, CTR_DEPTH, FRIDGE_H-FT*2, FT, CTR_X, FRIDGE_H/2, FRIDGE_Z_MIN+FT/2, matGunmetal);
-  box(fg, CTR_DEPTH, FRIDGE_H-FT*2, FT, CTR_X, FRIDGE_H/2, FRIDGE_Z_MAX-FT/2, matGunmetal);
+  // Fridge shell — confirmed void offender; uses the locker-body appliance-shell
+  // family (not the general matGunmetal→matCounterTop redirect above) so the
+  // fridge reads as a distinct painted-metal cabinet, not a countertop slab.
+  box(fg, BD, FRIDGE_H, fLen, CTR_X - FT/2, FRIDGE_H/2, FRIDGE_Z_CTR, matLockerBody);
+  box(fg, CTR_DEPTH, FT, fLen, CTR_X, FRIDGE_H - FT/2, FRIDGE_Z_CTR, matLockerBody);
+  box(fg, CTR_DEPTH, FT, fLen, CTR_X, FT/2, FRIDGE_Z_CTR, matLockerBody);
+  box(fg, CTR_DEPTH, FRIDGE_H-FT*2, FT, CTR_X, FRIDGE_H/2, FRIDGE_Z_MIN+FT/2, matLockerBody);
+  box(fg, CTR_DEPTH, FRIDGE_H-FT*2, FT, CTR_X, FRIDGE_H/2, FRIDGE_Z_MAX-FT/2, matLockerBody);
   buildFridgeInterior(fg, BD, FT);
   // Hinge group — pivot at X=CTR_FACE+DW/2, Z=FRIDGE_Z_MIN+FT
   const DW = CTR_DEPTH - FT; const DH = FRIDGE_H - FT*2 - 0.008; const DD = fLen - FT*2;
   _fridgeHingeGroup = new THREE.Group(); _fridgeHingeGroup.name = 'fridge-hinge';
   _fridgeHingeGroup.position.set(CTR_FACE + DW/2, 0, FRIDGE_Z_MIN + FT);
-  const dp = new THREE.Mesh(new THREE.BoxGeometry(DW, DH, DD), matGunmetal);
+  const dp = new THREE.Mesh(new THREE.BoxGeometry(DW, DH, DD), matLockerBody);
   dp.position.set(-DW/2, FRIDGE_H/2, DD/2); _fridgeHingeGroup.add(dp);
   const st = new THREE.Mesh(new THREE.BoxGeometry(0.022, DH*0.88, 0.06), matTealEmit);
   st.position.set(-DW - 0.012, FRIDGE_H/2, DD/2); _fridgeHingeGroup.add(st);

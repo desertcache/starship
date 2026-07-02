@@ -6,14 +6,18 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { matPipeDark } from '../fx/propMaterials.js';
 
 const CORNER_Y_OFFSETS = [-0.035, -0.085, -0.145]; // stagger below ceiling
 const CORNER_RADII     = [0.040, 0.028, 0.025];
 const CLAMP_R          = 0.015;
 const CLAMP_SPACING    = 2.0;
 
-const matCornerConduit = new THREE.MeshLambertMaterial({ color: 0x18191e });
-const matCornerClamp   = new THREE.MeshLambertMaterial({ color: 0x22242a });
+// Ceiling-corner conduit bundles — confirmed void offender ("pipe runs along
+// the ceiling corners"). Was flat near-black Lambert; dark pipe-metal PBR
+// family (v0.9 A-bridge).
+const matCornerConduit = matPipeDark;
+const matCornerClamp   = matPipeDark;
 
 /**
  * Add 2-3 parallel gunmetal conduit cylinders + clamp rings at both

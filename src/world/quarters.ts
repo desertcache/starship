@@ -44,6 +44,7 @@ import {
   buildLightSwitchPlate,
 } from './quartersDressing.js';
 import { buildFoldDownDesk, buildDeskWallDressing } from './quartersRightWall.js';
+import { matCrateShell } from '../fx/propMaterials.js';
 import { mergeStaticSiblings } from './staticMerge.js';
 import { advanceShipClock, setEnergy } from '../core/state.js';
 import { fadeTransition } from '../ui/hud.js';
@@ -233,8 +234,7 @@ export function buildQuartersB(): RoomModule {
 
   // ── Extra equipment crate (starboard side, differentiator) ────────────────
   const crateGeo = new THREE.BoxGeometry(0.44, 0.38, 0.38);
-  const crateMat = new THREE.MeshLambertMaterial({ color: 0x252830 });
-  const crate    = new THREE.Mesh(crateGeo, crateMat);
+  const crate    = new THREE.Mesh(crateGeo, matCrateShell);
   crate.position.set(1.30, 0.19, -2.0);
   group.add(crate);
   propColliders.push({

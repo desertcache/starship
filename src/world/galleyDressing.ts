@@ -8,14 +8,16 @@
  */
 import * as THREE from 'three';
 import { cached } from '../fx/textureHelpers.js';
+import { matLockerBody, matConsoleHousing } from '../fx/propMaterials.js';
 
 // ── Palette (local) ────────────────────────────────────────────────────────────
-const C_GUNMETAL = 0x1c1e22;
 const C_ORANGE   = 0xc7641e;
 
 const lm = (c: number): THREE.MeshLambertMaterial =>
   new THREE.MeshLambertMaterial({ color: c, side: THREE.FrontSide });
-const matGunmetal = lm(C_GUNMETAL);
+// v0.9 A-bridge: was flat near-black Lambert (#1C1E22) — used for the food
+// lockers + pegboard utensils. Now the shared locker-body PBR singleton.
+const matGunmetal: THREE.MeshStandardMaterial = matLockerBody;
 const matOrange   = lm(C_ORANGE);
 
 // ── Stage D: Cabinet face textures ────────────────────────────────────────────
@@ -27,7 +29,7 @@ function makeCabFaceTex(variant: 'cream' | 'gunmetal' | 'orange'): THREE.CanvasT
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const c = cv.getContext('2d')!;
     const base = variant === 'cream' ? '#C8C1AF'
-               : variant === 'gunmetal' ? '#1C1E22'
+               : variant === 'gunmetal' ? '#2E3238'
                : '#C7641E';
     c.fillStyle = base; c.fillRect(0, 0, W, H);
     const seams  = [W / 2];
@@ -190,8 +192,9 @@ export function buildDoorFlankPanels(g: THREE.Group, roomD: number): void {
   const PANEL_Y = 2.2 + (3.0 - 2.2) / 2;
   const PW = 0.80; const PH = 0.40; const PD = 0.06;
 
-  // Fore (MESS DECK)
-  const forePanel = new THREE.Mesh(new THREE.BoxGeometry(PW, PH, PD), matGunmetal);
+  // Fore (MESS DECK) — wall-mounted panel housing, console-family PBR so it
+  // reads as a lit box rather than a rectangular hole in the wall.
+  const forePanel = new THREE.Mesh(new THREE.BoxGeometry(PW, PH, PD), matConsoleHousing);
   forePanel.position.set(1.5, PANEL_Y, -roomD / 2 + PD / 2 + 0.01);
   g.add(forePanel);
   const foreScr = new THREE.Mesh(new THREE.PlaneGeometry(PW - 0.04, PH - 0.04),
@@ -200,7 +203,7 @@ export function buildDoorFlankPanels(g: THREE.Group, roomD: number): void {
   g.add(foreScr);
 
   // Aft (GALLEY)
-  const aftPanel = new THREE.Mesh(new THREE.BoxGeometry(PW, PH, PD), matGunmetal);
+  const aftPanel = new THREE.Mesh(new THREE.BoxGeometry(PW, PH, PD), matConsoleHousing);
   aftPanel.position.set(1.5, PANEL_Y, roomD / 2 - PD / 2 - 0.01);
   g.add(aftPanel);
   const aftScr = new THREE.Mesh(new THREE.PlaneGeometry(PW - 0.04, PH - 0.04),

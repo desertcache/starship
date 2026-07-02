@@ -12,13 +12,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
-  matGunmetal,
   matDatapad,
   matCream,
   matOrange,
   matCup,
   matShelf,
 } from './quartersProps.js';
+import { matCounterTop, matConsoleHousing } from '../fx/propMaterials.js';
 import type { AABB } from './types.js';
 
 // Emissive teal screen for desk datapad
@@ -119,7 +119,8 @@ export function buildFoldDownDesk(
   const deskParts = [slabGeo, strutA, strutB];
   const deskMerged = mergeGeometries(deskParts);
   for (const g of deskParts) g.dispose();
-  roomGroup.add(new THREE.Mesh(deskMerged, matGunmetal)); // DC 1
+  // Desk mass — confirmed void offender; counter-top family (flat work surface).
+  roomGroup.add(new THREE.Mesh(deskMerged, matCounterTop)); // DC 1
 
   // ── Datapad slab on desk surface ───────────────────────────────────────────
   const padBody = new THREE.Mesh(
@@ -179,7 +180,7 @@ export function buildDeskWallDressing(
   // ── Pinboard body ─────────────────────────────────────────────────────────
   const boardBody = new THREE.Mesh(
     new THREE.BoxGeometry(0.015, PBH, PBW),
-    matGunmetal,
+    matConsoleHousing,
   );
   boardBody.position.set(faceX, BOARD_Y + PBH / 2, deskZCenter);
   roomGroup.add(boardBody); // DC 5
