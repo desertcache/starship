@@ -17,6 +17,7 @@ import { FRAME_TOTAL_DEPTH, FRAME_JAMB_W, FRAME_HEAD_H } from './roomDressing.js
 import { buildCorridorProps } from './corridorProps.js';
 import { addBaseboardsAndCrowns, addVerticalRibs, addQuartersJunction } from './corridorDensity.js';
 import { buildCorridorPortholeBezel } from './corridorPortholes.js';
+import { mergeStaticSiblings } from './staticMerge.js';
 import type { AABB, RoomModule } from './types.js';
 
 // ── UV tile sizes (must match roomBuilder / texturesPanels) ───────────────────
@@ -236,6 +237,10 @@ export function buildCorridor(): RoomModule {
 
   // ── Props ─────────────────────────────────────────────────────────────────
   buildCorridorProps(group);
+
+  // v0.9 A1 defrag: merge static same-material sibling meshes into fewer
+  // draw calls. Zero visual/functional change — see staticMerge.ts.
+  mergeStaticSiblings(group);
 
   const localCamPos  = new THREE.Vector3(0, 1.95, 5);
   const localCamLook = new THREE.Vector3(0, 2.1, -8);

@@ -23,8 +23,9 @@ const mOrg = (): THREE.MeshLambertMaterial =>
 
 function buildMidFloorCrates(group: THREE.Group): AABB[] {
   const CX = -1.8; const CZ = -1.2; const CS = 0.82;
-  const matA = new THREE.MeshLambertMaterial({ color: 0x7A2C1F });
-  const crateA = new THREE.Mesh(new THREE.BoxGeometry(CS, CS, CS), matA);
+  // Shared rust material (was 2 separate instances) so crateA/crateC can merge.
+  const matRustCrate = new THREE.MeshLambertMaterial({ color: 0x7A2C1F });
+  const crateA = new THREE.Mesh(new THREE.BoxGeometry(CS, CS, CS), matRustCrate);
   crateA.position.set(CX, CS / 2, CZ);
   group.add(crateA);
 
@@ -33,8 +34,7 @@ function buildMidFloorCrates(group: THREE.Group): AABB[] {
   crateB.position.set(CX + 0.85, CS * 0.44, CZ + 0.1);
   group.add(crateB);
 
-  const matC = new THREE.MeshLambertMaterial({ color: 0x7A2C1F });
-  const crateC = new THREE.Mesh(new THREE.BoxGeometry(CS, CS * 1.1, CS * 0.9), matC);
+  const crateC = new THREE.Mesh(new THREE.BoxGeometry(CS, CS * 1.1, CS * 0.9), matRustCrate);
   crateC.position.set(CX - 0.05, CS * 0.55, CZ + 0.86);
   group.add(crateC);
 
