@@ -8,19 +8,14 @@
  *   makeFixtureHousingTexture()   — dark gunmetal housing frame
  *   matFixtureEmissive            — MeshBasicMaterial singleton (toneMapped:false)
  *   matFixtureHousing             — MeshLambertMaterial singleton (dark gunmetal)
+ *
+ * v0.9 A2: `cached()` now comes from textureHelpers.ts (neutral shared utility,
+ * not another lane's file) so these textures register into the anisotropy
+ * sweep in main.ts. No lane-ownership rule is crossed — textureHelpers.ts is
+ * the shared low-level helper file, not shipMaterials/texturesEmissive.
  */
 import * as THREE from 'three';
-
-// ── Texture cache ──────────────────────────────────────────────────────────────
-
-const _cache = new Map<string, THREE.CanvasTexture>();
-
-function cached(key: string, build: () => THREE.CanvasTexture): THREE.CanvasTexture {
-  if (!_cache.has(key)) {
-    _cache.set(key, build());
-  }
-  return _cache.get(key)!;
-}
+import { cached } from './textureHelpers.js';
 
 // ── Diffuser texture ───────────────────────────────────────────────────────────
 
@@ -42,14 +37,18 @@ export function makeFixtureDiffuserTexture(): THREE.CanvasTexture {
     ctx.fillStyle = '#8B5A10';
     ctx.fillRect(0, 0, W, H);
 
-    // Hot core radial gradient — very tight bright centre that clears bloom
+    // Hot core radial gradient — very tight bright centre that clears bloom.
+    // v0.9 A2: stop 0 pushed to fully opaque white so the composited core
+    // pixel is RGB≥250 on every channel (old 0.92-alpha stop only reached
+    // ~246,239,222 over the amber base — just under most bloom thresholds).
     const cx = W / 2;
     const cy = H / 2;
     const r  = Math.max(W, H) * 0.55;
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    grad.addColorStop(0.00, 'rgba(255,252,240,0.92)'); // bloom-clearing hot core
-    grad.addColorStop(0.12, 'rgba(255,235,185,0.55)'); // tight warm falloff
-    grad.addColorStop(0.30, 'rgba(200,150,60,0.30)');
+    grad.addColorStop(0.00, 'rgba(255,255,255,1.00)'); // bloom-clearing hot core, RGB≥250
+    grad.addColorStop(0.08, 'rgba(255,250,235,0.85)'); // tight hot falloff
+    grad.addColorStop(0.20, 'rgba(255,235,185,0.50)'); // tight warm falloff
+    grad.addColorStop(0.35, 'rgba(200,150,60,0.30)');
     grad.addColorStop(0.65, 'rgba(80,45,8,0.60)');
     grad.addColorStop(1.00, 'rgba(20,10,2,0.85)');     // dark cavity rim
     ctx.fillStyle = grad;

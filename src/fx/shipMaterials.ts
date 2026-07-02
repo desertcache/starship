@@ -148,15 +148,28 @@ export const matShipCeiling: THREE.MeshLambertMaterial | THREE.MeshStandardMater
 
 // ── Accent / feature materials ─────────────────────────────────────────────────
 
-/** Hazard striping — engineering danger zones. */
-export const matHazardStriping: THREE.MeshLambertMaterial = new THREE.MeshLambertMaterial({
+/**
+ * Hazard striping — engineering danger zones.
+ * v0.9 A2: Lambert → Standard for env-map consistency with the rest of the
+ * PBR ship materials (painted-metal family: matte, low env pickup).
+ */
+export const matHazardStriping: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
   map: setRepeat(makeHazardStripingTexture(), 2, 2),
+  roughness: 0.75,
+  metalness: 0.10,
+  envMapIntensity: 0.25,
   side: THREE.FrontSide,
 });
 
-/** Deep-red accent panel. */
-export const matRedAccent: THREE.MeshLambertMaterial = new THREE.MeshLambertMaterial({
+/**
+ * Deep-red accent panel.
+ * v0.9 A2: Lambert → Standard, same painted-metal family as the wall panels.
+ */
+export const matRedAccent: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
   map: setRepeat(makeRedAccentTexture(), 2, 2),
+  roughness: 0.75,
+  metalness: 0.10,
+  envMapIntensity: 0.25,
   side: THREE.FrontSide,
 });
 

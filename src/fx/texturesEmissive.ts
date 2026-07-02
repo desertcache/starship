@@ -1,18 +1,30 @@
 /**
  * Procedural emissive + accent textures — Phase 3.
  * Covers: teal strip, ceiling light panel, orange door frame,
- *         hazard striping, deep-red accent, console/screen readout.
+ *         hazard striping, deep-red accent.
  * Surface textures (walls, floor, ceiling): see textures.ts
+ * Console/screen readout: see texturesConsole.ts (split out v0.9 A2 to stay
+ * under the 300-line file limit).
  */
 import * as THREE from 'three';
 import { PAL, rng, addGrime, drawSeams, cached } from './textureHelpers.js';
 
+export { makeConsoleScreenTexture } from './texturesConsole.js';
+
 /**
- * Emissive teal strip (#46E0D8) with subtle centre-line bloom gradient.
+ * Emissive teal strip (#46E0D8) with a thin hot core line, not a broad wash.
  * 64×64. Used on floor-edge strip geometry via MeshBasicMaterial.
+ *
+ * v0.9 A2: replaced the old broad centre-band gradient (25% white blended
+ * across roughly a third of the strip's height) with a narrow near-white
+ * core (~4px) that falls off to flat base teal within ~20px. A future
+ * thresholded bloom pass should halo just this thin line, not the whole
+ * strip. Kept energy-limited (narrow + fast falloff) so the average
+ * brightness stays at or below the old gradient's — refs are warm-dominant,
+ * teal reads as an accent, never louder than the fixture pools.
  */
 export function makeTealStripTexture(): THREE.CanvasTexture {
-  return cached('teal-strip', () => {
+  return cached('teal-strip-v2', () => {
     const W = 64;
     const H = 64;
     const canvas = document.createElement('canvas');
@@ -23,13 +35,18 @@ export function makeTealStripTexture(): THREE.CanvasTexture {
     ctx.fillStyle = PAL.teal;
     ctx.fillRect(0, 0, W, H);
 
-    // Soft brighter centre band
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, 'rgba(255,255,255,0.0)');
-    grad.addColorStop(0.5, 'rgba(255,255,255,0.25)');
-    grad.addColorStop(1, 'rgba(255,255,255,0.0)');
+    // Thin hot core line at the vertical centre — true white at the exact
+    // centre row, soft falloff to flat teal within ±10px either side.
+    const coreY = H / 2;
+    const band  = 10;
+    const grad = ctx.createLinearGradient(0, coreY - band, 0, coreY + band);
+    grad.addColorStop(0.0,  'rgba(255,255,255,0.0)');
+    grad.addColorStop(0.40, 'rgba(255,255,255,0.05)');
+    grad.addColorStop(0.5,  'rgba(255,255,255,1.0)');
+    grad.addColorStop(0.60, 'rgba(255,255,255,0.05)');
+    grad.addColorStop(1.0,  'rgba(255,255,255,0.0)');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, coreY - band, W, band * 2);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
@@ -64,8 +81,12 @@ export function makeCeilingLightTexture(): THREE.CanvasTexture {
 
     // Tight hot core: only the very centre clears bloom threshold.
     // Falloff steepened so housing stays dim amber, not white.
+    // v0.9 A2: added a true-white 0.0 stop (RGB≥250 composited) so the
+    // upcoming thresholded bloom pass halos the core, not the amber slab —
+    // old 0.80-alpha stop only reached ~244,229,204 over the amber base.
     const grad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.62);
-    grad.addColorStop(0.0, 'rgba(255,248,235,0.80)');   // hot bloom-clearing core
+    grad.addColorStop(0.0, 'rgba(255,255,255,1.00)');   // true hot core, RGB≥250
+    grad.addColorStop(0.06, 'rgba(255,250,235,0.90)');  // tight hot falloff
     grad.addColorStop(0.18, 'rgba(255,235,200,0.20)');  // tighter falloff
     grad.addColorStop(0.45, 'rgba(140,95,40,0.40)');
     grad.addColorStop(1.0, 'rgba(60,35,10,0.80)');      // dark housing rim
@@ -211,83 +232,3 @@ export function makeRedAccentTexture(): THREE.CanvasTexture {
   });
 }
 
-/**
- * Console / screen texture — dark with cyan schematic readout pattern.
- * Static (non-animated). Room agents use this on screen/console prop faces.
- * 512×512.
- */
-export function makeConsoleScreenTexture(): THREE.CanvasTexture {
-  return cached('console-screen', () => {
-    const S = 512;
-    const canvas = document.createElement('canvas');
-    canvas.width = S;
-    canvas.height = S;
-    const ctx = canvas.getContext('2d')!;
-
-    ctx.fillStyle = '#050810';
-    ctx.fillRect(0, 0, S, S);
-
-    // Faint teal grid
-    ctx.strokeStyle = 'rgba(70,224,216,0.15)';
-    ctx.lineWidth = 1;
-    const gridStep = 32;
-    for (let x = 0; x <= S; x += gridStep) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, S); ctx.stroke();
-    }
-    for (let y = 0; y <= S; y += gridStep) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(S, y); ctx.stroke();
-    }
-
-    // L-shaped schematic routing lines
-    const rand = rng(303);
-    ctx.strokeStyle = 'rgba(70,224,216,0.9)';
-    ctx.lineWidth = 1.5;
-    for (let i = 0; i < 12; i++) {
-      const x0 = Math.floor(rand() * (S / gridStep)) * gridStep;
-      const y0 = Math.floor(rand() * (S / gridStep)) * gridStep;
-      const x1 = Math.floor(rand() * (S / gridStep)) * gridStep;
-      const y1 = Math.floor(rand() * (S / gridStep)) * gridStep;
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y0);
-      ctx.lineTo(x1, y1);
-      ctx.stroke();
-    }
-
-    // Waveform in upper third
-    ctx.strokeStyle = 'rgba(70,224,216,0.7)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    const waveRand = rng(404);
-    const wY = S * 0.20;
-    ctx.moveTo(0, wY);
-    for (let x = 0; x <= S; x += 4) {
-      ctx.lineTo(x, wY + (waveRand() - 0.5) * 30);
-    }
-    ctx.stroke();
-
-    // Junction dots
-    ctx.fillStyle = 'rgba(70,224,216,0.95)';
-    const dotRand = rng(505);
-    for (let i = 0; i < 18; i++) {
-      const x = Math.floor(dotRand() * (S / gridStep)) * gridStep;
-      const y = Math.floor(dotRand() * (S / gridStep)) * gridStep;
-      ctx.beginPath();
-      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Status readout strip
-    ctx.fillStyle = 'rgba(70,224,216,0.6)';
-    ctx.font = '13px monospace';
-    const labels = ['PWR 94%', 'NAV OK', 'ENG 87%', 'HULL OK', 'ATM 100'];
-    for (let i = 0; i < labels.length; i++) {
-      ctx.fillText(labels[i], 8 + i * 100, S - 16);
-    }
-
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    return tex;
-  });
-}
