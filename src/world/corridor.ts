@@ -18,6 +18,7 @@ import { buildCorridorProps } from './corridorProps.js';
 import { addBaseboardsAndCrowns, addVerticalRibs, addQuartersJunction } from './corridorDensity.js';
 import { buildCorridorPortholeBezel } from './corridorPortholes.js';
 import { mergeStaticSiblings } from './staticMerge.js';
+import { buildLightShaft } from '../fx/volumetrics.js';
 import type { AABB, RoomModule } from './types.js';
 
 // ── UV tile sizes (must match roomBuilder / texturesPanels) ───────────────────
@@ -237,6 +238,20 @@ export function buildCorridor(): RoomModule {
 
   // ── Props ─────────────────────────────────────────────────────────────────
   buildCorridorProps(group);
+
+  // ── Volumetric light shafts (v0.9 B2 glow build) — 2 of the 5 ship-wide
+  // hero shafts: junction pool (under junctionSpot, world 0,2.5,-16) and mid
+  // pool (world 0,2.4,-8.5). Local Z = world Z - (-12).
+  buildLightShaft(group, {
+    x: 0, z: SIDE_DOOR_Z, topY: 2.5, bottomY: 0.4,
+    sourceAtTop: true, radiusSource: 0.14, radiusFar: 0.45,
+    color: 0xffe2c0, peakOpacity: 0.035, moteCount: 60, seed: 11,
+  });
+  buildLightShaft(group, {
+    x: 0, z: 3.5, topY: 2.4, bottomY: 0.4,
+    sourceAtTop: true, radiusSource: 0.12, radiusFar: 0.40,
+    color: 0xffe2c0, peakOpacity: 0.03, moteCount: 60, seed: 12,
+  });
 
   // v0.9 A1 defrag: merge static same-material sibling meshes into fewer
   // draw calls. Zero visual/functional change — see staticMerge.ts.

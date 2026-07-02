@@ -5,6 +5,7 @@ import { addGalleyProps } from './galleyProps.js';
 import { mergeStaticSiblings } from './staticMerge.js';
 import { setHunger } from '../core/state.js';
 import { fadeTransition } from '../ui/hud.js';
+import { buildLightShaft } from '../fx/volumetrics.js';
 
 /** Galley / mess — 6W x 3H x 6D. */
 export function buildGalley(): RoomModule {
@@ -28,6 +29,14 @@ export function buildGalley(): RoomModule {
 
   const { colliders: propColliders } = addGalleyProps(group);
   colliders.push(...propColliders);
+
+  // Volumetric light shaft (v0.9 B2 glow build) — hero counter pool, under
+  // galleyPt (world 0.5,2.4,-1.5). Local Z = world Z - (-1).
+  buildLightShaft(group, {
+    x: 0.5, z: -0.5, topY: 2.4, bottomY: 0.4,
+    sourceAtTop: true, radiusSource: 0.14, radiusFar: 0.48,
+    color: 0xffe2c0, peakOpacity: 0.032, moteCount: 60, seed: 13,
+  });
 
   // ── Stove interactable — "Eat" ─────────────────────────────────────────────
   // Stove cooktop local position: X≈2.725, Y≈0.91, Z≈-0.60 (STOVE_Z_CTR).

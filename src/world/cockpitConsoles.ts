@@ -9,6 +9,7 @@ import type { AABB } from './types.js';
 import { makeLiveScreenMat, liveScreenTick } from './cockpitScreens.js';
 import type { ScreenType } from './cockpitScreens.js';
 import { matConsoleHousing } from '../fx/propMaterials.js';
+import { addLedCluster, LedColors } from '../fx/glow.js';
 
 export { liveScreenTick };
 
@@ -161,10 +162,13 @@ export function buildConsoleBank(group: THREE.Group): ConsoleBankResult {
   // Three thin emissive planes angled to wash the console body + seat-fronts
   // with teal screen-light. toneMapped=false, additive, no new lights.
   // One below each screen bezel, tilted toward the console face.
+  // v0.9 B2 glow build: opacity 0.28→0.40 + slightly hotter teal — pushes the
+  // wash close enough to the 0.84 bloom threshold to read as a soft screen
+  // bounce-halo on the console face, per the glow-build brief.
   const glowMat = new THREE.MeshBasicMaterial({
-    color: 0x1ac8d8,        // slightly desaturated teal, not full 0x46e0d8
+    color: 0x2ad8e6,        // slightly hotter desaturated teal (was 0x1ac8d8)
     transparent: true,
-    opacity: 0.28,
+    opacity: 0.40,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     toneMapped: false,
@@ -177,6 +181,19 @@ export function buildConsoleBank(group: THREE.Group): ConsoleBankResult {
     glow.rotation.x = -Math.PI * 0.14; // ~25° tilt downward toward console
     group.add(glow);
   }
+
+  // ── Micro-LED cluster (v0.9 B2 glow build) — extend the existing console
+  // status dots subtly: 4 more along the top-cap edge, mixed palette, one
+  // blinking. "Ship systems are alive," not fairy lights.
+  addLedCluster(group, [
+    { pos: new THREE.Vector3(-1.3, BH + TH + 0.06, SZ - 0.02), color: LedColors.teal },
+    { pos: new THREE.Vector3(-0.4, BH + TH + 0.06, SZ - 0.02), color: LedColors.warm },
+    {
+      pos: new THREE.Vector3(0.4, BH + TH + 0.06, SZ - 0.02),
+      color: LedColors.red, blink: true, period: 3.2, phase: 0.25,
+    },
+    { pos: new THREE.Vector3(1.3, BH + TH + 0.06, SZ - 0.02), color: LedColors.orange },
+  ]);
 
   // Decals on center console
   addDecal(group, 'COCKPIT', 0.70, 0.10,

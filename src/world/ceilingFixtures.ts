@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { matFixtureEmissive, matFixtureHousing } from '../fx/texturesFixtures.js';
+import { addFixtureHalation } from '../fx/glow.js';
 import {
   identifyRoom,
   seededRng,
@@ -26,6 +27,7 @@ import {
   makeDiffuserGeo,
   addConduitRuns,
   pushCargoStem,
+  RECESS_DEPTH,
 } from './ceilingFixtureGeo.js';
 
 /**
@@ -93,4 +95,9 @@ export function buildCeilingFixtures(
     mesh.name = `ceiling-emissive-${room}`;
     group.add(mesh);
   }
+
+  // ── Halation (v0.9 B2 glow build) — one glow quad per fixture, floating
+  // just below the lens. Shared geometry/material live in fx/glow.ts.
+  const diffuserY = (H - pendantDrop) - RECESS_DEPTH;
+  addFixtureHalation(group, specs.map(({ x, z }) => ({ x, z })), diffuserY);
 }

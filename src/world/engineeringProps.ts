@@ -24,6 +24,8 @@ import {
   buildAftWallDressing,
 } from './engineeringDressing.js';
 import { matReactorHousing, matPipeDark, matCrateShell, matConsoleHousing } from '../fx/propMaterials.js';
+import { addLedCluster, LedColors, makeReactorCoreTexture, GLOW_ENABLED } from '../fx/glow.js';
+import { buildLightShaft } from '../fx/volumetrics.js';
 
 const COL_TEAL     = 0x46E0D8;
 const COL_ORANGE   = 0xC7641E;
@@ -68,8 +70,17 @@ const matFloorSeam = (): THREE.MeshBasicMaterial =>
 // reactor-housing PBR singleton (v0.9 A-bridge).
 const matHou = (): THREE.MeshStandardMaterial => matReactorHousing;
 
+// v0.9 B2 glow build: hot-core texture (like A2's ceiling fixtures) + toneMapped
+// false — the flat teal fill never cleared the 0.84 bloom threshold regardless
+// of the pulse's opacity swing; the hot center now does.
 const mkCoreMat = (): THREE.MeshBasicMaterial =>
-  new THREE.MeshBasicMaterial({ color: new THREE.Color(COL_TEAL), transparent: true, opacity: 1.0 });
+  new THREE.MeshBasicMaterial({
+    map: makeReactorCoreTexture(),
+    color: new THREE.Color(COL_TEAL),
+    transparent: true,
+    opacity: 1.0,
+    toneMapped: false,
+  });
 
 const mkAccentMat = (): THREE.MeshBasicMaterial =>
   new THREE.MeshBasicMaterial({ color: new THREE.Color(COL_ORANGE), transparent: true, opacity: 0.85 });
@@ -131,6 +142,32 @@ export function buildReactor(H: number): ReactorResult {
   pipe.position.set(CX, H - 0.175, CZ); g.add(pipe);
   const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.08, 8), matGun());
   collar.position.set(CX, H - 0.04, CZ); g.add(collar);
+
+  // ── Reactor light show (v0.9 B2 glow build, item 6) ───────────────────────
+  // A teal PointLight breathing in sync with lightingRig.ts's reactorSpot
+  // (same 2.1 rad/s sine, phase 0 — "reuse the exact phase so they breathe
+  // together"), plus a vertical volumetric shaft rising from the column top
+  // toward the ceiling. Both gated behind GLOW_ENABLED so ?glow=0 fully
+  // isolates the reactor light show for perf A/B.
+  if (GLOW_ENABLED) {
+    const REACTOR_GLOW_BASE = 1.8;
+    const REACTOR_GLOW_AMP  = 0.6;
+    const reactorGlowLight = new THREE.PointLight(0x46e0d8, REACTOR_GLOW_BASE, 4, 2);
+    reactorGlowLight.position.set(CX, CY, CZ);
+    g.add(reactorGlowLight);
+
+    // Source (bright end) is the column top, spatially the BOTTOM of this
+    // short vertical volume — sourceAtTop=false flips the shader's axial
+    // falloff so brightness peaks at the column and fades toward the ceiling.
+    buildLightShaft(g, {
+      x: CX, z: CZ, topY: H - 0.05, bottomY: Math.max(H - 1.1, CY - 0.3),
+      sourceAtTop: false, radiusSource: 0.12, radiusFar: 0.35,
+      color: 0x46e0d8, peakOpacity: 0.045, moteCount: 55, seed: 55,
+      onTick: (t: number): void => {
+        reactorGlowLight.intensity = REACTOR_GLOW_BASE + Math.sin(t * 2.1) * REACTOR_GLOW_AMP;
+      },
+    });
+  }
 
   return {
     group: g,
@@ -228,6 +265,16 @@ export function buildBreakerCabinet(roomH: number, roomD: number, halfW: number)
     }
     inst.instanceMatrix.needsUpdate = true; g.add(inst);
   }
+
+  // Micro-LED cluster (v0.9 B2 glow build) — extend the existing 12-pip grid
+  // subtly: 2 status lights on the cabinet's top edge, one blinking.
+  addLedCluster(g, [
+    { pos: new THREE.Vector3(px - CD / 2 - 0.01, py + CH / 2 - 0.03, pz - CW * 0.25), color: LedColors.teal },
+    {
+      pos: new THREE.Vector3(px - CD / 2 - 0.01, py + CH / 2 - 0.03, pz + CW * 0.25),
+      color: LedColors.red, blink: true, period: 2.0, phase: 0.6,
+    },
+  ]);
 
   return {
     group: g,

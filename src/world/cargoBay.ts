@@ -11,6 +11,8 @@ import { matWall, matFloor, matCeiling } from './materials.js';
 import { matDoorFrame } from '../fx/shipMaterials.js';
 import { buildCargoBayProps } from './cargoBayProps.js';
 import { mergeStaticSiblings } from './staticMerge.js';
+import { buildLightShaft } from '../fx/volumetrics.js';
+import { addLedCluster, LedColors } from '../fx/glow.js';
 import type { RoomModule } from './types.js';
 
 // Heavy pressure-hatch frame constants (deeper than standard)
@@ -52,6 +54,16 @@ function addHatchFrame(group: THREE.Group, roomW: number, roomD: number): void {
   thresh.position.set(0, 0.025, wZ);
   group.add(thresh);
 
+  // Micro-LED cluster (v0.9 B2 glow build) — 3 status lights along the hatch
+  // header, "armed hatch" read. One blinks red.
+  const headerY = DOOR_GAP_H + HATCH_HEAD_H / 2;
+  const headerZ = wZ + HATCH_FRAME_DEPTH / 2 + 0.01;
+  addLedCluster(group, [
+    { pos: new THREE.Vector3(-0.4, headerY, headerZ), color: LedColors.teal },
+    { pos: new THREE.Vector3(0, headerY, headerZ), color: LedColors.red, blink: true, period: 1.6, phase: 0.1 },
+    { pos: new THREE.Vector3(0.4, headerY, headerZ), color: LedColors.teal },
+  ]);
+
   void roomW;
 }
 
@@ -84,6 +96,14 @@ export function buildCargoBay(): RoomModule {
   // Props (density pass returns extra colliders for new crate cluster + breaker box)
   const densityColliders = buildCargoBayProps(group, W, H, D);
   for (const c of densityColliders) colliders.push(c);
+
+  // Volumetric light shaft (v0.9 B2 glow build) — hero high pool, under
+  // cargoPt (world 0,4.2,13.5). Local = world - room offset, both 0.
+  buildLightShaft(group, {
+    x: 0, z: 0, topY: 4.2, bottomY: 0.4,
+    sourceAtTop: true, radiusSource: 0.15, radiusFar: 0.45,
+    color: 0xe8eef2, peakOpacity: 0.03, moteCount: 50, seed: 14,
+  });
 
   // v0.9 A1 defrag: merge static same-material sibling meshes into fewer
   // draw calls. Zero visual/functional change — see staticMerge.ts.

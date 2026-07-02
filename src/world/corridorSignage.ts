@@ -5,6 +5,7 @@
  */
 import * as THREE from 'three';
 import { matConsoleScreen } from '../fx/shipMaterials.js';
+import { addLedCluster, addUnderglow, LedColors } from '../fx/glow.js';
 
 // ── Internal decal helpers ────────────────────────────────────────────────────
 
@@ -200,4 +201,23 @@ export function buildCorridorSignage(
   cursorMesh.position.set(TERMINAL_X + 0.054, TERMINAL_Y - 0.28, TERMINAL_Z);
   cursorMesh.rotation.y = Math.PI / 2;
   group.add(cursorMesh);
+
+  // Console glow (v0.9 B2 glow build, item 5) — faint teal underglow washing
+  // the wall below the terminal screen, fake bounce-light.
+  addUnderglow(group, {
+    x: TERMINAL_X + 0.03, y: TERMINAL_Y - 0.50, z: TERMINAL_Z,
+    width: 0.5, length: 0.30, rotY: Math.PI / 2, tiltX: -0.4,
+    color: 0x2ad8e6, opacity: 0.32,
+  });
+
+  // Micro-LED cluster — 3 status lights along the terminal body edge, one
+  // blinking (idle "standing by" pulse).
+  addLedCluster(group, [
+    { pos: new THREE.Vector3(TERMINAL_X + 0.06, TERMINAL_Y + 0.36, TERMINAL_Z - 0.18), color: LedColors.teal },
+    {
+      pos: new THREE.Vector3(TERMINAL_X + 0.06, TERMINAL_Y + 0.36, TERMINAL_Z),
+      color: LedColors.warm, blink: true, period: 3.6, phase: 0.5,
+    },
+    { pos: new THREE.Vector3(TERMINAL_X + 0.06, TERMINAL_Y + 0.36, TERMINAL_Z + 0.18), color: LedColors.orange },
+  ]);
 }

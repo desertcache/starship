@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildCargoBayDensity } from './cargoBayDensity.js';
 import { matCatwalkSteel, matCrateShell } from '../fx/propMaterials.js';
+import { addLedCluster, LedColors } from '../fx/glow.js';
 import type { AABB } from './types.js';
 
 const COL_GUNMETAL = 0x1C1E22;
@@ -197,6 +198,18 @@ function buildCrateColumns(group: THREE.Group, D: number): void {
       for (const g of trimGeos) g.dispose();
       group.add(m); // 1 draw call per column for trim
     }
+
+    // Micro-LED cluster (v0.9 B2 glow build) — 2 status lights on the top
+    // crate's FORE face (camera-facing) per column, "cargo lock" read. One
+    // column blinks.
+    const topCrateY = STACK[2].h + crateSize;
+    addLedCluster(group, [
+      { pos: new THREE.Vector3(cx - crateSize * 0.2, topCrateY - 0.10, cz - crateSize / 2 - 0.005), color: LedColors.teal },
+      {
+        pos: new THREE.Vector3(cx + crateSize * 0.2, topCrateY - 0.10, cz - crateSize / 2 - 0.005),
+        color: LedColors.orange, blink: cx < 0, period: 2.4, phase: 0.4,
+      },
+    ]);
   }
 }
 

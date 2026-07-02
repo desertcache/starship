@@ -13,10 +13,14 @@
 import * as THREE from 'three';
 import type { AABB } from './types.js';
 import { matShipWall } from '../fx/shipMaterials.js';
-import { buildPortWall, buildDoorFlankPanels, matCabFaceCream, matCabFaceGunmetal, matCabFaceOrange, matWarmAmber } from './galleyDressing.js';
+import {
+  buildPortWall, buildDoorFlankPanels, buildClutter, buildMessTable,
+  matCabFaceCream, matCabFaceGunmetal, matCabFaceOrange, matWarmAmber,
+} from './galleyDressing.js';
 import { createPropTween } from './propTween.js';
 import type { PropTween } from './propTween.js';
 import { matCounterTop, matLockerBody, matPipeDark } from '../fx/propMaterials.js';
+import { addLedCluster, LedColors } from '../fx/glow.js';
 
 // Palette
 const C_CREAM      = 0xe8e2d4;
@@ -25,7 +29,6 @@ const C_TEAL       = 0x46e0d8;
 const C_RED_BASE   = 0x7a2c1f;
 const C_RED_GLOW   = 0xcc3322;
 const C_MUSTARD    = 0xc8931f;
-const C_METAL_TRAY = 0x3a3d43;
 
 const lm = (c: number): THREE.MeshLambertMaterial =>
   new THREE.MeshLambertMaterial({ color: c, side: THREE.FrontSide });
@@ -44,9 +47,6 @@ const matRedBase   = lm(C_RED_BASE);
 const matTealEmit  = bm(C_TEAL);
 const matCoilGlow  = bm(C_RED_GLOW);
 const matMustard      = lm(C_MUSTARD);
-const matMetalTray    = lm(C_METAL_TRAY);
-const matCupGrey      = lm(0x3a3d45);
-const matFoodPackage  = lm(C_RED_BASE);
 
 function box(
   g: THREE.Group, w: number, h: number, d: number,
@@ -54,15 +54,6 @@ function box(
   mat: THREE.Material, name?: string,
 ): THREE.Mesh {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  m.position.set(x, y, z);
-  if (name) m.name = name;
-  g.add(m);
-  return m;
-}
-
-function cyl(g: THREE.Group, r: number, h: number,
-  x: number, y: number, z: number, mat: THREE.Material, name?: string): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12, 1), mat);
   m.position.set(x, y, z);
   if (name) m.name = name;
   g.add(m);
@@ -199,6 +190,16 @@ function buildStove(g: THREE.Group): void {
   const pip = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.01, 8), matTealEmit);
   pip.position.set(CTR_X, CTR_H + 0.07 + 0.145, STOVE_Z_MIN + 0.82);
   g.add(pip);
+
+  // Micro-LED cluster (v0.9 B2 glow build) — 2 control-edge status lights,
+  // one slow "simmer" blink.
+  addLedCluster(g, [
+    { pos: new THREE.Vector3(CTR_X - 0.18, CTR_H + 0.04, STOVE_Z_CTR), color: LedColors.red },
+    {
+      pos: new THREE.Vector3(CTR_X + 0.18, CTR_H + 0.04, STOVE_Z_CTR),
+      color: LedColors.warm, blink: true, period: 3.0, phase: 0.7,
+    },
+  ]);
 }
 
 // ── Fridge hinge state (module-level singletons) ───────────────────────────────
@@ -273,62 +274,32 @@ function buildFridge(g: THREE.Group): AABB[] {
   _fridgeTween = createPropTween(400, (v) => { hr.rotation.y = v * (Math.PI / 2); });
   const tw = _fridgeTween;
   dp.onBeforeRender = (): void => { tw.tick(); };
+
+  // Micro-LED cluster (v0.9 B2 glow build) — 2 status lights on the static
+  // frame's top corner (not the hinge, so they don't swing with the door).
+  addLedCluster(fg, [
+    { pos: new THREE.Vector3(CTR_X - CTR_DEPTH * 0.3, FRIDGE_H - FT - 0.05, FRIDGE_Z_MIN + fLen * 0.15), color: LedColors.teal },
+    {
+      pos: new THREE.Vector3(CTR_X - CTR_DEPTH * 0.3, FRIDGE_H - FT - 0.05, FRIDGE_Z_MIN + fLen * 0.85),
+      color: LedColors.orange, blink: true, period: 2.2, phase: 0.9,
+    },
+  ]);
+
   g.add(fg);
   return [{ minX: CTR_FACE, minY: 0, minZ: FRIDGE_Z_MIN, maxX: WALL_X, maxY: FRIDGE_H, maxZ: FRIDGE_Z_MAX }];
 }
 
-function buildClutter(g: THREE.Group): void {
-  // Stage D: additional props to break bare countertop
-  // Metal tray + 2 canisters (existing)
-  box(g, 0.28, 0.025, 0.16, CTR_X, CTR_H + 0.012, -1.80, matMetalTray);
-  cyl(g, 0.055, 0.13, CTR_X - 0.05, CTR_H + 0.065, -1.90, matTealEmit);
-  cyl(g, 0.050, 0.12, CTR_X + 0.08, CTR_H + 0.060, -1.62, matMustard);
-  // Extra: ration box on aft counter zone
-  box(g, 0.14, 0.10, 0.08, CTR_X, CTR_H + 0.05, AFT_CAB_Z - 0.15, matFoodPackage);
-  // Small flat tray with rim on fore zone
-  box(g, 0.22, 0.018, 0.14, CTR_X - 0.05, CTR_H + 0.009, FORE_CAB_Z + 0.30, matMetalTray);
-  // Tall canister with gunmetal lid
-  cyl(g, 0.042, 0.16, CTR_X + 0.10, CTR_H + 0.08, FORE_CAB_Z - 0.20, matGunmetal);
-}
-
-function buildMessTable(g: THREE.Group): AABB[] {
-  const TX = -1.10; const TZ = -0.40;
-  const TW = 1.70; const TD = 0.85; const TH = 0.78;
-  const LEG = TH - 0.05;
-  box(g, TW, 0.05, TD, TX, TH, TZ, matGunmetal);
-  for (const lx of [TX - TW / 2 + 0.08, TX + TW / 2 - 0.08]) {
-    for (const lz of [TZ - TD / 2 + 0.08, TZ + TD / 2 + 0.08]) {
-      box(g, 0.05, LEG, 0.05, lx, LEG / 2, lz, matGunmetal);
-    }
-  }
-  const BENCH_H = 0.44; const BO = TD / 2 + 0.26;
-  for (const [idx, bz] of [[0, TZ - BO], [1, TZ + BO]] as [number, number][]) {
-    const bName = idx === 0 ? 'bench-fore' : 'bench-aft';
-    box(g, TW * 0.86, 0.05, 0.30, TX, BENCH_H, bz, matDark, bName);
-    box(g, TW * 0.78, BENCH_H - 0.025, 0.06, TX, (BENCH_H - 0.025) / 2, bz, matGunmetal);
-  }
-
-  // Table items
-  box(g, 0.28, 0.02, 0.20, TX - 0.35, TH + 0.01, TZ - 0.10, matMetalTray);
-  box(g, 0.28, 0.02, 0.20, TX + 0.30, TH + 0.01, TZ + 0.15, matMetalTray);
-  cyl(g, 0.038, 0.09, TX - 0.42, TH + 0.045, TZ + 0.18, matTealEmit, 'coffee-cup');
-  cyl(g, 0.036, 0.085, TX + 0.42, TH + 0.042, TZ - 0.20, matCupGrey);
-  box(g, 0.14, 0.10, 0.08, TX, TH + 0.05, TZ, matFoodPackage);
-
-  return [{ minX: TX - TW / 2, minY: 0, minZ: TZ - TD / 2 - BO - 0.18,
-            maxX: TX + TW / 2, maxY: TH, maxZ: TZ + TD / 2 + BO + 0.18 }];
-}
-
 export interface GalleyPropResult { colliders: AABB[] }
 
-/** Add all galley props. Returns AABB colliders for counter, fridge, table. */
+/** Add all galley props. Returns AABB colliders for counter, fridge, table.
+ * Countertop clutter + mess table → galleyDressing.ts (300-line split). */
 export function addGalleyProps(group: THREE.Group): GalleyPropResult {
   const colliders: AABB[] = [];
   colliders.push(...buildCounterRun(group));
   buildUpperCabinets(group);
   buildStove(group);
   colliders.push(...buildFridge(group));
-  buildClutter(group);
+  buildClutter(group, CTR_X, CTR_H, AFT_CAB_Z, FORE_CAB_Z);
   colliders.push(...buildMessTable(group));
   buildPortWall(group);
   buildDoorFlankPanels(group, 6);

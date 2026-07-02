@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { matShipWall, matHazardStriping, matRedAccent } from '../fx/shipMaterials.js';
 import { cached, addGrime } from '../fx/textureHelpers.js';
 import { matPipeDark } from '../fx/propMaterials.js';
+import { addLedCluster, LedColors } from '../fx/glow.js';
 
 // ── Textures ───────────────────────────────────────────────────────────────────
 
@@ -173,4 +174,16 @@ export function buildBaseWallDressing(g: THREE.Group, W: number, H: number, D: n
   aftL.position.set(-1.6, H*0.55, AFT_PANEL_Z); g.add(aftL);
   const aftR = new THREE.Mesh(new THREE.BoxGeometry(1.2, H*0.45, T), matShipWall);
   aftR.position.set( 1.6, H*0.55, AFT_PANEL_Z); g.add(aftR);
+
+  // Micro-LED cluster (v0.9 B2 glow build) — scattered status lights across
+  // the conduit wall panels, "ship systems are alive." One blinks.
+  addLedCluster(g, [
+    { pos: new THREE.Vector3(-hw + T + 0.005, H * 0.30, hd * 0.1), color: LedColors.teal },
+    { pos: new THREE.Vector3(-hw + T + 0.005, H * 0.68, hd * 0.1), color: LedColors.orange },
+    { pos: new THREE.Vector3(hw - T - 0.005, H * 0.30, hd * 0.2), color: LedColors.teal },
+    {
+      pos: new THREE.Vector3(hw - T - 0.005, H * 0.68, hd * 0.2),
+      color: LedColors.warm, blink: true, period: 2.8, phase: 0.15,
+    },
+  ]);
 }
