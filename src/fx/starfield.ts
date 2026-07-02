@@ -10,9 +10,10 @@
  *   tickStarfield(pts, e):   void           — advances twinkle + uScroll
  *   disposeStarfield(pts):   void
  *
- * NEAR layer: 2200 stars in a slab X[-900,900] Y[-500,500] Z[-1400,+400],
- * size 1.0-2.6, brighter, streaming toward +Z (aft) at CRUISE_SPEED_NEAR so a
- * star at z=-200 passes the camera in ~14s — a majestic capital cruise.
+ * NEAR layer: 3800 stars (v0.9 density pass) in a slab X[-900,900]
+ * Y[-500,500] Z[-1400,+400], size 0.6-3.4 (magnitude-skewed — few big/bright,
+ * many small/dim), streaming toward +Z (aft) at CRUISE_SPEED_NEAR so a star
+ * at z=-200 passes the camera in ~14s — a majestic capital cruise.
  */
 
 import * as THREE from 'three';
@@ -32,13 +33,13 @@ let scroll = 0;
 /** Build the near streaming starfield layer (one draw call). */
 export function buildStarfield(): THREE.Points {
   const stars = buildStarLayer({
-    count: 2200,
+    count: 3800,
     xHalf: 900,
     yHalf: 500,
     zMin: Z_MIN_NEAR,
     span: SPAN_NEAR,
-    sizeMin: 1.0,
-    sizeMax: 2.6,
+    sizeMin: 0.6,
+    sizeMax: 3.4,
   });
   stars.name = 'starfield-near';
   return stars;

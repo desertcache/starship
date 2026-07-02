@@ -6,6 +6,7 @@
  *     streaming on the +Z (aft) cruise flow,
  *   - a seeded soft-timeline scheduler (elapsed-second thresholds),
  *   - the FAR streaming star layer (added to the scene directly, ticked here),
+ *   - the persistent nebula wash + hero sun (nebula.ts / sun.ts),
  *   - the scan API (nearest visible hero, distance from the canopy anchor),
  *   - full disposal of everything it spawns.
  *
@@ -16,6 +17,8 @@ import * as THREE from 'three';
 import { makeRng } from './rng.js';
 import type { Rng } from './rng.js';
 import { buildStarLayer, setStarUniforms, disposeStarLayer } from './starLayer.js';
+import { createNebulaField } from './nebula.js';
+import { createHeroSun } from './sun.js';
 import type { ScanData, SpaceDirector } from './types.js';
 import type { EventKind } from './events.js';
 import {
@@ -23,6 +26,7 @@ import {
   spawnAmbient,
   spawnField,
   spawnEvent,
+  spawnSignatureHeroes,
   tickEntry,
   disposeEntry,
   entryObject,
@@ -47,6 +51,12 @@ const AMBIENT_CEIL = 4;
 /** Canopy scan anchor (cockpit cam looks toward -Z). */
 const SCAN_ANCHOR = new THREE.Vector3(0, 1.5, -22.5);
 
+/** Hero sun world position — well inside the cockpit-canopy's -Z forward cone
+ *  (camera ≈ (0,1.55,-22.5) looking -Z), offset right/up of the signature
+ *  canopy giant so the flare doesn't overlap its disc; far enough (dist
+ *  ≈1700, well under the 2000 far-plane) to read as a distant star. */
+const SUN_POSITION = new THREE.Vector3(280, 150, -1700);
+
 const EVENT_KINDS: EventKind[] = ['COMET', 'NEBULA', 'DERELICT'];
 const EVENT_WEIGHTS = [40, 30, 30];
 
@@ -69,91 +79,23 @@ export function createSpaceDirector(
 
   // ── FAR streaming layer (added directly to scene; never frustum-culls oddly) ──
   const far = buildStarLayer({
-    count: 2600,
+    count: 4500,
     xHalf: 1500,
     yHalf: 900,
     zMin: FAR_ZMIN,
     span: FAR_SPAN,
-    sizeMin: 0.6,
-    sizeMax: 1.4,
+    sizeMin: 0.4,
+    sizeMax: 2.0,
     spherical: true,
     rand: rng,
   });
   far.name = 'starfield-far';
   scene.add(far);
 
-  // ── Persistent nebula depth sprites ──────────────────────────────────────────
-  // Two huge ultra-soft additive billboards at r1300-1600, giving deep-field color.
-  // They slowly parallax-drift with the far layer (25% cruise speed, same as FAR).
-  // Palette: teal family (deep teal/cyan) at bearing ~+X and rust-red at bearing ~-X.
-  // opacity 0.06-0.12 so they tint space without overpowering the starfield.
-  const nebulaSprites: THREE.Sprite[] = [];
-  const nebulaMats: THREE.SpriteMaterial[] = [];
-  const nebulaDrift = { scroll: 0 }; // accumulated far scroll, mutated in tick()
-
-  function makeNebulaCanvas(colors: [string, string]): HTMLCanvasElement {
-    const S = 512;
-    const cv = document.createElement('canvas'); cv.width = S; cv.height = S;
-    const ctx = cv.getContext('2d')!;
-    // Two overlapping soft radial blobs
-    for (const [cx, cy, r, c, a] of [
-      [S * 0.45, S * 0.5, S * 0.46, colors[0], 0.85],
-      [S * 0.58, S * 0.45, S * 0.38, colors[1], 0.70],
-    ] as [number, number, number, string, number][]) {
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, c);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.globalAlpha = a;
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-    return cv;
-  }
-
-  // Nebula A — deep teal/cyan, port bearing (−X), very far
-  {
-    const cv = makeNebulaCanvas(['rgba(0,90,110,1)', 'rgba(30,180,200,1)']);
-    const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.SpriteMaterial({
-      map: tex,
-      transparent: true,
-      opacity: 0.09,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      toneMapped: false,
-    });
-    const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(1800, 1400, 1);
-    sprite.position.set(-900, 200, -1350);
-    sprite.name = 'nebula-persistent-a';
-    scene.add(sprite);
-    nebulaSprites.push(sprite);
-    nebulaMats.push(mat);
-  }
-
-  // Nebula B — rust-red, starboard bearing (+X), slightly closer
-  {
-    const cv = makeNebulaCanvas(['rgba(100,30,10,1)', 'rgba(180,70,20,1)']);
-    const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.SpriteMaterial({
-      map: tex,
-      transparent: true,
-      opacity: 0.07,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      toneMapped: false,
-    });
-    const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(1600, 1200, 1);
-    sprite.position.set(1100, -100, -1550);
-    sprite.name = 'nebula-persistent-b';
-    scene.add(sprite);
-    nebulaSprites.push(sprite);
-    nebulaMats.push(mat);
-  }
+  // ── Persistent deep-field colour depth ───────────────────────────────────────
+  const nebula = createNebulaField(scene);
+  const sun = createHeroSun(rng, SUN_POSITION);
+  scene.add(sun.sprite);
 
   // ── Rolling cast ─────────────────────────────────────────────────────────────
   const cast: CastEntry[] = [];
@@ -203,51 +145,8 @@ export function createSpaceDirector(
     return cast.some((e) => e.kind === 'event');
   }
 
-  /**
-   * Deterministic, camera-aware opening cast (t=0). Spawns:
-   *   1. a vivid hero (teal gas giant, bright family-b) framed left-of-centre in
-   *      the canopy, clear of the central COCKPIT roundel decal zone;
-   *   2. a secondary moon parked in the starboard porthole's +X sightline so the
-   *      porthole-space verify shot always has a body in view at t=0..30s.
-   * Both are pinned so the verify screenshots are stable run-to-run.
-   */
   function spawnSignatureCast(): void {
-    // (1) Canopy hero — bright teal giant. Canopy cam is at world (0,1.55,-22.5)
-    // looking -Z; X≈-165 swings it ~13° left so its disc clears the central
-    // COCKPIT roundel decal, Y≈+30 lifts it a touch, Z≈-710 keeps it a readable
-    // distance. Slow drift so it lingers in the opening shot.
-    // lightU=0.25 pins the terminator: sub-solar at left quarter → clear vertical
-    // terminator near disc center (lit left limb, shadow on right), fully visible
-    // from the cockpit cam looking -Z. Seeded bodies keep random directions.
-    addEntry(
-      spawnHero(rng, {
-        kind: 'GAS_GIANT',
-        radius: 120,
-        familyIndex: 1,
-        at: new THREE.Vector3(-165, 30, -710),
-        driftSpeed: 6,
-        vx: 0,
-        vy: 0,
-        lightU: 0.25,
-      }),
-    );
-
-    // (2) Porthole secondary — ringed gas giant at large +X bearing, framed to be
-    // visible through the starboard porthole (porthole cam at (5.8,1.6,-16) looks
-    // toward +X). RINGED matches ref-08's signature porthole body. Drifts slowly
-    // +Z so it stays in frame for the first ~30s.
-    // lightU=0.25 same pinned sun direction for consistent look (lit left, shadow right).
-    addEntry(
-      spawnHero(rng, {
-        kind: 'RINGED',
-        radius: 80,
-        at: new THREE.Vector3(640, 30, -120),
-        driftSpeed: 4,
-        vx: 0,
-        vy: 0,
-        lightU: 0.25,
-      }),
-    );
+    for (const entry of spawnSignatureHeroes(rng)) addEntry(entry);
     signatureDone = true;
   }
 
@@ -301,14 +200,10 @@ export function createSpaceDirector(
     farScroll += CRUISE_SPEED_NEAR * FAR_SCROLL_FACTOR * dt;
     setStarUniforms(far, elapsed, farScroll);
 
-    // Persistent nebulae drift at the same FAR parallax rate so they feel locked
-    // to the deep background. Wrap at ±2000 to stay perpetually in view.
-    const nebDrift = CRUISE_SPEED_NEAR * FAR_SCROLL_FACTOR * dt;
-    nebulaDrift.scroll += nebDrift;
-    for (const s of nebulaSprites) {
-      s.position.z += nebDrift;
-      if (s.position.z > 500) s.position.z -= 3500;
-    }
+    // Persistent nebulae drift at the same FAR parallax rate so they feel
+    // locked to the deep background.
+    nebula.tick(CRUISE_SPEED_NEAR * FAR_SCROLL_FACTOR * dt);
+    sun.tick(elapsed);
 
     // Advance + despawn cast (iterate backwards for safe splice).
     for (let i = cast.length - 1; i >= 0; i--) {
@@ -350,8 +245,9 @@ export function createSpaceDirector(
     scene.remove(group);
     scene.remove(far);
     disposeStarLayer(far);
-    for (const s of nebulaSprites) scene.remove(s);
-    for (const m of nebulaMats) { m.map?.dispose(); m.dispose(); }
+    nebula.dispose();
+    scene.remove(sun.sprite);
+    sun.dispose();
   }
 
   return { tick, getScanData, dispose, group };

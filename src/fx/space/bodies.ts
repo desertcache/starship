@@ -13,9 +13,9 @@
 import * as THREE from 'three';
 import type { Rng } from './rng.js';
 import { generateBodyName } from './names.js';
-import { HUE_FAMILIES } from './palette.js';
+import { HUE_FAMILIES, ICE_ATMO_TINT } from './palette.js';
+import { gasGiantTexture } from './giantTexture.js';
 import {
-  gasGiantTexture,
   rockyTexture,
   iceTexture,
   lavaBaseTexture,
@@ -64,13 +64,49 @@ function disposeAll(d: Disposables): void {
   for (const t of d.texs) t.dispose();
 }
 
-/** Add a coloured BackSide additive atmosphere rim shell (gas giants only). */
-function addAtmosphere(group: THREE.Group, radius: number, accent: number, d: Disposables, rng: Rng): void {
-  const geo = new THREE.SphereGeometry(radius * 1.03, 24, 16);
-  const mat = new THREE.MeshBasicMaterial({
-    color: accent,
+// Additive fresnel-rim atmosphere shell (gas giants, ringed giants, hero ice
+// worlds). BackSide only rasterizes the far hemisphere of the shell, which
+// the opaque core mesh occludes everywhere except right at the silhouette —
+// so a rim-concentrated fresnel term (bright at the limb, ~0 at the hidden
+// backside centre) reads as a soft glowing atmosphere edge, cheaply.
+const ATMO_VERT = /* glsl */ `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vViewDir = normalize(-mvPos.xyz);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+
+const ATMO_FRAG = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uIntensity;
+  uniform float uPower;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    float ndotv = dot(normalize(vNormal), normalize(vViewDir));
+    float rim = clamp(1.0 + ndotv, 0.0, 1.0);
+    float fresnel = pow(rim, uPower);
+    gl_FragColor = vec4(uColor, fresnel * uIntensity);
+  }
+`;
+
+/** Add a coloured additive fresnel atmosphere rim shell. */
+function addAtmosphere(group: THREE.Group, radius: number, colorHex: number, d: Disposables, rng: Rng): void {
+  const shellR = radius * (1 + rng.range(0.05, 0.09));
+  const geo = new THREE.SphereGeometry(shellR, 28, 20);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(colorHex) },
+      uIntensity: { value: rng.range(0.6, 0.95) },
+      uPower: { value: rng.range(1.6, 2.4) },
+    },
+    vertexShader: ATMO_VERT,
+    fragmentShader: ATMO_FRAG,
     transparent: true,
-    opacity: rng.range(0.12, 0.16),
     side: THREE.BackSide,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
@@ -100,7 +136,7 @@ export function createBody(
   group.name = `body-${kind}`;
   const d: Disposables = { geos: [], mats: [], texs: [] };
   const hero = radius >= 50;
-  const texSize = hero ? 512 : 256;
+  const texSize = hero ? 1024 : 256;
 
   let cls = 'Unknown';
   let composition = 'unclassified';
@@ -153,6 +189,7 @@ export function createBody(
     mesh.name = 'body-core';
     group.add(mesh);
     track(d, mainGeo, mat, tex);
+    if (hero) addAtmosphere(group, radius, ICE_ATMO_TINT, d, rng);
     cls = 'Ice World';
     composition = 'water ice, ammonia';
   } else if (kind === 'LAVA') {

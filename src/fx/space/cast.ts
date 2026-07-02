@@ -113,6 +113,38 @@ export function spawnHero(rng: Rng, o: HeroOpts = {}): BodyEntry {
   };
 }
 
+/**
+ * Deterministic, camera-aware opening cast (t=0): (1) a vivid teal gas giant
+ * framed left-of-centre in the canopy, clear of the central COCKPIT roundel
+ * decal zone, and (2) a ringed giant parked in the starboard porthole's +X
+ * sightline. lightU=0.25 pins the terminator (sub-solar at the left quarter)
+ * so both are clearly lit from the same seeded direction. Both positions are
+ * fixed so the verify screenshots are stable run-to-run — see director.ts's
+ * spawnSignatureCast for how this feeds the scheduler.
+ */
+export function spawnSignatureHeroes(rng: Rng): [BodyEntry, BodyEntry] {
+  const canopyHero = spawnHero(rng, {
+    kind: 'GAS_GIANT',
+    radius: 120,
+    familyIndex: 1,
+    at: new THREE.Vector3(-165, 30, -710),
+    driftSpeed: 6,
+    vx: 0,
+    vy: 0,
+    lightU: 0.25,
+  });
+  const portholeHero = spawnHero(rng, {
+    kind: 'RINGED',
+    radius: 80,
+    at: new THREE.Vector3(640, 30, -120),
+    driftSpeed: 4,
+    vx: 0,
+    vy: 0,
+    lightU: 0.25,
+  });
+  return [canopyHero, portholeHero];
+}
+
 /** Spawn an ambient body (radius 8-40) biased to the window edges. */
 export function spawnAmbient(rng: Rng): BodyEntry {
   const k = AMBIENT_KINDS[rng.pick(AMBIENT_WEIGHTS)];
