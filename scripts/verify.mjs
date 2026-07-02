@@ -14,6 +14,7 @@
 
 import { execSync, spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
@@ -56,6 +57,14 @@ try {
   // Fallback to npm run build (works in WSL / Unix environments)
   execSync('npm run build', { cwd: ROOT, stdio: 'inherit' });
 }
+
+// Stamp THIS build. The port-probe below has an unavoidable race under parallel
+// worktree lanes: probe says "free", then a sibling lane's preview can win the
+// actual bind, and waitForServer would happily verify the SIBLING's stale build
+// (silently — screenshots would look like an unmodified baseline). The stamp is
+// served from dist/ and re-checked after the server comes up; mismatch = hard fail.
+const BUILD_STAMP = randomUUID();
+writeFileSync(resolve(ROOT, 'dist', 'verify-stamp.txt'), BUILD_STAMP);
 
 // ── 2. Serve vite preview ─────────────────────────────────────────────────────
 // Find a free port starting from 4173.
@@ -120,7 +129,18 @@ async function waitForServer(url, maxMs = 15000) {
 async function run() {
   try {
     await waitForServer(BASE_URL);
-    console.log('[verify] Preview server ready.');
+
+    // Confirm the server on our port is serving OUR build (see BUILD_STAMP note).
+    const stampResp = await fetch(`${BASE_URL}/verify-stamp.txt`);
+    const servedStamp = stampResp.ok ? (await stampResp.text()).trim() : '<missing>';
+    if (servedStamp !== BUILD_STAMP) {
+      throw new Error(
+        `Build-stamp mismatch: expected ${BUILD_STAMP}, server on port ${PREVIEW_PORT} ` +
+        `returned ${servedStamp}. Another process (parallel lane?) owns this port — ` +
+        `refusing to verify against a foreign/stale build.`,
+      );
+    }
+    console.log('[verify] Preview server ready (build stamp verified).');
 
     const browser = await chromium.launch({ headless: !headed });
     const context = await browser.newContext({
