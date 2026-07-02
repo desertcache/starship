@@ -53,8 +53,24 @@ export function gasGiantTexture(
   const flowGrid = makeNoiseGrid(rng, flowN);
   const warpCyclesX = rng.int(2, 3);
   const flowCyclesX = rng.int(10, 16);
-  const warpAmp = rng.range(0.05, 0.09);
+  // Amplitude is a fraction of the full latitude (v 0..1) range, not of a
+  // single band's height — with 7-10 bands each band is only ~0.1-0.14 tall,
+  // so this must stay a small fraction of THAT or the warp folds one band's
+  // boundary into its neighbour and the belts read as an all-over marble.
+  // Vertical frequency (vScale) is kept low so the warp value stays nearly
+  // constant across a single band's own height — it bends each boundary
+  // into a smooth flowing wave along U, instead of jittering the band index
+  // pixel-row to pixel-row and dissolving the belt structure entirely.
+  const warpAmp = rng.range(0.015, 0.03);
+  // Fixed (not seeded) — this must not add an rng draw here, or it shifts
+  // every subsequent seeded value for this body and beyond (names, other
+  // bodies' families/positions), breaking director determinism.
+  const warpVScale = 1.3;
   const bandMix = 0.72; // band colour dominance over the vertical base gradient
+  // Fraction of each band's height spent blending into the next band; the
+  // remainder stays a flat, readable belt colour (Jupiter-like solid bands
+  // with soft flowing edges, not a continuous top-to-bottom gradient).
+  const edgeFrac = 0.32;
 
   const img = ctx.createImageData(size, size);
   const data = img.data;
@@ -64,13 +80,14 @@ export function gasGiantTexture(
     for (let x = 0; x < size; x++) {
       const u = x / size;
 
-      const warp = fbmWrap(warpGrid, warpN, u, v, warpCyclesX, 5, 2);
+      const warp = fbmWrap(warpGrid, warpN, u, v, warpCyclesX, warpVScale, 2);
       const vw = Math.min(0.999, Math.max(0, v + warp * warpAmp));
 
       const bandPos = vw * bandCount;
       const bi = Math.floor(bandPos);
       const frac = bandPos - bi;
-      const t = frac * frac * (3 - 2 * frac);
+      const g = Math.min(1, Math.max(0, (frac - (1 - edgeFrac)) / edgeFrac));
+      const t = g * g * (3 - 2 * g);
       const c0 = bandCols[((bi % bandCols.length) + bandCols.length) % bandCols.length];
       const c1 = bandCols[(((bi + 1) % bandCols.length) + bandCols.length) % bandCols.length];
       const band = lerpRgb(c0, c1, t);
