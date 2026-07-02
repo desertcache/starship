@@ -13,9 +13,9 @@
 import * as THREE from 'three';
 import type { Rng } from './rng.js';
 import { generateBodyName } from './names.js';
-import { HUE_FAMILIES } from './palette.js';
+import { HUE_FAMILIES, ICE_ATMO_TINT } from './palette.js';
+import { gasGiantTexture } from './giantTexture.js';
 import {
-  gasGiantTexture,
   rockyTexture,
   iceTexture,
   lavaBaseTexture,
@@ -64,14 +64,65 @@ function disposeAll(d: Disposables): void {
   for (const t of d.texs) t.dispose();
 }
 
-/** Add a coloured BackSide additive atmosphere rim shell (gas giants only). */
-function addAtmosphere(group: THREE.Group, radius: number, accent: number, d: Disposables, rng: Rng): void {
-  const geo = new THREE.SphereGeometry(radius * 1.03, 24, 16);
-  const mat = new THREE.MeshBasicMaterial({
-    color: accent,
+// Additive fresnel-rim atmosphere shell (gas giants, ringed giants, hero ice
+// worlds). DoubleSide rasterizes both hemispheres of the (slightly larger)
+// shell: the front hemisphere sits just outside the opaque core across the
+// whole visible disc and is depth-tested in front of it, so its own rim term
+// (bright at the grazing silhouette, ~0 dead-centre) paints a soft glow that
+// blends inward over the core's limb-darkened edge; the back hemisphere is
+// occluded by the core everywhere except the thin annulus beyond its
+// silhouette, painting the matching outward feather into space. Both use the
+// same symmetric rim term (1 - |N·V|), so one mesh/material covers both.
+const ATMO_VERT = /* glsl */ `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vViewDir = normalize(-mvPos.xyz);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+
+const ATMO_FRAG = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uIntensity;
+  uniform float uPower;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    float ndotv = dot(normalize(vNormal), normalize(vViewDir));
+    // Symmetric rim: 1 at the grazing silhouette (ndotv≈0) on EITHER
+    // hemisphere, falling to 0 at both the direct-facing near pole (ndotv=1,
+    // dead centre of the visible disc) and the hidden far pole (ndotv=-1).
+    float rim = clamp(1.0 - abs(ndotv), 0.0, 1.0);
+    // Steep power => the glow is only appreciable in a thin band right at
+    // the tangent and has already decayed to ~0 a modest way inward (over
+    // the core's own limb-darkened edge) and outward (before the shell's own
+    // silhouette), so neither side hard-cuts.
+    float fresnel = pow(rim, uPower);
+    float alpha = fresnel * uIntensity;
+    // Desaturate toward white at peak brightness so the line reads as a
+    // glow, not a saturated painted stroke.
+    vec3 color = mix(uColor, vec3(1.0), fresnel * 0.6);
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
+
+/** Add a coloured additive fresnel atmosphere rim shell. */
+function addAtmosphere(group: THREE.Group, radius: number, colorHex: number, d: Disposables, rng: Rng): void {
+  const shellR = radius * (1 + rng.range(0.1, 0.14));
+  const geo = new THREE.SphereGeometry(shellR, 28, 20);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(colorHex) },
+      uIntensity: { value: rng.range(0.35, 0.5) },
+      uPower: { value: rng.range(3.0, 4.0) },
+    },
+    vertexShader: ATMO_VERT,
+    fragmentShader: ATMO_FRAG,
     transparent: true,
-    opacity: rng.range(0.12, 0.16),
-    side: THREE.BackSide,
+    side: THREE.DoubleSide,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     toneMapped: false,
@@ -100,7 +151,7 @@ export function createBody(
   group.name = `body-${kind}`;
   const d: Disposables = { geos: [], mats: [], texs: [] };
   const hero = radius >= 50;
-  const texSize = hero ? 512 : 256;
+  const texSize = hero ? 1024 : 256;
 
   let cls = 'Unknown';
   let composition = 'unclassified';
@@ -153,6 +204,7 @@ export function createBody(
     mesh.name = 'body-core';
     group.add(mesh);
     track(d, mainGeo, mat, tex);
+    if (hero) addAtmosphere(group, radius, ICE_ATMO_TINT, d, rng);
     cls = 'Ice World';
     composition = 'water ice, ammonia';
   } else if (kind === 'LAVA') {

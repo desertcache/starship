@@ -24,6 +24,9 @@ export const PALETTE_HEX = {
   rust: 0x7a2c1f,
 } as const;
 
+/** Pale ice-world atmosphere rim tint (distinct from the gas-giant families). */
+export const ICE_ATMO_TINT = 0xbfe6f2;
+
 /** A gas-giant hue family: ordered band colours + a rim/accent colour. */
 export interface HueFamily {
   /** Band fill colours, dark→light, cycled across the latitude bands. */

@@ -19,12 +19,14 @@ export interface StarColor {
   weight: number;
 }
 
-/** v0.3 colour palette + CDF (white-dominant with pale blue/orange/red). */
+/** v0.9 colour palette + CDF — white-dominant but with more visible colour
+ *  temperature spread (blue-white / neutral / warm-orange / red) than the
+ *  v0.3 baseline so a dense field reads as a real sky, not white noise. */
 export const STAR_PALETTE: StarColor[] = [
-  { r: 1.0, g: 1.0, b: 1.0, weight: 0.8 },
-  { r: 0.804, g: 0.847, b: 1.0, weight: 0.1 },
-  { r: 1.0, g: 0.851, b: 0.69, weight: 0.07 },
-  { r: 1.0, g: 0.702, b: 0.627, weight: 0.03 },
+  { r: 1.0, g: 1.0, b: 1.0, weight: 0.62 },
+  { r: 0.804, g: 0.847, b: 1.0, weight: 0.16 },
+  { r: 1.0, g: 0.851, b: 0.69, weight: 0.14 },
+  { r: 1.0, g: 0.702, b: 0.627, weight: 0.08 },
 ];
 
 const _cdf: number[] = [];
@@ -47,6 +49,7 @@ const VERT_SHADER = /* glsl */ `
   attribute float size;
   attribute float phase;
   attribute vec3 color;
+  attribute float brightness;
   varying vec3 vColor;
   varying float vAlpha;
   uniform float uTime;
@@ -56,7 +59,7 @@ const VERT_SHADER = /* glsl */ `
   void main() {
     vColor = color;
     float twinkle = 1.0 + sin(uTime + phase) * 0.15;
-    vAlpha = clamp(twinkle * 0.92, 0.0, 1.0);
+    vAlpha = clamp(twinkle * brightness, 0.0, 1.0);
 
     // Wrap z into [uZMin, uZMin + uSpan) so the field streams toward +Z.
     vec3 p = position;
@@ -106,6 +109,7 @@ export function buildStarLayer(opts: StarLayerOpts): THREE.Points {
   const sizes = new Float32Array(n);
   const phases = new Float32Array(n);
   const colors = new Float32Array(n * 3);
+  const brightness = new Float32Array(n);
 
   const zMid = opts.zMin + opts.span / 2;
   const shellR = opts.span / 2;
@@ -122,7 +126,12 @@ export function buildStarLayer(opts: StarLayerOpts): THREE.Points {
       positions[i * 3 + 1] = (rand() * 2 - 1) * opts.yHalf;
       positions[i * 3 + 2] = opts.zMin + rand() * opts.span;
     }
-    sizes[i] = opts.sizeMin + rand() * (opts.sizeMax - opts.sizeMin);
+    // Magnitude distribution: cube-skewed toward 0 so most stars are dim and
+    // small, with a few bright, large outliers — a real-sky look rather than
+    // uniform dot density.
+    const mag = Math.pow(rand(), 3);
+    sizes[i] = opts.sizeMin + mag * (opts.sizeMax - opts.sizeMin);
+    brightness[i] = 0.32 + mag * 0.8;
     phases[i] = rand() * Math.PI * 2;
     const c = pickColour(rand());
     colors[i * 3] = c.r;
@@ -135,6 +144,7 @@ export function buildStarLayer(opts: StarLayerOpts): THREE.Points {
   geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
   geo.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('brightness', new THREE.BufferAttribute(brightness, 1));
 
   const mat = new THREE.ShaderMaterial({
     uniforms: {

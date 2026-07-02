@@ -1,17 +1,15 @@
 /**
- * Procedural CanvasTexture generators for space bodies.
- *
- * Generalises planet.ts's banded-noise approach across body kinds. Each body
- * owns its own CanvasTexture (none shared) so disposal is per-body.
- *
- * All functions return a THREE.CanvasTexture; callers own .dispose().
+ * Procedural CanvasTexture generators for rocky/ice/lava/moon/ring bodies.
+ * Gas giants live in giantTexture.ts (split out — its turbulence pass pushed
+ * this file past the 300-line cap; it re-imports the canvas/terminator/limb
+ * helpers below). All functions return a CanvasTexture; caller owns dispose().
  */
 
 import * as THREE from 'three';
 import type { Rng } from './rng.js';
-import type { HueFamily } from './palette.js';
+import { applyGrain } from './noise.js';
 
-function makeCanvas(size: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+export function makeCanvas(size: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
@@ -20,29 +18,19 @@ function makeCanvas(size: number): { canvas: HTMLCanvasElement; ctx: CanvasRende
   return { canvas, ctx };
 }
 
-function finalize(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+export function finalize(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-// ── Day/night terminator ────────────────────────────────────────────────────────
-// Bake a seeded longitudinal lit→dark gradient into the canvas so the
-// MeshBasicMaterial bodies read like painted, self-lit planets (No Man's Sky)
-// rather than flat unlit spheres. Lit side keeps full brightness; the dark side
-// falls to DARK_FLOOR. U wraps around the equator, so a horizontal gradient is a
-// real day/night terminator. lightU = seeded sub-solar longitude (0..1).
-//
-// v0.6 P5 — strengthened: DARK_FLOOR 0.25→0.30, falloff power 0.85→2.2, gradient
-// coverage extended so ~45% of the disc is in deep shadow. The steeper power curve
-// keeps the lit hemisphere bright while creating a crisp, visible terminator line
-// rather than the previous near-uniform tint. Consistent sun direction is implicit
-// since lightU is seeded per-body and the gradient is always left→right (U axis).
-
+// Bake a seeded longitudinal lit→dark gradient so MeshBasicMaterial bodies
+// read like painted, self-lit planets rather than flat unlit spheres.
+// lightU = seeded sub-solar longitude (U wraps around the equator).
 const DARK_FLOOR = 0.30; // dark side floor (30% brightness — readable shadow)
 
-function applyTerminator(
+export function applyTerminator(
   canvas: HTMLCanvasElement,
   ctx: CanvasRenderingContext2D,
   lightU: number,
@@ -55,10 +43,6 @@ function applyTerminator(
     let d = x / size - lightU;
     if (d > 0.5) d -= 1;
     if (d < -0.5) d += 1;
-    // cos maps sub-solar (d=0) → lit=1, anti-solar (d=±0.5) → lit=0.
-    // Power 2.2 steepens the falloff: lit hemisphere stays near-white until
-    // ~35% longitude from the terminator, then drops fast into shadow.
-    // This pushes ~45% of the disc below the midpoint for clear shadow coverage.
     const lit = (Math.cos(d * Math.PI * 2) + 1) * 0.5;
     const shade = DARK_FLOOR + (1 - DARK_FLOOR) * Math.pow(lit, 2.2);
     const g = Math.round(shade * 255);
@@ -69,80 +53,58 @@ function applyTerminator(
 }
 
 /** Seeded sub-solar longitude (0..1) for one body. */
-function seedLightU(rng: Rng): number {
+export function seedLightU(rng: Rng): number {
   return rng();
 }
 
-// ── Gas giant — wavy sin-noise latitude bands ──────────────────────────────────
-
-/**
- * Banded gas-giant face in a seeded hue family; optional oval great-spot storm.
- * `pinnedLightU` overrides the seeded terminator direction — pass 0.25 to lock
- * the sub-solar point at the left quarter of the disc (terminator near center,
- * lit side toward the left limb) for signature-cast bodies.
- */
-export function gasGiantTexture(
-  rng: Rng,
-  family: HueFamily,
-  size: number,
-  pinnedLightU?: number,
-): THREE.CanvasTexture {
-  const { canvas, ctx } = makeCanvas(size);
-  const lightU = pinnedLightU !== undefined ? pinnedLightU : seedLightU(rng);
-
-  const bg = ctx.createLinearGradient(0, 0, 0, size);
-  bg.addColorStop(0, family.base[0]);
-  bg.addColorStop(0.5, family.base[1]);
-  bg.addColorStop(1, family.base[2]);
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, size, size);
-
-  const bandCount = rng.int(8, 10);
-  for (let i = 0; i < bandCount; i++) {
-    const yC = ((i + 0.5) / bandCount) * size;
-    const h = (size / bandCount) * rng.range(0.55, 0.95);
-    const color = family.bands[i % family.bands.length];
-    const phase = rng.range(0, Math.PI * 2);
-    const f1 = rng.range(0.025, 0.05);
-    const f2 = rng.range(0.008, 0.016);
-    const amp = h * 0.28;
-
-    ctx.globalAlpha = rng.range(0.38, 0.6);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(0, yC - h / 2);
-    for (let x = 0; x <= size; x += 4) {
-      const n = (Math.sin(x * f1 + phase) + Math.sin(x * f2 + phase * 1.7)) * amp * 0.5;
-      ctx.lineTo(x, yC - h / 2 + n);
-    }
-    for (let x = size; x >= 0; x -= 4) {
-      const n = (Math.sin(x * f1 + phase) + Math.sin(x * f2 + phase * 1.7)) * amp * 0.5;
-      ctx.lineTo(x, yC + h / 2 + n);
-    }
-    ctx.closePath();
-    ctx.fill();
+// Equirect UV has no real view-dependent limb, so fake it with a latitude
+// vignette: brightest at the equator (v=0.5, the usual mid-disc framing),
+// darker toward the poles (v=0/1, near the silhouette edge in most views).
+// Multiplies on top of the terminator.
+export function applyLimbDarkening(
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  floor = 0.45,
+): void {
+  const size = canvas.height;
+  const prevOp = ctx.globalCompositeOperation;
+  ctx.globalCompositeOperation = 'multiply';
+  for (let y = 0; y < size; y++) {
+    const v = y / size;
+    const d = Math.abs(v - 0.5) * 2;
+    const shade = 1 - (1 - floor) * Math.pow(d, 1.8);
+    const g = Math.round(shade * 255);
+    ctx.fillStyle = `rgb(${g},${g},${g})`;
+    ctx.fillRect(0, y, size, 1);
   }
+  ctx.globalCompositeOperation = prevOp;
+}
 
-  // 40% chance: oval great-spot storm in the accent colour.
-  if (rng() < 0.4) {
-    const sx = rng.range(0.35, 0.75) * size;
-    const sy = rng.range(0.35, 0.65) * size;
-    const sr = rng.range(0.05, 0.09) * size;
-    const hexAccent = `#${family.accent.toString(16).padStart(6, '0')}`;
-    const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-    grad.addColorStop(0, hexAccent);
-    grad.addColorStop(0.55, hexAccent);
+/** Shared radial-gradient crater painter used by rockyTexture + moonTexture. */
+interface CraterStop { stop: number; rgb: string; alphaMul: number; }
+
+function paintCraters(
+  ctx: CanvasRenderingContext2D,
+  rng: Rng,
+  size: number,
+  count: number,
+  rRange: [number, number],
+  aRange: [number, number],
+  stops: CraterStop[],
+): void {
+  for (let i = 0; i < count; i++) {
+    const cx = rng() * size;
+    const cy = rng() * size;
+    const cr = rng.range(rRange[0], rRange[1]) * size;
+    const a = rng.range(aRange[0], aRange[1]);
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
+    for (const s of stops) grad.addColorStop(s.stop, `rgba(${s.rgb},${a * s.alphaMul})`);
     grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.globalAlpha = 0.55;
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.ellipse(sx, sy, sr, sr * 0.62, 0, 0, Math.PI * 2);
+    ctx.arc(cx, cy, cr, 0, Math.PI * 2);
     ctx.fill();
   }
-
-  ctx.globalAlpha = 1;
-  applyTerminator(canvas, ctx, lightU);
-  return finalize(canvas);
 }
 
 // ── Rocky / cratered ───────────────────────────────────────────────────────────
@@ -150,6 +112,7 @@ export function gasGiantTexture(
 export function rockyTexture(rng: Rng, size: number): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(size);
   const lightU = seedLightU(rng);
+  const hero = size >= 512;
 
   const baseShades = ['#6a5a4a', '#776657', '#8a7a66', '#5e5042'];
   const bg = ctx.createLinearGradient(0, 0, size, size);
@@ -159,7 +122,7 @@ export function rockyTexture(rng: Rng, size: number): THREE.CanvasTexture {
   ctx.fillRect(0, 0, size, size);
 
   // Darker mare patches.
-  const mareCount = rng.int(3, 6);
+  const mareCount = hero ? rng.int(5, 8) : rng.int(3, 6);
   for (let i = 0; i < mareCount; i++) {
     const mx = rng() * size;
     const my = rng() * size;
@@ -173,24 +136,15 @@ export function rockyTexture(rng: Rng, size: number): THREE.CanvasTexture {
     ctx.fill();
   }
 
-  // 18-30 radial-gradient craters.
-  const craterCount = rng.int(18, 30);
-  for (let i = 0; i < craterCount; i++) {
-    const cx = rng() * size;
-    const cy = rng() * size;
-    const cr = rng.range(0.015, 0.06) * size;
-    const a = rng.range(0.2, 0.45);
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
-    grad.addColorStop(0, `rgba(30,24,20,${a})`);
-    grad.addColorStop(0.6, `rgba(60,52,44,${a * 0.5})`);
-    grad.addColorStop(0.85, `rgba(160,150,138,${a * 0.5})`);
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, cr, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  const craterCount = hero ? rng.int(32, 48) : rng.int(18, 30);
+  paintCraters(ctx, rng, size, craterCount, [0.015, 0.06], [0.2, 0.45], [
+    { stop: 0, rgb: '30,24,20', alphaMul: 1 },
+    { stop: 0.6, rgb: '60,52,44', alphaMul: 0.5 },
+    { stop: 0.85, rgb: '160,150,138', alphaMul: 0.5 },
+  ]);
 
+  applyGrain(canvas, ctx, rng, hero ? 0.09 : 0.06);
+  applyLimbDarkening(canvas, ctx);
   applyTerminator(canvas, ctx, lightU);
   return finalize(canvas);
 }
@@ -200,6 +154,7 @@ export function rockyTexture(rng: Rng, size: number): THREE.CanvasTexture {
 export function iceTexture(rng: Rng, size: number): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(size);
   const lightU = seedLightU(rng);
+  const hero = size >= 512;
 
   const bg = ctx.createLinearGradient(0, 0, 0, size);
   bg.addColorStop(0, '#cfe6f2');
@@ -209,7 +164,7 @@ export function iceTexture(rng: Rng, size: number): THREE.CanvasTexture {
   ctx.fillRect(0, 0, size, size);
 
   // Thin teal-tinted fracture polylines.
-  const fractures = rng.int(10, 18);
+  const fractures = hero ? rng.int(16, 26) : rng.int(10, 18);
   ctx.lineCap = 'round';
   for (let i = 0; i < fractures; i++) {
     let x = rng() * size;
@@ -227,6 +182,8 @@ export function iceTexture(rng: Rng, size: number): THREE.CanvasTexture {
     ctx.stroke();
   }
 
+  applyGrain(canvas, ctx, rng, hero ? 0.07 : 0.05);
+  applyLimbDarkening(canvas, ctx, 0.5);
   applyTerminator(canvas, ctx, lightU);
   return finalize(canvas);
 }
@@ -236,10 +193,11 @@ export function iceTexture(rng: Rng, size: number): THREE.CanvasTexture {
 export function lavaBaseTexture(rng: Rng, size: number): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(size);
   const lightU = seedLightU(rng);
+  const hero = size >= 512;
   ctx.fillStyle = '#1C1E22';
   ctx.fillRect(0, 0, size, size);
   // Subtle near-black mottling.
-  const blobs = rng.int(6, 12);
+  const blobs = hero ? rng.int(10, 16) : rng.int(6, 12);
   for (let i = 0; i < blobs; i++) {
     const bx = rng() * size;
     const by = rng() * size;
@@ -252,6 +210,8 @@ export function lavaBaseTexture(rng: Rng, size: number): THREE.CanvasTexture {
     ctx.arc(bx, by, br, 0, Math.PI * 2);
     ctx.fill();
   }
+  applyGrain(canvas, ctx, rng, hero ? 0.12 : 0.08);
+  applyLimbDarkening(canvas, ctx, 0.4);
   applyTerminator(canvas, ctx, lightU);
   return finalize(canvas);
 }
@@ -261,8 +221,9 @@ export function lavaCrackTexture(rng: Rng, size: number): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(size);
   ctx.clearRect(0, 0, size, size);
   ctx.lineCap = 'round';
+  const hero = size >= 512;
 
-  const seams = rng.int(8, 14);
+  const seams = hero ? rng.int(12, 20) : rng.int(8, 14);
   for (let i = 0; i < seams; i++) {
     let x = rng() * size;
     let y = rng() * size;
@@ -288,7 +249,7 @@ export function lavaCrackTexture(rng: Rng, size: number): THREE.CanvasTexture {
 
 // ── Ring annulus (alpha texture for the ring plane) ────────────────────────────
 
-/** Concentric translucent tan/cream bands+gaps for a ring system. */
+/** Concentric translucent tan/cream bands+gaps + fine grain (Saturn-like). */
 export function ringTexture(rng: Rng, size: number): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(size);
   ctx.clearRect(0, 0, size, size);
@@ -296,7 +257,7 @@ export function ringTexture(rng: Rng, size: number): THREE.CanvasTexture {
   const cy = size / 2;
   const maxR = size / 2;
 
-  const bands = rng.int(14, 22);
+  const bands = rng.int(16, 26);
   for (let i = 0; i < bands; i++) {
     const r0 = (i / bands) * maxR;
     const r1 = ((i + 1) / bands) * maxR;
@@ -311,6 +272,7 @@ export function ringTexture(rng: Rng, size: number): THREE.CanvasTexture {
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+  applyGrain(canvas, ctx, rng, 0.22, 0.4);
   return finalize(canvas);
 }
 
@@ -319,25 +281,19 @@ export function ringTexture(rng: Rng, size: number): THREE.CanvasTexture {
 export function moonTexture(rng: Rng, size: number): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(size);
   const lightU = seedLightU(rng);
+  const hero = size >= 512;
   // Lift grey base so the lit hemisphere reads bright after the terminator.
   ctx.fillStyle = '#9a9ca2';
   ctx.fillRect(0, 0, size, size);
 
-  const craters = rng.int(6, 12);
-  for (let i = 0; i < craters; i++) {
-    const cx = rng() * size;
-    const cy = rng() * size;
-    const cr = rng.range(0.05, 0.14) * size;
-    const a = rng.range(0.25, 0.42);
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
-    grad.addColorStop(0, `rgba(40,42,46,${a})`);
-    grad.addColorStop(0.6, `rgba(60,62,66,${a * 0.5})`);
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, cr, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  const craters = hero ? rng.int(10, 18) : rng.int(6, 12);
+  paintCraters(ctx, rng, size, craters, [0.05, 0.14], [0.25, 0.42], [
+    { stop: 0, rgb: '40,42,46', alphaMul: 1 },
+    { stop: 0.6, rgb: '60,62,66', alphaMul: 0.5 },
+  ]);
+
+  applyGrain(canvas, ctx, rng, hero ? 0.06 : 0.04);
+  applyLimbDarkening(canvas, ctx);
   applyTerminator(canvas, ctx, lightU);
   return finalize(canvas);
 }
