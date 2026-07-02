@@ -1,6 +1,6 @@
 # Starship Explorer
 
-A first-person walkable starship built entirely in Three.js — no external assets, no frameworks. Every surface is procedurally generated at runtime: panel textures, grime overlays, emissive teal strips, animated console screens. The aesthetic is a worn industrial freighter lifted from *Alien* (1979) and rendered with ACES filmic tone-mapping, PBR materials, SSAO contact shadows, and cinematic pooled lighting.
+A first-person walkable starship built entirely in Three.js — no external assets, no frameworks. Every surface is procedurally generated at runtime: panel textures, grime overlays, emissive teal strips, animated console screens. The aesthetic is a worn industrial freighter lifted from *Alien* (1979) and rendered with ACES filmic tone-mapping, PBR materials with sRGB-honest 2K procedural textures, GTAO contact shadows, SMAA, filmic grain, and cinematic pooled lighting — warm fixture pools with real falloff, fixture halation, volumetric light shafts with drifting dust motes, and a reactor that breathes (v0.9 "RADIANCE").
 
 Outside the windows the ship is on a **Living Cruise**: a seeded encounter director streams a two-layer parallax starfield past the hull and schedules a rolling cast of procedurally-painted planets, moons, asteroid fields, and rare events (comets, nebulae, derelicts) — all named, all scannable from the cockpit console. Two persistent deep-field **nebula sprites** (teal and rust-red, additive, opacity 0.07-0.09) give space permanent color depth. Portholes are framed by thick **round bezels** — PBR gunmetal torus rings with bolt heads and cylindrical reveal tubes, matching the reference ship's porthole design.
 
@@ -8,17 +8,17 @@ Outside the windows the ship is on a **Living Cruise**: a seeded encounter direc
 
 ## Screenshots
 
-![Cockpit canopy — planet and starfield through the forward window](verify/shots/cockpit-canopy.png)
+![Cockpit canopy — planet and starfield through the forward window](docs/shots/cockpit-canopy.png)
 
-![Corridor — burnt-orange door frames, teal floor strips, ceiling light panels](verify/shots/corridor.png)
+![Corridor — burnt-orange door frames, teal floor strips, ceiling light panels](docs/shots/corridor.png)
 
-![Engineering — reactor column with pulsing teal emissive and hazard striping](verify/shots/engineering.png)
+![Engineering — reactor column with pulsing teal emissive and hazard striping](docs/shots/engineering.png)
 
-![Galley — counter, cabinets, fridge with teal door strip, stove with red coils](verify/shots/galley.png)
+![Galley — counter, cabinets, fridge with teal door strip, stove with red coils](docs/shots/galley.png)
 
-![Quarters A — bunk, lockers, orange door frames](verify/shots/quarters-a.png)
+![Quarters A — bunk, lockers, orange door frames](docs/shots/quarters-a.png)
 
-![Cargo bay — 5m ceiling, catwalk, mag-clamp anchors, crate stacks](verify/shots/cargo-bay.png)
+![Cargo bay — 5m ceiling, catwalk, mag-clamp anchors, crate stacks](docs/shots/cargo-bay.png)
 
 ---
 
