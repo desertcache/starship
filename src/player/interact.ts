@@ -38,6 +38,33 @@ const state: InteractState = {
   current: null,
 };
 
+// ── Active-world overrides (WorldManager owns these) ─────────────────────────
+//
+// Defaults are null → ship behavior is byte-for-byte unchanged (raycast the
+// ship scene, proximity over the globally-registered ship+v0.2 interactables).
+// On a pocket-world switch the manager swaps in that world's scene + its own
+// interactable list; on return to ship it resets both to null.
+let worldScene: THREE.Scene | null = null;
+let worldInteractables: Interactable[] | null = null;
+
+export function setActiveWorldScene(scene: THREE.Scene | null): void {
+  worldScene = scene;
+  state.current = null; // drop any stale raycast target across the swap
+}
+
+export function setActiveWorldInteractables(list: Interactable[] | null): void {
+  worldInteractables = list;
+  state.current = null;
+}
+
+function effectiveScene(): THREE.Scene | null {
+  return worldScene ?? state.scene;
+}
+
+function effectiveList(): Interactable[] {
+  return worldInteractables ?? state.allInteractables;
+}
+
 export function initInteract(
   camera: THREE.PerspectiveCamera,
   scene: THREE.Scene,
@@ -81,9 +108,12 @@ export function tickInteract(): void {
   // Thread player position to doors.ts for auto-close distance check
   setPlayerPosForDoors(state.camera.position);
 
-  // Cast from camera centre
+  const scene = effectiveScene();
+  if (!scene) return;
+
+  // Cast from camera centre into the ACTIVE world's scene
   state.raycaster.setFromCamera(new THREE.Vector2(0, 0), state.camera);
-  const hits = state.raycaster.intersectObjects(state.scene.children, true);
+  const hits = state.raycaster.intersectObjects(scene.children, true);
 
   let found: Interactable | null = null;
 
@@ -114,11 +144,12 @@ export function tickInteract(): void {
  */
 function findInteractableForObject(obj: THREE.Object3D): Interactable | null {
   // Walk up to find a named group matching a registered id
+  const list = effectiveList();
   let node: THREE.Object3D | null = obj;
   while (node) {
     const id = node.name;
     if (id) {
-      const match = state.allInteractables.find((ia) => ia.id === id);
+      const match = list.find((ia) => ia.id === id);
       if (match) return match;
     }
     node = node.parent;
@@ -142,11 +173,11 @@ export function headlessInteract(): boolean {
     return true;
   }
 
-  // Fall back: nearest within radius
+  // Fall back: nearest within radius (over the active world's interactables)
   let best: Interactable | null = null;
   let bestDist = Infinity;
 
-  for (const ia of state.allInteractables) {
+  for (const ia of effectiveList()) {
     const dist = camPos.distanceTo(ia.position);
     if (dist <= ia.radius && dist < bestDist) {
       best = ia;

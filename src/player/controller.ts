@@ -46,6 +46,21 @@ let controls: PointerLockControls | null = null;
 let colliders: AABB[] = [];
 let lastTime = performance.now();
 
+// ── Active-world ground + collider swap (WorldManager owns these) ────────────
+// Ship is PIXEL-IDENTICAL: default ground is constant 0 and EYE_HEIGHT===FLOOR_Y,
+// so `groundHeight(x,z)+EYE_HEIGHT` collapses to the old flat FLOOR_Y clamp.
+let activeGround: (x: number, z: number) => number = () => 0;
+
+/** Swap the ground-height function (WorldManager, on world switch). */
+export function setGroundHeight(fn: (x: number, z: number) => number): void {
+  activeGround = fn;
+}
+
+/** Swap the active collider set (WorldManager, on world switch). */
+export function setActiveColliders(list: AABB[]): void {
+  colliders = list;
+}
+
 // ── Head-bob state ────────────────────────────────────────────────────────────
 
 /** Current vertical bob offset applied on top of FLOOR_Y. */
@@ -90,8 +105,8 @@ export function tickBob(
     bobOffset *= Math.max(0, 1 - 6 * 0.016); // approximate 16ms frame
     if (Math.abs(bobOffset) < 0.0001) bobOffset = 0;
   }
-  // Apply the offset on top of the already-clamped FLOOR_Y
-  camera.position.y = FLOOR_Y + bobOffset;
+  // Apply the offset on top of the ground eye height (ship: 0 + EYE_HEIGHT = FLOOR_Y)
+  camera.position.y = activeGround(camera.position.x, camera.position.z) + EYE_HEIGHT + bobOffset;
 
   // ── FOV kick: +2 when walking, back to rest when stopped ─────────────────
   const st = getState();
@@ -336,6 +351,7 @@ export function tickController(now: number): void {
     tryMove(camera.position, move.x, move.z);
   }
 
-  // Clamp Y to floor (bob is applied separately after this in main.ts)
-  camera.position.y = FLOOR_Y;
+  // Clamp Y to ground eye height (bob is applied separately after this in main.ts).
+  // Ship ground is constant 0, so this equals the old flat FLOOR_Y clamp.
+  camera.position.y = activeGround(camera.position.x, camera.position.z) + EYE_HEIGHT;
 }

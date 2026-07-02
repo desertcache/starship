@@ -2,13 +2,8 @@ import * as THREE from 'three';
 import { PMREMGenerator } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { initPerf, recordFrame, installPerfGlobal } from './core/perf.js';
-import {
-  getRegisteredCamNames,
-  installCameraGlobal,
-  setActiveCamera,
-  teleportToCamera,
-} from './core/cameras.js';
-import { tickState, getState, loadState, setHunger, getQuestStep } from './core/state.js';
+import { installCameraGlobal, setActiveCamera } from './core/cameras.js';
+import { tickState, getState, loadState, setHunger, getQuestStep, getCodex } from './core/state.js';
 import { initDebug, tickDebug } from './ui/debug.js';
 import { initHud, tickHud, showRoomToast } from './ui/hud.js';
 import { assembleShip } from './world/assembly.js';
@@ -26,6 +21,9 @@ import { setScanProvider } from './world/interactConsole.js';
 import { QUALITY_LOW, SHADOWS_OFF } from './core/perf.js';
 import type { ScanData } from './fx/space/types.js';
 import { applyMaxAnisotropy } from './fx/textureHelpers.js';
+import { getActiveWorld, getActiveWorldId, switchWorld } from './core/worlds.js';
+import { bootWorlds } from './core/worldBoot.js';
+import { tickPortals } from './fx/portalSurface.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -144,14 +142,18 @@ registerInteractables(ship.interactables);
 const v02Interactables = buildAllInteractables();
 registerInteractables(v02Interactables);
 
-// ── Start at corridor camera ──────────────────────────────────────────────────
-const camNames = getRegisteredCamNames();
-(window as unknown as Record<string, unknown>)['__camNames'] = camNames;
-
-const startCam = camNames.includes('corridor') ? 'corridor' : camNames[0];
-if (startCam) {
-  teleportToCamera(startCam);
-}
+// ── World system (v1.0 THRESHOLD) ─────────────────────────────────────────────
+// Registers the ship (as a World adapter) + the dev-void proof world, wires the
+// WorldManager + portal deps, publishes __camNames, and applies ?world / start
+// camera. See core/worldBoot.ts.
+bootWorlds({
+  scene,
+  camera,
+  renderer,
+  bloom,
+  shipColliders: ship.colliders,
+  shipInteractables: [...ship.interactables, ...v02Interactables],
+});
 
 // ── Resize ────────────────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
@@ -182,6 +184,10 @@ interface TestAPI {
   forceDoorAutoCloseCheck(): string[];
   questRevealAndReadPanel(): number;
   questAdvanceViaBreaker(): number;
+  getActiveWorld(): string;
+  switchWorld(id: string): Promise<void>;
+  getCodex(): { scans: string[]; relics: string[] };
+  getPlayerPos(): { x: number; y: number; z: number };
 }
 
 const EYE_HEIGHT_MAIN = 1.7;
@@ -229,6 +235,19 @@ const testAPI: TestAPI = {
   questAdvanceViaBreaker(): number {
     return questAdvanceViaBreaker();
   },
+  getActiveWorld(): string {
+    return getActiveWorldId();
+  },
+  switchWorld(id: string): Promise<void> {
+    // Tests switch SYNCHRONOUSLY (no fade); resolves immediately.
+    return switchWorld(id, { instant: true });
+  },
+  getCodex(): { scans: string[]; relics: string[] } {
+    return getCodex();
+  },
+  getPlayerPos(): { x: number; y: number; z: number } {
+    return { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+  },
 };
 
 (window as unknown as Record<string, unknown>)['__test'] = testAPI;
@@ -272,17 +291,32 @@ function animate(now: number): void {
   tickState(dtSeconds);
   tickInteract();
   tickSway(camera, elapsed);
-  ship.planet.tick(elapsed);
-  tickStarfield(ship.starfield, elapsed);
+
+  // ── World gating: ship director/starfield/room-audio freeze off-ship ──
+  const activeId = getActiveWorldId();
+  const activeWorld = getActiveWorld();
+  if (activeId === 'ship') {
+    ship.planet.tick(elapsed);
+    tickStarfield(ship.starfield, elapsed);
+  } else {
+    activeWorld.update(dtSeconds, camera.position);
+  }
+
+  // Portal live-preview tier — before bloom.render() (it borrows + restores the
+  // render target). No-op when the active scene has no portal near the player.
+  tickPortals(dtSeconds, camera.position, camera, activeWorld.scene);
+
   tickDebug(now);
   audio.tick(isMoving());
 
-  // Room ambient crossfade + toast on room change
-  const currentRoom = getRoomForPosition(camera.position.x, camera.position.z);
-  if (currentRoom !== lastRoom) {
-    audio.setRoom(currentRoom);
-    showRoomToast(ROOM_LABELS[currentRoom]);
-    lastRoom = currentRoom;
+  // Room ambient crossfade + toast on room change (ship only)
+  if (activeId === 'ship') {
+    const currentRoom = getRoomForPosition(camera.position.x, camera.position.z);
+    if (currentRoom !== lastRoom) {
+      audio.setRoom(currentRoom);
+      showRoomToast(ROOM_LABELS[currentRoom]);
+      lastRoom = currentRoom;
+    }
   }
 
   const s = getState();

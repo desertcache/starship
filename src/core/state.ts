@@ -18,6 +18,7 @@
  */
 
 import * as THREE from 'three';
+import type { WorldId } from './worldTypes.js';
 
 export interface AnchorReturn {
   position: THREE.Vector3;
@@ -49,6 +50,10 @@ export interface ShipState {
   questStep: 0 | 1 | 2 | 3;
   /** Per-step achievement flags. */
   questFlags: QuestFlags;
+  /** v1.0 THRESHOLD — codex scan ids collected (creatures + flora/features). */
+  codexScans: string[];
+  /** v1.0 THRESHOLD — worlds whose hidden relic has been collected. */
+  relics: WorldId[];
 }
 
 /** Real seconds → ship minutes conversion rate. */
@@ -63,6 +68,8 @@ interface SaveData {
   hunger: number;
   questStep?: 0 | 1 | 2 | 3;
   questFlags?: Partial<QuestFlags>;
+  codexScans?: string[];
+  relics?: WorldId[];
 }
 
 const state: ShipState = {
@@ -75,6 +82,8 @@ const state: ShipState = {
   heading: 0,
   questStep: 0,
   questFlags: { panelRead: false, breakerSet: false, logged: false },
+  codexScans: [],
+  relics: [],
 };
 
 const ENERGY_DECAY = 0.10; // per real second
@@ -135,6 +144,35 @@ export function setQuestFlag(flag: keyof QuestFlags): void {
   state.questFlags[flag] = true;
 }
 
+// ── v1.0 THRESHOLD — codex + relics ─────────────────────────────────────────
+
+/**
+ * Record a codex scan. Returns false if the id was already known (caller shows
+ * a "KNOWN" toast); persists on a fresh scan.
+ */
+export function recordScan(id: string): boolean {
+  if (state.codexScans.includes(id)) return false;
+  state.codexScans.push(id);
+  saveState();
+  return true;
+}
+
+/**
+ * Collect a world's hidden relic. Returns false if already held; persists on a
+ * fresh collect.
+ */
+export function collectRelic(worldId: WorldId): boolean {
+  if (state.relics.includes(worldId)) return false;
+  state.relics.push(worldId);
+  saveState();
+  return true;
+}
+
+/** Snapshot of codex/relic progress (copies, safe to hand to test hooks). */
+export function getCodex(): { scans: string[]; relics: string[] } {
+  return { scans: [...state.codexScans], relics: [...state.relics] };
+}
+
 /** Format ship-minutes as "DD:HH:MM" clock string. */
 export function formatShipClock(minutes: number): string {
   const totalMin = Math.floor(minutes) % (24 * 60 * 100); // wrap after 100 days
@@ -157,6 +195,8 @@ export function saveState(): void {
       hunger: state.hunger,
       questStep: state.questStep,
       questFlags: { ...state.questFlags },
+      codexScans: [...state.codexScans],
+      relics: [...state.relics],
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -183,6 +223,13 @@ export function loadState(): boolean {
       if (typeof data.questFlags.panelRead === 'boolean')  state.questFlags.panelRead  = data.questFlags.panelRead;
       if (typeof data.questFlags.breakerSet === 'boolean') state.questFlags.breakerSet = data.questFlags.breakerSet;
       if (typeof data.questFlags.logged === 'boolean')     state.questFlags.logged     = data.questFlags.logged;
+    }
+    if (Array.isArray(data.codexScans)) {
+      state.codexScans = data.codexScans.filter((s): s is string => typeof s === 'string');
+    }
+    if (Array.isArray(data.relics)) {
+      const valid: WorldId[] = ['ship', 'verdant', 'ashfall', 'rift'];
+      state.relics = data.relics.filter((w): w is WorldId => valid.includes(w as WorldId));
     }
     return true;
   } catch {

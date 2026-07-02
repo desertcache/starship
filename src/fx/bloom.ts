@@ -81,6 +81,12 @@ export interface BloomSystem {
   render(): void;
   /** Must be called on window resize. */
   resize(width: number, height: number): void;
+  /**
+   * Rebind the scene rendered each frame (WorldManager, on world switch).
+   * Mutates RenderPass.scene + GTAOPass.scene in place (composer path) or the
+   * fast-path closure's scene — no pass reallocation, no RT churn.
+   */
+  setScene(scene: THREE.Scene): void;
   /** Dispose composer and all passes. */
   dispose(): void;
   readonly enabled: boolean;
@@ -111,9 +117,11 @@ export function initBloom(
 
   // ── Fast-path: no composer needed ─────────────────────────────────────────
   if (!needComposer) {
+    let activeScene = scene;
     return {
-      render():                        void { renderer.render(scene, camera); },
+      render():                        void { renderer.render(activeScene, camera); },
       resize(_w: number, _h: number):  void { /* no-op */ },
+      setScene(next: THREE.Scene):     void { activeScene = next; },
       dispose():                        void { /* no-op */ },
       enabled: false,
     };
@@ -123,7 +131,8 @@ export function initBloom(
   const composer = new EffectComposer(renderer);
 
   // 1. RenderPass — always first
-  composer.addPass(new RenderPass(scene, camera));
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
 
   // 2. GTAOPass — default-on, before bloom (contact darkening feeds the
   //    bloom threshold test). Disabled only by ?quality=low or ?ssao=0/?ao=0.
@@ -183,6 +192,14 @@ export function initBloom(
       if (bloomPass) {
         bloomPass.resolution.set(width, height);
       }
+    },
+
+    setScene(next: THREE.Scene): void {
+      // In-place scene rebind (chosen over dispose+rebuild — measured stable,
+      // see the WorldManager note). GTAOPass re-renders its own G-buffer from
+      // whatever `.scene` points at, so updating both refs is sufficient.
+      renderPass.scene = next;
+      if (aoHandle) aoHandle.pass.scene = next;
     },
 
     dispose(): void {

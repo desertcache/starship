@@ -238,6 +238,12 @@ async function run() {
       }
     }
 
+    // Ensure the SHIP world is active before the ship functional tests — the
+    // perf phase above may have left a pocket-world camera (e.g. dev-void-qa)
+    // active, which would swap the interaction scene/list out from under them.
+    await page.evaluate(() => window.__test.switchWorld('ship'));
+    await sleep(150);
+
     // ── Test 1: Sleep (bunk-a in quarters-a) ───────────────────────────────────
     // quarters-a world offset: (-4, 0, -16).
     // Bunk world centre: (-4, 0.84, -17.98). Teleport player adjacent, within radius.
@@ -518,6 +524,50 @@ async function run() {
     console.log('[verify] Test 8 PASSED ✓ (quest advanced 0→1→2→3)');
 
     console.log('[verify] All 8 functional tests PASSED ✓\n');
+
+    // ── Test 9: Portal roundtrip via the dev-void proof world ───────────────────
+    // ship → switchWorld('dev') → assert active + player near dev spawn →
+    // return portal (real traversal + fade) → assert back on ship + spawn +
+    // tests 1-8 ship state intact. (Stage D repoints this at 'verdant'.)
+    console.log('[verify] Test 9: Portal roundtrip (dev-void)');
+    const w0 = await page.evaluate(() => window.__test.getActiveWorld());
+    assert(w0 === 'ship', `Test 9: expected 'ship' active at start; got ${w0}`);
+    const quest9 = (await page.evaluate(() => window.__test.getState())).questStep;
+
+    // Enter dev (headless synchronous switch → teleports to dev spawn).
+    await page.evaluate(() => window.__test.switchWorld('dev'));
+    await sleep(200);
+    const w1 = await page.evaluate(() => window.__test.getActiveWorld());
+    console.log(`  after switchWorld('dev'): active=${w1}`);
+    assert(w1 === 'dev', `Test 9: getActiveWorld should be 'dev'; got ${w1}`);
+
+    const dp = await page.evaluate(() => window.__test.getPlayerPos());
+    const spawnDist = Math.hypot(dp.x - 0, dp.z - 8);
+    console.log(`  dev player pos (${dp.x.toFixed(2)}, ${dp.y.toFixed(2)}, ${dp.z.toFixed(2)}) — dist to spawn ${spawnDist.toFixed(2)}`);
+    assert(spawnDist < 2.0, `Test 9: player should spawn near the dev pad; dist=${spawnDist.toFixed(2)}`);
+
+    // Return via the return portal interactable (real traversal → fade).
+    await page.evaluate(() => window.__test.teleport(0, 1.7, -5.0));
+    await sleep(150);
+    const returned = await page.evaluate(() => window.__test.interact());
+    assert(returned, 'Test 9: return-portal interact() returned false');
+    console.log('[verify] Waiting for portal fade transition (1300ms)…');
+    await sleep(1300);
+
+    const w2 = await page.evaluate(() => window.__test.getActiveWorld());
+    console.log(`  after return portal: active=${w2}`);
+    assert(w2 === 'ship', `Test 9: should be back on 'ship'; got ${w2}`);
+
+    const sp = await page.evaluate(() => window.__test.getPlayerPos());
+    const shipDist = Math.hypot(sp.x - 0, sp.z - 16);
+    console.log(`  ship player pos (${sp.x.toFixed(2)}, ${sp.y.toFixed(2)}, ${sp.z.toFixed(2)}) — dist to arrival ${shipDist.toFixed(2)}`);
+    assert(shipDist < 3.0, `Test 9: player should arrive near the ship spawn; dist=${shipDist.toFixed(2)}`);
+
+    const quest9b = (await page.evaluate(() => window.__test.getState())).questStep;
+    assert(quest9b === quest9, `Test 9: ship quest state changed across roundtrip (${quest9} → ${quest9b})`);
+    console.log('[verify] Test 9 PASSED ✓ (ship → dev → ship; spawn + return + state intact)');
+
+    console.log('[verify] All 9 functional tests PASSED ✓\n');
 
     await browser.close();
     console.log('[verify] Done. ✓');
