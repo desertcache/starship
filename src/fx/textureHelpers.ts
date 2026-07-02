@@ -114,9 +114,32 @@ export function drawSeams(
 
 const _cache = new Map<string, THREE.CanvasTexture>();
 
+// v0.9 A2: every texture minted via `cached()` self-registers here so a single
+// applyMaxAnisotropy() sweep (called once from main.ts after the renderer
+// exists) can enable anisotropic filtering everywhere without every texture
+// call site needing to know about the renderer.
+const _registry: THREE.CanvasTexture[] = [];
+
 export function cached(key: string, build: () => THREE.CanvasTexture): THREE.CanvasTexture {
   if (!_cache.has(key)) {
-    _cache.set(key, build());
+    const tex = build();
+    _registry.push(tex);
+    _cache.set(key, tex);
   }
   return _cache.get(key)!;
+}
+
+/**
+ * Enable max anisotropic filtering on every CanvasTexture ever minted via
+ * `cached()`. Call once, right after the renderer is constructed — by the
+ * time this module graph has loaded, all module-level texture singletons
+ * (walls, floor, ceiling, fixtures, props) already exist, so a single sweep
+ * covers them all. Fixes grazing-angle floor/wall mush.
+ */
+export function applyMaxAnisotropy(renderer: THREE.WebGLRenderer): void {
+  const max = renderer.capabilities.getMaxAnisotropy();
+  for (const tex of _registry) {
+    tex.anisotropy = max;
+    tex.needsUpdate = true;
+  }
 }

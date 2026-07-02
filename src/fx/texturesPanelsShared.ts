@@ -1,12 +1,19 @@
 /**
  * Shared types and constants for panel texture generation.
  * Consumed by texturesPanels.ts and texturesPanelsNormal.ts.
+ *
+ * v0.9 A2 (RADIANCE — resolution bump): canvas doubled 1024×1536 → 2048×3072.
+ * MPX/MPY are ratios (metres / TW or TH) so they — and everything derived
+ * from them (buildPanelGrid, SCUFF_PX) — auto-scale correctly. The absolute
+ * pixel constants below (SEAM_PX, SEAM_CORE_PX, BOLT_INSET, BOLT_R) do NOT
+ * auto-scale and are doubled explicitly here so seams/bolts keep their real
+ * physical size on the denser canvas — only texel density increases.
  */
 
 // ── Tile constants ─────────────────────────────────────────────────────────────
 
-export const TW = 1024;  // canvas px — width  (represents 2 m)
-export const TH = 1536;  // canvas px — height (represents 3 m)
+export const TW = 2048;  // canvas px — width  (represents 2 m)
+export const TH = 3072;  // canvas px — height (represents 3 m)
 
 // Metres per pixel
 export const MPX = 2 / TW;
@@ -15,13 +22,22 @@ export const MPY = 3 / TH;
 // Scuff band: bottom 0.35 m of the tile
 export const SCUFF_PX    = Math.round(0.35 / MPY);
 
-// Seam geometry — Stage D: core widened 3px→6px for viewable-distance read
-export const SEAM_PX      = 10;  // total seam width (bevel + core + bevel)
-export const SEAM_CORE_PX = 6;   // dark core pixels (was 3)
+// Seam geometry — Stage D: core widened 3px→6px for viewable-distance read.
+// v0.9 A2: doubled again (6px→12px core, 10px→20px total) for the 2x canvas.
+export const SEAM_PX      = 20;  // total seam width (bevel + core + bevel)
+export const SEAM_CORE_PX = 12;  // dark core pixels
 
-// Bolt inset and radius — Stage D: bolts ~5px→~9px
-export const BOLT_INSET = 20;
-export const BOLT_R     = 9;
+// Bolt inset and radius — Stage D: bolts ~5px→~9px.
+// v0.9 A2: doubled again (inset 20→40, radius 9→18) for the 2x canvas.
+export const BOLT_INSET = 40;
+export const BOLT_R     = 18;
+
+// ── Accent colors ──────────────────────────────────────────────────────────────
+// v0.9 A2: hoisted here (was duplicated locally) so both texturesPanels.ts and
+// texturesPanelsDetails.ts (split apart to stay under 300 lines/file) share one
+// definition.
+export const ORANGE_HEX = '#C7641E';
+export const GUN_HEX    = '#2A2D33';
 
 // ── Panel rect ─────────────────────────────────────────────────────────────────
 

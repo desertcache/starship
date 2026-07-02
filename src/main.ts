@@ -25,11 +25,18 @@ import { tickStarfield } from './fx/starfield.js';
 import { setScanProvider } from './world/interactConsole.js';
 import { QUALITY_LOW, SHADOWS_OFF } from './core/perf.js';
 import type { ScanData } from './fx/space/types.js';
+import { applyMaxAnisotropy } from './fx/textureHelpers.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
+// v0.9 A2: enable anisotropic filtering on every procedural texture minted so
+// far. By the time this line runs, the whole static import graph (world/*.ts
+// → shipMaterials.ts / texturesFixtures.ts / propMaterials.ts) has already
+// evaluated, so this single sweep covers floor/wall/ceiling and fixes the
+// grazing-angle floor mush without touching every material call site.
+applyMaxAnisotropy(renderer);
 // Filmic grade: ACES gives deep blacks + rolling highlights, exposure lifts
 // interior contrast without blowing emissives.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;

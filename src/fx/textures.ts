@@ -2,11 +2,18 @@
  * Procedural structural surface textures — Phase 3.
  * Covers: cream wall panels, orange-band wall, gunmetal floor, gunmetal ceiling.
  * Emissive + accent textures: see texturesEmissive.ts
- * All CanvasTexture, 512–1024 px, generated once and cached.
+ * All CanvasTexture, generated once and cached.
  *
  * v0.8 lane B1: wall textures now delegate to texturesPanels.ts (modular
  * metal panel language).  Floor reworked for 2m×2m plate-grid world UVs.
  * Ceiling texture unchanged.
+ *
+ * v0.9 A2 (RADIANCE — resolution bump): floor 1024→2048, roughness map
+ * 1024→2048, ceiling 512→1024. All physical-size constants (seam width,
+ * stamp radii, streak widths, grid step) doubled in lockstep with the
+ * canvas so seams/stamps/streaks keep their real-world size — only texel
+ * density increases. Plate/panel WORLD scale (1m plate, 2m×2m ceiling tile)
+ * is unchanged.
  */
 import * as THREE from 'three';
 import { rng, addGrime, cached } from './textureHelpers.js';
@@ -27,11 +34,11 @@ export {
 /**
  * Gunmetal floor texture with plate-grid seams, treadplate stamps, and
  * long fore-aft wear streaks.  World UVs tile at 2 m × 2 m; set repeat(1,1).
- * 1024×1024.
+ * 2048×2048 (v0.9 A2: doubled from 1024; 1 m plate scale unchanged).
  */
 export function makeGunmetalFloorTexture(): THREE.CanvasTexture {
-  return cached('gunmetal-floor-v2', () => {
-    const S  = 1024;
+  return cached('gunmetal-floor-v3', () => {
+    const S  = 2048;
     const canvas = document.createElement('canvas');
     canvas.width  = S;
     canvas.height = S;
@@ -41,9 +48,9 @@ export function makeGunmetalFloorTexture(): THREE.CanvasTexture {
     ctx.fillStyle = '#1C1E22';
     ctx.fillRect(0, 0, S, S);
 
-    // 1 m plate grid → 512 px per plate in a 2 m tile
-    const PLATE_PX = 512; // S / 2 plates per tile = 512
-    const SEAM_W   = 5;
+    // 1 m plate grid → 1024 px per plate in a 2 m tile (was 512 px at 1024 canvas)
+    const PLATE_PX = 1024; // S / 2 plates per tile = 1024
+    const SEAM_W   = 10;   // v0.9 A2: doubled from 5 to keep physical seam width
     const half     = Math.floor(SEAM_W / 2);
 
     // Draw plate seams with bevel treatment
@@ -74,19 +81,20 @@ export function makeGunmetalFloorTexture(): THREE.CanvasTexture {
     for (const [ox, oy] of plateOffsets) {
       const stampCount = 6;
       for (let i = 0; i < stampCount; i++) {
-        const cx = ox + 40 + rand() * (PLATE_PX - 80);
-        const cy = oy + 40 + rand() * (PLATE_PX - 80);
-        const rw = 12 + rand() * 18;
-        const rh = 5 + rand() * 8;
+        // v0.9 A2: margins/radii doubled to keep physical stamp size on the 2x canvas
+        const cx = ox + 80 + rand() * (PLATE_PX - 160);
+        const cy = oy + 80 + rand() * (PLATE_PX - 160);
+        const rw = 24 + rand() * 36;
+        const rh = 10 + rand() * 16;
         const angle = rand() * Math.PI;
         ctx.beginPath();
         ctx.ellipse(cx, cy, rw, rh, angle, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(80,85,90,0.55)';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 3;
         ctx.stroke();
         // Inner raised oval (slightly lighter)
         ctx.beginPath();
-        ctx.ellipse(cx, cy, rw - 3, rh - 1.5, angle, 0, Math.PI * 2);
+        ctx.ellipse(cx, cy, rw - 6, rh - 3, angle, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(255,255,255,0.04)';
         ctx.fill();
       }
@@ -96,7 +104,7 @@ export function makeGunmetalFloorTexture(): THREE.CanvasTexture {
     const streakRand = rng(55);
     for (let i = 0; i < 22; i++) {
       const x   = streakRand() * S;
-      const w   = 3 + streakRand() * 18;
+      const w   = 6 + streakRand() * 36; // v0.9 A2: doubled from 3+18
       const len = S * (0.3 + streakRand() * 0.7);
       const y0  = streakRand() * S;
       const bright = 0x28 + Math.floor(streakRand() * 0x18);
@@ -123,11 +131,11 @@ export function makeGunmetalFloorTexture(): THREE.CanvasTexture {
 /**
  * Floor roughness variation map — plate-grid aligned.
  * Streak centres ~0.30 (gloss → warm fixture reflections), seams ~0.65.
- * 1024×1024 grayscale.
+ * 2048×2048 grayscale (v0.9 A2: doubled from 1024, matching floor diffuse).
  */
 export function makeFloorRoughnessMapTexture(): THREE.CanvasTexture {
-  return cached('floor-roughness-map-v2', () => {
-    const S = 1024;
+  return cached('floor-roughness-map-v3', () => {
+    const S = 2048;
     const canvas = document.createElement('canvas');
     canvas.width  = S;
     canvas.height = S;
@@ -142,7 +150,7 @@ export function makeFloorRoughnessMapTexture(): THREE.CanvasTexture {
     // Stage D: streak centres darker = more gloss (~0.22 roughness → #38)
     for (let i = 0; i < 20; i++) {
       const x   = rand() * S;
-      const w   = 5 + rand() * 24;
+      const w   = 10 + rand() * 48; // v0.9 A2: doubled from 5+24
       const len = S * (0.4 + rand() * 0.6);
       const y0  = rand() * S;
       const v   = Math.floor(0x30 + rand() * 0x18); // 0x30-0x48 → roughness 0.19-0.28
@@ -160,7 +168,7 @@ export function makeFloorRoughnessMapTexture(): THREE.CanvasTexture {
     for (let i = 0; i < 30; i++) {
       const x  = rand() * S;
       const y  = rand() * S;
-      const r  = 3 + rand() * 12;
+      const r  = 6 + rand() * 24; // v0.9 A2: doubled from 3+12
       const rv = Math.floor(0x90 + rand() * 0x28);
       ctx.beginPath();
       ctx.ellipse(x, y, r, r * (0.3 + rand() * 0.4), rand() * Math.PI, 0, Math.PI * 2);
@@ -169,9 +177,9 @@ export function makeFloorRoughnessMapTexture(): THREE.CanvasTexture {
     }
 
     // Plate seam lines — slightly rougher edges (~0xA8 → 0.66)
-    const PLATE_PX = 512;
+    const PLATE_PX = 1024; // v0.9 A2: S/2, keeps 1m plate scale
     ctx.strokeStyle = 'rgba(168,168,168,0.55)';
-    ctx.lineWidth   = 5;
+    ctx.lineWidth   = 10; // v0.9 A2: doubled from 5
     ctx.beginPath(); ctx.moveTo(PLATE_PX, 0); ctx.lineTo(PLATE_PX, S); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, PLATE_PX); ctx.lineTo(S, PLATE_PX); ctx.stroke();
 
@@ -186,11 +194,12 @@ export function makeFloorRoughnessMapTexture(): THREE.CanvasTexture {
 /**
  * Gunmetal ceiling texture (#25282e) — slightly lighter than floor,
  * with a rectangular panel grid and alternating inset highlights.
- * 512×512.
+ * 1024×1024 (v0.9 A2: doubled from 512; grid step/inset doubled in lockstep
+ * so the 4×4 panel grid keeps the same physical size).
  */
 export function makeGunmetalCeilingTexture(): THREE.CanvasTexture {
-  return cached('gunmetal-ceiling', () => {
-    const S = 512;
+  return cached('gunmetal-ceiling-v2', () => {
+    const S = 1024;
     const canvas = document.createElement('canvas');
     canvas.width = S;
     canvas.height = S;
@@ -202,11 +211,11 @@ export function makeGunmetalCeilingTexture(): THREE.CanvasTexture {
 
     // Simple seam grid
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    ctx.lineWidth   = 2;
-    for (let x = 128; x < S; x += 128) {
+    ctx.lineWidth   = 4; // v0.9 A2: doubled from 2
+    for (let x = 256; x < S; x += 256) {
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, S); ctx.stroke();
     }
-    for (let y = 128; y < S; y += 128) {
+    for (let y = 256; y < S; y += 256) {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(S, y); ctx.stroke();
     }
 
@@ -217,7 +226,7 @@ export function makeGunmetalCeilingTexture(): THREE.CanvasTexture {
         if ((gx + gy) % 2 === 0) {
           const v = (rand() * 0.04 + 0.02).toFixed(3);
           ctx.fillStyle = `rgba(255,255,255,${v})`;
-          ctx.fillRect(gx * 128 + 4, gy * 128 + 4, 120, 120);
+          ctx.fillRect(gx * 256 + 8, gy * 256 + 8, 240, 240);
         }
       }
     }
