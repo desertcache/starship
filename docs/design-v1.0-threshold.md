@@ -107,7 +107,7 @@ fbm via existing `src/fx/space/noise.ts`. Boundary presentation is the world's j
 
 Three tiers:
 1. **Dormant** (always): swirl `ShaderMaterial` plane — biome tint, `uTime` domain-warp swirl, additive fresnel rim. Cheap, always animating. `toneMapped:false` glow discipline per existing emissives.
-2. **Live preview**: ONE shared half-res `WebGLRenderTarget` across all portals. Only the nearest portal within 8m AND in frustum goes live; virtual camera in the target world mirrors the player's pose relative to the portal plane; re-rendered at 30Hz via plain `renderer.render(targetScene, virtualCam)` (no post). `?portals=0` disables live tier entirely.
+2. **Live preview**: ONE shared half-res `WebGLRenderTarget` across all portals. Only the nearest portal within 8m AND in frustum goes live; virtual camera in the target world mirrors the player's pose relative to the portal plane; re-rendered at 30Hz via plain `renderer.render(targetScene, virtualCam)` (no post). `?portals=0` disables live tier entirely. **Implementation is spec'd in `docs/research-portals.md` — MANDATORY read**: captured-VP projected UVs (screen-space UVs rubber-band at 30Hz), `HalfFloatType` RT + `samples:4` (UnsignedByte kills bloom-through-portal and flattens ACES), `renderer.clippingPlanes` for near-plane clipping (preferred over Lengyel oblique here), raw ShaderMaterial passthrough (RT stays scene-linear in r152+; ACES applied once by OutputPass).
 3. **Traversal**: E-interact OR walking through the plane → `switchWorld(target)`.
 
 ```ts
@@ -121,7 +121,18 @@ export function createPortalSurface(target: WorldId, tintHex: string, w: number,
 export function createReturnPortal(w?: number, h?: number): PortalSurface;  // target 'ship', arrival = annex pad
 ```
 
+`PortalSurface` also exposes `discharge(): void` — a ~600ms high-energy burst on the swirl shader (`uBurst` uniform): two-hue complementary flash (biome tint ↔ near-white warm), white filament arcs crackling across the plane, glow surge. Fired on traversal (just before the fade) and available to Stage B for gate-frame FX sync.
+
 Stage A proves the whole spine with a throwaway `dev-void` world (flat disc, one light, return portal) reachable via `?world=dev` — deleted in Stage D.
+
+## Livingness pass (campaign-wide art directive)
+
+Reference: an electrocyte-array visualizer Sam supplied — what makes it read as ALIVE, distilled. Every stage applies these where it owns emissives; Stage E critics judge "livingness" explicitly.
+
+- **T1 — Propagating waves, never uniform pulses.** Emissive intensity = `f(t - phase(position))` so brightness waves TRAVEL across arrays: annex conduit segments pulse charge TOWARD the gates; creature body segments light in sequence (jelly bell rims especially); RIFT crystal clusters and VERDANT flora patches ripple neighbor-to-neighbor. Synchronized blinking is banned for new emissive arrays.
+- **T2 — State-driven ramp.** Saturation + brightness scale continuously with system state: portal dormant → live-preview → traversal; creature calm → alert → fleeing. The material communicates state before any UI does.
+- **T3 — Discharge events.** Rare ~600ms bursts that break the calm: two complementary hues flashing (biome tint ↔ near-white), white filament arcs, a small camera kick (reuse the FOV-kick pattern, subtle). Fired on portal traversal and creature startle (first FLEE transition). Player-action-triggered only — never idle — so verify screenshots stay deterministic.
+- **T4 — Glow tracks intensity.** The same state scalar drives emissive strength past the bloom threshold (`toneMapped:false` discipline), so surges visibly bloom and idle stays subordinate.
 
 ## The Dimensional Annex (Stage B)
 
@@ -146,6 +157,8 @@ Common contract per world: `src/world/worlds/<id>.ts` (+ `<id>Props.ts`, `<id>Te
 Palettes may leave the ship's interior palette — these are OTHER DIMENSIONS — but each world needs ONE dominant hue family + disciplined accents, and creatures must read against their terrain.
 
 ## Creature engine (Stage C Opus lane — `src/fx/creatures/`)
+
+**Implementation playbook: `docs/research-creatures.md` — MANDATORY read for this lane.** Non-negotiables from it: master update order (steer → integrate → distance-driven gait phase → foot IK → terrain-fit → secondary springs → orient); gait phase driven by DISTANCE TRAVELLED (the anti-foot-skate mechanism); the damp/spring primitives (never per-frame lerp); asymmetric jelly bell pulse; the six anti-jitter steering levers; speed→0 neutral-stand blend; analytic terrain gradients. Build the trotting quadruped on flat ground FIRST.
 
 `builder.ts` (seeded primitive assembly per `BodyPlan`, ≤600 tris/creature, herd species instanced or shared-geometry), `animate.ts` (procedural: sin-phase leg cycles, body bob, head look-at, jelly bell-pulse; NO SkinnedMesh/AnimationMixer), `behavior.ts` (FSM: IDLE / WANDER perlin-heading terrain-following / FLEE / CURIOUS approach-to-3m-hold-retreat; clamp to `roamRadius`; y from `groundHeight` except floaters/gliders which hover/soar). Interactable `.position` synced every update (the existing raycast walks ancestor `.name` chains — name creature root groups with the interactable id). Scan prompt: "Scan <SCANNAME>"; `onInteract` → `recordScan(id)` + toast (dupe → "ALREADY CATALOGUED").
 
