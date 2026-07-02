@@ -19,6 +19,7 @@
  */
 import * as THREE from 'three';
 import { GLOW_ENABLED } from './glow.js';
+import { cached } from './textureHelpers.js';
 
 // ── Shader ──────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,32 @@ function seededRng(seed: number): () => number {
   };
 }
 
+// Soft circular falloff sprite for dust motes — without this, PointsMaterial
+// renders hard-edged squares that read as snow/confetti instead of motes
+// catching light. Feathered white disc; the PointsMaterial's own `color`
+// tints it per-shaft, additive blending does the rest.
+function makeMoteSpriteTexture(): THREE.CanvasTexture {
+  return cached('dust-mote-sprite', () => {
+    const S = 32;
+    const canvas = document.createElement('canvas');
+    canvas.width = S;
+    canvas.height = S;
+    const ctx = canvas.getContext('2d')!;
+    const cx = S / 2;
+    const cy = S / 2;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, S / 2);
+    grad.addColorStop(0.00, 'rgba(255,255,255,0.9)');
+    grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+    grad.addColorStop(1.00, 'rgba(255,255,255,0.0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, S, S);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    return tex;
+  });
+}
+
 function buildDustMotes(
   halfHeight: number,
   radiusTop: number,
@@ -120,7 +147,10 @@ function buildDustMotes(
     const t = rand(); // 0 = local bottom, 1 = local top
     const y = -halfHeight + t * (2 * halfHeight);
     const radiusAtT = radiusBottom + (radiusTop - radiusBottom) * t;
-    const r = Math.sqrt(rand()) * radiusAtT * 0.85;
+    // 0.65, not 0.85: leaves headroom for the swirl offset below so a mote
+    // can never drift past the cone's local radius and read as "outside the
+    // beam" — motes must stay INSIDE the shaft volume, always.
+    const r = Math.sqrt(rand()) * radiusAtT * 0.65;
     const theta = rand() * Math.PI * 2;
     const x = Math.cos(theta) * r;
     const z = Math.sin(theta) * r;
@@ -138,10 +168,15 @@ function buildDustMotes(
 
   const mat = new THREE.PointsMaterial({
     color,
-    size: 0.018,
+    map: makeMoteSpriteTexture(),
+    // ~1/3 the previous 0.018 — at 720p from the standard room-camera
+    // distance this reads as a ~1px shimmer, not a snowflake.
+    size: 0.006,
     sizeAttenuation: true,
     transparent: true,
-    opacity: 0.30,
+    // Halved from 0.30 — barely-there, visible only where the shaft light
+    // justifies it.
+    opacity: 0.15,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     toneMapped: false,
@@ -150,13 +185,16 @@ function buildDustMotes(
   const points = new THREE.Points(geo, mat);
   const posAttr = geo.getAttribute('position') as THREE.BufferAttribute;
 
+  // Slow bob + swirl AROUND the spawn point — never a directional drift/rain
+  // vector, so a mote can't wander out of the shaft cone it was seeded in.
   points.onBeforeRender = (): void => {
     const t = performance.now() / 1000;
     for (let i = 0; i < count; i++) {
       const ph = phase[i];
-      const bob    = Math.sin(t * 0.6 + ph) * 0.03;
-      const driftX = Math.sin(t * 0.15 + ph * 1.3) * 0.02;
-      const driftZ = Math.cos(t * 0.12 + ph * 0.7) * 0.02;
+      const bob = Math.sin(t * 0.5 + ph) * 0.02;
+      const swirlAngle = t * 0.25 + ph;
+      const driftX = Math.cos(swirlAngle) * 0.015;
+      const driftZ = Math.sin(swirlAngle) * 0.015;
       posAttr.setXYZ(
         i,
         base[i * 3 + 0] + driftX,
