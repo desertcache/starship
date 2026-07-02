@@ -9,7 +9,10 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { matPipeDark } from '../fx/propMaterials.js';
 
 const CORNER_Y_OFFSETS = [-0.035, -0.085, -0.145]; // stagger below ceiling
-const CORNER_RADII     = [0.040, 0.028, 0.025];
+// v0.9 RADIANCE fix-round H1: smallest radius was exactly at the 2.5cm
+// sub-pixel-at-distance floor (no margin) — bumped so every conduit clears it
+// with headroom, killing comb aliasing on the ceiling-corner runs.
+const CORNER_RADII     = [0.046, 0.036, 0.033];
 const CLAMP_R          = 0.015;
 const CLAMP_SPACING    = 2.0;
 

@@ -10,6 +10,7 @@ import { makeLiveScreenMat, liveScreenTick } from './cockpitScreens.js';
 import type { ScreenType } from './cockpitScreens.js';
 import { matConsoleHousing } from '../fx/propMaterials.js';
 import { addLedCluster, LedColors } from '../fx/glow.js';
+import { matDormantPanel } from './cockpitPanelTexture.js';
 
 export { liveScreenTick };
 
@@ -165,10 +166,15 @@ export function buildConsoleBank(group: THREE.Group): ConsoleBankResult {
   // v0.9 B2 glow build: opacity 0.28→0.40 + slightly hotter teal — pushes the
   // wash close enough to the 0.84 bloom threshold to read as a soft screen
   // bounce-halo on the console face, per the glow-build brief.
+  // v0.9 RADIANCE fix-round H4: opacity cut ~30% (0.40→0.28) + slightly
+  // desaturated (0x2ad8e6→0x3fd0d8, blended ~15% toward grey) — with the new
+  // warm cockpit pool light (buildLightingRig) the room is meant to read
+  // warm-dominant with teal as an accent (ref-5); these under-console bars
+  // were competing for that "hero light" role.
   const glowMat = new THREE.MeshBasicMaterial({
-    color: 0x2ad8e6,        // slightly hotter desaturated teal (was 0x1ac8d8)
+    color: 0x3fd0d8,
     transparent: true,
-    opacity: 0.40,
+    opacity: 0.28,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     toneMapped: false,
@@ -293,6 +299,13 @@ export function buildSideConsole(group: THREE.Group, side: -1 | 1): AABB {
   const panelMesh = new THREE.Mesh(panelGeo, matGunmetal);
   panelMesh.position.set(side * 2.92, PANEL_Y, PANEL_Z);
   group.add(panelMesh);
+
+  // Dormant-screen inset, proud of the panel's inner face — M10 fix-round
+  // (see cockpitPanelTexture.ts). Leaves a ~1-3cm gunmetal bezel margin.
+  const dormantScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.14, 0.31), matDormantPanel);
+  dormantScreen.position.set(side * (2.92 - 0.03 - 0.003), PANEL_Y, PANEL_Z);
+  dormantScreen.rotation.y = side === -1 ? Math.PI / 2 : -Math.PI / 2;
+  group.add(dormantScreen);
 
   // 6 toggle nubs — merged
   const nubGeos: THREE.BoxGeometry[] = [];

@@ -199,6 +199,29 @@ function buildCrateColumns(group: THREE.Group, D: number): void {
       group.add(m); // 1 draw call per column for trim
     }
 
+    // v0.9 RADIANCE fix-round M12: handles + placard on the mid (gunmetal)
+    // crate's fore face — was a bare flat face reading featureless from the
+    // cargo-bay camera. Reuses this file's existing accent materials only
+    // (matOrange/matGun), merged into 2 extra draw calls per column.
+    const midY  = STACK[1].h;
+    const foreZ = cz - crateSize / 2;
+    const handleGeos: THREE.BufferGeometry[] = [];
+    for (const hx of [cx - crateSize * 0.22, cx + crateSize * 0.22]) {
+      const hg = new THREE.BoxGeometry(0.16, 0.04, 0.02);
+      hg.translate(hx, midY + crateSize * 0.55, foreZ - 0.005);
+      handleGeos.push(hg);
+    }
+    const handleMesh = new THREE.Mesh(mergeGeometries(handleGeos), matOrange());
+    for (const g of handleGeos) g.dispose();
+    group.add(handleMesh); // 1 draw call per column for handles
+
+    const placardBack = new THREE.BoxGeometry(0.26, 0.16, 0.012);
+    placardBack.translate(cx, midY + crateSize * 0.28, foreZ - 0.006);
+    group.add(new THREE.Mesh(placardBack, matGun())); // 1 draw call per column for placard backing
+    const placardTrim = new THREE.BoxGeometry(0.28, 0.02, 0.014);
+    placardTrim.translate(cx, midY + crateSize * 0.28 - 0.09, foreZ - 0.007);
+    group.add(new THREE.Mesh(placardTrim, matOrange())); // merges with handle-family orange siblings
+
     // Micro-LED cluster (v0.9 B2 glow build) — 2 status lights on the top
     // crate's FORE face (camera-facing) per column, "cargo lock" read. One
     // column blinks.

@@ -15,9 +15,21 @@ const CR_H = 0.12;  // crown height
 const CR_D = 0.06;  // crown depth
 
 const RIB_H = 2.6;
-const RIB_W = 0.16;
-const RIB_D = 0.05;
-const RIB_ZS = [-6, -3, 0, 3, 6] as const;
+// v0.9 RADIANCE fix-round H1: cross-section widened (0.16/0.05 → 0.22/0.11)
+// for sub-pixel-at-distance margin in general.
+const RIB_W = 0.22;
+const RIB_D = 0.11;
+// v0.9 RADIANCE fix-round H1 (root-cause pass): the original [-6,-3,0,3,6]
+// put two ribs EXACTLY at the two porthole centers (P1_Z=3.0, P2_Z=-6.0 in
+// corridor.ts) — the rib box's Z-band overlaps the porthole bezel torus's
+// Z-reach there (bezel1 spans Z≈[2.42,3.58], bezel2 spans Z≈[-6.45,-5.55]),
+// a genuine 3D geometry intersection, not a pure aliasing artifact — a prior
+// pass already tried a material swap for this exact "black bar slicing the
+// porthole" symptom and it didn't fix the z-fighting comb edge (crop-proven
+// again on qa-jitter-a/b, headed GPU). Repositioned to clear BOTH porthole
+// Z-bands and the quarters-junction widened span (JCT_Z_FORE/AFT below) with
+// margin, while keeping 5 ribs spread across the 16m corridor.
+const RIB_ZS = [-7.0, -4.2, 0, 4.6, 7.2] as const;
 
 // Module-level material singleton — do not allocate inside functions.
 // v0.9 A-bridge: was flat near-black Lambert (#1C1E22) — the vertical ribs in

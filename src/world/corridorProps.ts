@@ -220,8 +220,10 @@ export function buildCorridorProps(group: THREE.Group): void {
   }
 
   // ── 5. FLOOR CABLE CONDUIT ────────────────────────────────────────────────────
+  // v0.9 RADIANCE fix-round H1: COND_W bumped 0.035→0.05 — thin sub-2.5cm
+  // strip risked the same comb-aliasing family as the wall ribs/conduits.
   const COND_H = 0.04;
-  const COND_W = 0.035;
+  const COND_W = 0.05;
   const COND_Y = 0.06 + COND_H / 2;
   const COND_X = halfW - 0.025;
 
@@ -309,8 +311,9 @@ export function buildCorridorProps(group: THREE.Group): void {
       const endY   = JB_Y + 0.15;
       const condLen = startY - endY;
       // Small offset in X to branch off the pipe
-      const condXOffset = side * 0.03;
-      const condGeo = new THREE.CylinderGeometry(0.03, 0.03, condLen, 5);
+      // v0.9 RADIANCE fix-round H1: radius bumped 0.03→0.04 for comb-aliasing margin.
+      const condXOffset = side * 0.04;
+      const condGeo = new THREE.CylinderGeometry(0.04, 0.04, condLen, 5);
       condGeo.translate(wallX + condXOffset, endY + condLen / 2, jbZ);
       conduitGeos.push(condGeo);
     }

@@ -15,16 +15,24 @@ import { addLedCluster, LedColors } from '../fx/glow.js';
 function mkConduitTex(): THREE.CanvasTexture {
   return cached('eng-conduit', () => {
     const S = 512; const cv = document.createElement('canvas'); cv.width = cv.height = S;
-    const c = cv.getContext('2d')!; c.fillStyle = '#22262C'; c.fillRect(0, 0, S, S);
+    const c = cv.getContext('2d')!;
+    // v0.9 RADIANCE fix-round H3-partial: base fill cooled slightly (less R,
+    // more neutral) — under engineering's intense red room-glow (the only
+    // light in this room per the B3 lighting pass), these large conduit
+    // panels were reading as warm-brown corrugated wood siding.
+    c.fillStyle = '#1F232A'; c.fillRect(0, 0, S, S);
     const r = (s: number): (() => number) => {
       let st = s;
       return (): number => { st = (st * 1664525 + 1013904223) >>> 0; return st / 0x100000000; };
     };
     const rr = r(991);
+    // Band contrast halved (alpha 0.5-0.8 → 0.22-0.37, highlight 0.15→0.08) —
+    // kept the panel-seam identity but killed the "plank corrugation" read at
+    // the few-large-bands-per-panel scale these stretch to.
     for (let y = 40; y < S; y += 60 + Math.floor(rr() * 20)) {
       const h = 12 + Math.floor(rr() * 10);
-      c.fillStyle = `rgba(10,10,14,${(0.5 + rr() * 0.3).toFixed(2)})`; c.fillRect(0, y, S, h);
-      c.fillStyle = 'rgba(80,90,100,0.15)'; c.fillRect(0, y, S, 2);
+      c.fillStyle = `rgba(10,10,14,${(0.22 + rr() * 0.15).toFixed(2)})`; c.fillRect(0, y, S, h);
+      c.fillStyle = 'rgba(80,90,100,0.08)'; c.fillRect(0, y, S, 2);
     }
     c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 2;
     for (let x = 128; x < S; x += 128) { c.beginPath(); c.moveTo(x,0); c.lineTo(x,S); c.stroke(); }

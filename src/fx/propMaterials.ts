@@ -188,6 +188,16 @@ export const matLockerBody: THREE.MeshStandardMaterial = new THREE.MeshStandardM
   envMapIntensity: 0.5,
   side: THREE.FrontSide,
 });
+// v0.9 RADIANCE fix-round M11: locker faces' brushed micro-line texture was
+// too fine/dense at viewing distance (moire risk). repeat<1 samples less of
+// the 512px streak texture across each face, roughly halving the apparent
+// line frequency (fewer, broader strokes) without touching the shared
+// paintBrushedStreaks() used by counters/reactor/pipes/consoles. map and
+// roughnessMap each carry their own independent UV transform in three.js
+// (WebGLMaterials refreshes uvTransform/roughnessMapTransform separately),
+// so both need the same repeat to stay in registration.
+(matLockerBody.map as THREE.CanvasTexture).repeat.set(0.6, 0.6);
+(matLockerBody.roughnessMap as THREE.CanvasTexture).repeat.set(0.6, 0.6);
 
 /** Brushed dark-steel counter top. */
 export const matCounterTop: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({

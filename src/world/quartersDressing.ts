@@ -129,9 +129,11 @@ function buildPortholeBezel(roomGroup: THREE.Group, xWall: number): void {
   roomGroup.add(cornerMask);
 
   // Cylindrical reveal tube — open-ended, short depth toward space
+  // v0.9 RADIANCE fix-round M8 (twin of corridorPortholes.ts matCorridorTube
+  // M7 fix): duller so the star-disc read isn't competed with by tube specular.
   const tubeGeo = new THREE.CylinderGeometry(WIN_R, WIN_R, 0.08, 32, 1, true);
   const tubeMat = new THREE.MeshStandardMaterial({
-    color: 0x1a1c20, roughness: 0.7, metalness: 0.4, side: THREE.BackSide,
+    color: 0x1a1c20, roughness: 0.7, metalness: 0.15, envMapIntensity: 0.15, side: THREE.BackSide,
   });
   const tube = new THREE.Mesh(tubeGeo, tubeMat);
   tube.rotation.z = Math.PI / 2;

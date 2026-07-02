@@ -127,14 +127,17 @@ export function buildReactor(H: number): ReactorResult {
   const accRing = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.01, R + 0.01, 0.12, 16), accMat);
   accRing.position.set(CX, 0.30, CZ); attachPulse(accRing, accMat, 0.5, 1.0, Math.PI); g.add(accRing);
 
-  // Teal accent strips on reactor column (phase-lagged pulse)
+  // Teal accent strips on reactor column (phase-lagged pulse).
+  // v0.9 RADIANCE fix-round L13: base/amplitude cut ~19% (0.8/±0.2 →
+  // 0.65/±0.16) — these cyan strips slightly outshone the reactor's warm
+  // red-orange room glow (reactorSpot in lightingRig.ts + accRing below).
   [0, Math.PI/2, Math.PI, 3*Math.PI/2].forEach((ang, i) => {
-    const sm2 = new THREE.MeshLambertMaterial({ color: 0x46e0d8, emissive: new THREE.Color(0x46e0d8), emissiveIntensity: 0.8 });
+    const sm2 = new THREE.MeshLambertMaterial({ color: 0x46e0d8, emissive: new THREE.Color(0x46e0d8), emissiveIntensity: 0.65 });
     const st2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, H*0.65, 0.02), sm2);
     st2.position.set(CX+Math.sin(ang)*(R+0.02), CY, CZ+Math.cos(ang)*(R+0.02));
     st2.rotation.y = -ang;
     const _i = i;
-    st2.onBeforeRender = (): void => { sm2.emissiveIntensity = 0.8+Math.sin(performance.now()*0.0021+0.3+_i*0.15)*0.2; };
+    st2.onBeforeRender = (): void => { sm2.emissiveIntensity = 0.65+Math.sin(performance.now()*0.0021+0.3+_i*0.15)*0.16; };
     g.add(st2);
   });
 

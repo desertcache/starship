@@ -167,7 +167,12 @@ export function makeCreamWallTexture(): THREE.CanvasTexture {
     drawGrimeStreaks(ctx, panels, rng(131));
     drawInsetDetail(ctx, panels, rng(157));
     drawBolts(ctx, panels);
-    addGrime(ctx, TW, TH, 7, 0.12);
+    // v0.9 RADIANCE fix-round H2: density ×0.25 + contrast (intensity) ×0.25 —
+    // was reading as granite/terrazzo speckle (crop-proven, qa-porthole-oblique).
+    // drawGrimeStreaks + drawScuffBand below stay full-strength so the wall's
+    // grime signature shifts to sparse localized streaks/edge-wear, not a
+    // uniform dense speckle field.
+    addGrime(ctx, TW, TH, 7, 0.03, 0.25);
     drawScuffBand(ctx, rng(199));
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
@@ -208,7 +213,8 @@ export function makeCreamOrangeBandTexture(): THREE.CanvasTexture {
     drawGrimeStreaks(ctx, panels, rng(139));
     drawInsetDetail(ctx, panels, rng(163));
     drawBolts(ctx, panels);
-    addGrime(ctx, TW, TH, 13, 0.12);
+    // v0.9 RADIANCE fix-round H2: see makeCreamWallTexture — same density/contrast cut.
+    addGrime(ctx, TW, TH, 13, 0.03, 0.25);
     drawScuffBand(ctx, rng(211));
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;

@@ -72,6 +72,7 @@ export interface LightingRigHandles {
   hemi: THREE.HemisphereLight;
   ambient: THREE.AmbientLight;
   cockpitPt: THREE.PointLight;
+  cockpitWarmPt: THREE.PointLight;
   junctionSpot: THREE.SpotLight;
   qPortPt: THREE.PointLight;
   qStbdPt: THREE.PointLight;
@@ -107,6 +108,23 @@ export function buildLightingRig(scene: THREE.Scene): LightingRigHandles {
   // Console face world Z ≈ -24.38, Y at screen height ≈ 1.15
   cockpitPt.position.set(0, 1.15, -24.38);
   scene.add(cockpitPt);
+
+  // ── 1i. Cockpit warm pool — H4 fix-round ───────────────────────────────────
+  // The cockpit had ZERO warm light source (2 critics, vs ref-5's warm-washed
+  // room): only the teal console point + faint global fill, so the whole room
+  // read cold/inverted-teal. One measured warm (WARM=0xffe2c0) PointLight over
+  // the console/canopy-sill area — no shadow (perf-cheap point sample only) —
+  // so warm dominates the room while cockpitPt's teal keeps its screen-glow
+  // accent character. Positioned above the console bank, below the canopy
+  // sill line, central: local (0,1.9,-1.6) → world (0,1.9,-24.1).
+  // R2: first pass (2.6/5.0) was invisible against the 6W room + the many
+  // self-lit (MeshBasicMaterial, light-independent) teal screens/floor-strips/
+  // underglow planes that dominate the cockpit regardless of scene lighting —
+  // headed screenshot still read all-teal. Boosted intensity/distance so the
+  // PBR walls/seats/console-housings actually pick up a visible warm wash.
+  const cockpitWarmPt = new THREE.PointLight(WARM, 7.0, 8.0, 2);
+  cockpitWarmPt.position.set(0, 1.9, -24.1);
+  scene.add(cockpitWarmPt);
 
   // ── 2. Quarters junction — CORRIDOR POOL A (SpotLight) ────────────────────
   // Stage D boost: 4.2→4.8 (+15%) to compensate reduced fill.
@@ -149,7 +167,10 @@ export function buildLightingRig(scene: THREE.Scene): LightingRigHandles {
   // camera caught that specular patch; the tighter, steeper, wall-hugging cone
   // keeps all direct light on the counter/backsplash/cabinets so the open floor
   // stays dark and has nothing to mirror.
-  const galleySpot = new THREE.SpotLight(WARM, 5.2, 7.0, 0.6, 0.45, 2);
+  // v0.9 RADIANCE fix-round M6: angle 0.6→0.7 rad (+0.1) — widen the hard
+  // cone slightly so the warm wash spreads a bit beyond the counter instead
+  // of reading as a tight spotlit circle; penumbra 0.45 already soft-edges it.
+  const galleySpot = new THREE.SpotLight(WARM, 5.2, 7.0, 0.7, 0.45, 2);
   galleySpot.position.set(2.0, 2.75, -1.4);
   galleySpot.target.position.set(2.6, 1.15, -1.4);
   scene.add(galleySpot);
@@ -193,10 +214,13 @@ export function buildLightingRig(scene: THREE.Scene): LightingRigHandles {
   scene.add(thresholdPt);
 
   // ── 9. Cargo bay — single high pool (5H room) ────────────────────────────
-  // Stage D boost: 5.0→5.6 (+15%). Distance 11.0 preserved — reaches lower walls.
-  // 0xe8eef2: cool blue-white industrial identity (unchanged).
+  // Stage D boost: 5.0→5.6 (+15%).
+  // v0.9 RADIANCE fix-round M12: distance tightened 11.0→8.5 — the long reach
+  // was flooding the whole 8x5x9 room near-evenly instead of pooling, so the
+  // walls read flat/featureless. Shorter falloff now gradients toward the
+  // corners while keeping the cool blue-white industrial identity (unchanged).
   // (engineering.ts stray reactor glow = light #8 — counted in ship total)
-  const cargoPt = new THREE.PointLight(0xe8eef2, 5.6, 11.0, 2);
+  const cargoPt = new THREE.PointLight(0xe8eef2, 5.6, 8.5, 2);
   cargoPt.position.set(0, 4.2, 13.5);
   scene.add(cargoPt);
 
@@ -204,6 +228,7 @@ export function buildLightingRig(scene: THREE.Scene): LightingRigHandles {
     hemi,
     ambient,
     cockpitPt,
+    cockpitWarmPt,
     junctionSpot,
     qPortPt,
     qStbdPt,

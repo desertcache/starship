@@ -110,10 +110,14 @@ export function buildFoldDownDesk(
   const slabGeo = new THREE.BoxGeometry(DESK_D, DESK_T, DESK_W);
   slabGeo.translate(xWall + sign * DESK_D / 2, DESK_Y, deskZCenter);
 
+  // v0.9 RADIANCE fix-round H1: strut cross-section bumped 0.025→0.045 — sat
+  // exactly at the 2.5cm sub-pixel-at-distance floor with zero margin (viewed
+  // from ~4.6m at the quarters-b doorway camera), a comb-aliasing risk twin to
+  // the corridor ribs.
   const strutH = DESK_Y;
-  const strutA = new THREE.BoxGeometry(0.025, strutH, 0.025);
+  const strutA = new THREE.BoxGeometry(0.045, strutH, 0.045);
   strutA.translate(faceX - sign * 0.01, DESK_Y - strutH / 2, deskZCenter - DESK_W / 2 + 0.04);
-  const strutB = new THREE.BoxGeometry(0.025, strutH, 0.025);
+  const strutB = new THREE.BoxGeometry(0.045, strutH, 0.045);
   strutB.translate(faceX - sign * 0.01, DESK_Y - strutH / 2, deskZCenter + DESK_W / 2 - 0.04);
 
   const deskParts = [slabGeo, strutA, strutB];

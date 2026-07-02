@@ -47,6 +47,12 @@ const matRedBase   = lm(C_RED_BASE);
 const matTealEmit  = bm(C_TEAL);
 const matCoilGlow  = bm(C_RED_GLOW);
 const matMustard      = lm(C_MUSTARD);
+// v0.9 RADIANCE fix-round M6: fridge door strip, dedicated ~25% dimmer teal
+// (0x46e0d8 scaled ×0.75) so the warm/teal rebalance doesn't have the fridge
+// strip out-competing the new warm under-cabinet strip. Scoped to just this
+// one mesh — matTealEmit stays full-strength everywhere else (baseboard
+// strips, canisters, coffee cup, etc).
+const matFridgeStrip  = bm(0x34a8a2);
 
 function box(
   g: THREE.Group, w: number, h: number, d: number,
@@ -149,7 +155,11 @@ function buildUpperCabinets(g: THREE.Group): void {
   for (let i = 0; i < 3; i++) {
     box(g, 0.03, 0.38, 0.06, HX, UPR_Y_BOT + UPR_H / 2, CTR_Z_MIN + (UPR_LEN / 4) * (i + 1), matOrange);
   }
-  const strip = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.04, UPR_LEN), matTealEmit);
+  // v0.9 RADIANCE fix-round M6: was teal — this is the under-cabinet strip
+  // lighting the counter workspace below (ref-6's warm counter under-light).
+  // matWarmAmber retint; baseboard/fridge teal strips elsewhere keep the
+  // palette's teal accent so it's not lost from the room entirely.
+  const strip = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.04, UPR_LEN), matWarmAmber);
   strip.position.set(UPR_FACE + 0.05, UPR_Y_BOT - 0.02, UPR_Z_CTR);
   g.add(strip);
 
@@ -264,7 +274,7 @@ function buildFridge(g: THREE.Group): AABB[] {
   _fridgeHingeGroup.position.set(CTR_FACE + DW/2, 0, FRIDGE_Z_MIN + FT);
   const dp = new THREE.Mesh(new THREE.BoxGeometry(DW, DH, DD), matLockerBody);
   dp.position.set(-DW/2, FRIDGE_H/2, DD/2); _fridgeHingeGroup.add(dp);
-  const st = new THREE.Mesh(new THREE.BoxGeometry(0.022, DH*0.88, 0.06), matTealEmit);
+  const st = new THREE.Mesh(new THREE.BoxGeometry(0.022, DH*0.88, 0.06), matFridgeStrip);
   st.position.set(-DW - 0.012, FRIDGE_H/2, DD/2); _fridgeHingeGroup.add(st);
   const hnd = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.045, 0.20), matOrange);
   hnd.position.set(-DW - 0.018, FRIDGE_H*0.72, DD/2); _fridgeHingeGroup.add(hnd);

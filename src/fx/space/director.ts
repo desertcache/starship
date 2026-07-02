@@ -78,14 +78,19 @@ export function createSpaceDirector(
   scene.add(group);
 
   // ── FAR streaming layer (added directly to scene; never frustum-culls oddly) ──
+  // v0.9 RADIANCE fix-round M8: sizeMin/sizeMax bumped modestly (0.4/2.0 →
+  // 0.48/2.3) — reads as a slightly denser/more prominent starfield through
+  // both the canopy and portholes without changing star COUNT (no added rng
+  // draws, so the seeded sequence downstream — sun texture, signature hero
+  // spawn — stays byte-identical; Test 7 determinism preserved).
   const far = buildStarLayer({
     count: 4500,
     xHalf: 1500,
     yHalf: 900,
     zMin: FAR_ZMIN,
     span: FAR_SPAN,
-    sizeMin: 0.4,
-    sizeMax: 2.0,
+    sizeMin: 0.48,
+    sizeMax: 2.3,
     spherical: true,
     rand: rng,
   });

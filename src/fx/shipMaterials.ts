@@ -110,18 +110,22 @@ export const matShipWallBand: THREE.MeshLambertMaterial | THREE.MeshStandardMate
 // ── Floor / ceiling materials ──────────────────────────────────────────────────
 
 /** Dark gunmetal floor — worn metal deck plates.
- * v0.8: world UVs (2m×2m plate grid), repeat(1,1).
- * roughness 0.45, metalness 0.50, envMapIntensity 0.9.
+ * v0.9 RADIANCE fix-round H5: roughness 0.40→0.65, metalness 0.58→0.40,
+ * envMapIntensity 0.9→0.50 — the glossier Stage D tune produced near-blown
+ * specular pools at grazing angles (corridor/galley/quarters, 2 critics),
+ * making the floor the brightest region in every room and out-competing the
+ * fixture pools for the "bright anchor" read. Retuned toward matte
+ * tread-plate; the roughnessMap streaks (set below) still carry the "worn
+ * metal" life, they just no longer blow out.
  */
 export const matShipFloor: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial =
   PBR_ENABLED
     ? new THREE.MeshStandardMaterial({
         map:           setRepeat(makeGunmetalFloorTexture(), 1, 1),
         roughnessMap:  setRepeat(makeFloorRoughnessMapTexture(), 1, 1),
-        // Stage D: roughness 0.45→0.40, metalness 0.50→0.58 — streak reflections
-        roughness:     0.40,
-        metalness:     0.58,
-        envMapIntensity: 0.9,
+        roughness:     0.65,
+        metalness:     0.40,
+        envMapIntensity: 0.50,
         side: THREE.FrontSide,
       })
     : new THREE.MeshLambertMaterial({
@@ -208,16 +212,20 @@ export const matCeilingLight: THREE.MeshBasicMaterial = new THREE.MeshBasicMater
 
 // ── Door frame ─────────────────────────────────────────────────────────────────
 
-/** Burnt-orange door frame — anodised metal channel.
- * v0.8: roughness 0.30, metalness 0.78 (sharper specular highlight).
+/** Burnt-orange door frame / rail trim — anodised metal channel.
+ * v0.9 RADIANCE fix-round H3: roughness 0.30→0.40, metalness 0.78→0.65,
+ * envMapIntensity 0.8→0.55 — the old high-gloss/high-metal combo produced a
+ * glossy "varnished" sheen on the corridor's long handrails (this same
+ * material) that read as lacquered wood rather than anodized metal. Semi-gloss
+ * per the palette spec keeps the orange accent identity without the varnish read.
  */
 export const matDoorFrame: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial =
   PBR_ENABLED
     ? new THREE.MeshStandardMaterial({
         map: setRepeat(makeOrangeFrameTexture(), 1, 4),
-        roughness: 0.30,
-        metalness: 0.78,
-        envMapIntensity: 0.8,
+        roughness: 0.40,
+        metalness: 0.65,
+        envMapIntensity: 0.55,
         side: THREE.FrontSide,
       })
     : new THREE.MeshLambertMaterial({

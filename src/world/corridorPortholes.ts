@@ -15,8 +15,13 @@ export const matCorridorBezel = new THREE.MeshStandardMaterial({
   color: 0x3a3e44, roughness: 0.22, metalness: 0.75, envMapIntensity: 1.6,
 });
 
+// v0.9 RADIANCE fix-round M7: metalness 0.4→0.15 + explicit low
+// envMapIntensity — the tube's interior reveal surface was picking up enough
+// specular/IBL reflection from the nearby warm pools to compete with (and
+// partly wash out) the star-disc read, contributing to the "opaque black"
+// look at the corridor camera. Duller now so the additive stars read clean.
 export const matCorridorTube = new THREE.MeshStandardMaterial({
-  color: 0x1a1c20, roughness: 0.7, metalness: 0.4, side: THREE.BackSide,
+  color: 0x1a1c20, roughness: 0.7, metalness: 0.15, envMapIntensity: 0.15, side: THREE.BackSide,
 });
 
 export const matCorridorBolt = new THREE.MeshStandardMaterial({
@@ -43,18 +48,24 @@ function makeStarOverlayTex(): THREE.CanvasTexture {
     const cv = document.createElement('canvas'); cv.width = S; cv.height = S;
     const c = cv.getContext('2d')!;
 
-    // Soft radial navy glow — very dark, adds depth
+    // Soft radial navy glow — very dark, adds depth.
+    // v0.9 RADIANCE fix-round M7: bumped slightly alongside the star boost
+    // below so the disc reads as a dim starfield, not opaque black, from the
+    // corridor camera (2 critics, crop-proven).
     const grd = c.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-    grd.addColorStop(0,   'rgba(10, 14, 24, 0.20)');
-    grd.addColorStop(0.6, 'rgba(10, 14, 24, 0.10)');
+    grd.addColorStop(0,   'rgba(10, 14, 24, 0.26)');
+    grd.addColorStop(0.6, 'rgba(10, 14, 24, 0.14)');
     grd.addColorStop(1,   'rgba(10, 14, 24, 0.00)');
     c.fillStyle = grd;
     c.beginPath();
     c.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2);
     c.fill();
 
-    // ~40 faint star dots — white + occasional teal
-    const stars = 42;
+    // ~65 star dots — white + occasional teal. v0.9 RADIANCE fix-round M7:
+    // count 42→65 + brighter/larger (this shared cached texture also serves
+    // the quarters-a/b portholes — the density bump doubles as the M8
+    // "quarters-a porthole framing catches higher star density" fix).
+    const stars = 65;
     // Deterministic placement (same seed every time via simple LCG)
     let seed = 0xdeadbeef;
     const rand = (): number => {
@@ -68,8 +79,8 @@ function makeStarOverlayTex(): THREE.CanvasTexture {
       const a = rand() * Math.PI * 2;
       const sx = S / 2 + Math.cos(a) * r;
       const sy = S / 2 + Math.sin(a) * r;
-      const radius = 0.5 + rand() * 1.2;
-      const alpha  = 0.12 + rand() * 0.18; // 0.12–0.30
+      const radius = 0.6 + rand() * 1.4;
+      const alpha  = 0.24 + rand() * 0.30; // 0.24–0.54 (was 0.12–0.30)
       const teal   = rand() < 0.15;         // ~15% teal accent
       const col    = teal ? `rgba(100,220,210,${alpha.toFixed(2)})` : `rgba(255,255,255,${alpha.toFixed(2)})`;
       c.beginPath();

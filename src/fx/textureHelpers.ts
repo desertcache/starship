@@ -39,11 +39,19 @@ export function addGrime(
   h: number,
   seed: number,
   intensity = 0.18,
+  /**
+   * v0.9 RADIANCE fix-round H2: optional smudge-count multiplier. Default 1
+   * preserves every existing call site's behavior; wall panel textures pass a
+   * low value to cut the broad "dense dark ellipses over the full surface"
+   * read (crop-proven as reading like terrazzo/granite) without touching the
+   * shared grime function's other callers (floor, ceiling, engineering, etc).
+   */
+  densityMul = 1.0,
 ): void {
   const rand = rng(seed);
 
   // Smudge patches
-  const smudgeCount = Math.floor(w * h / 1200);
+  const smudgeCount = Math.floor((w * h / 1200) * densityMul);
   for (let i = 0; i < smudgeCount; i++) {
     const x = rand() * w;
     const y = rand() * h;

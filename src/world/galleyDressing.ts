@@ -28,15 +28,27 @@ const matGunmetal: THREE.MeshStandardMaterial = matLockerBody;
 const matOrange   = lm(C_ORANGE);
 
 // Countertop-clutter + mess-table materials (moved from galleyProps.ts to
-// keep it under the 300-line constitution limit — see buildClutter/
-// buildMessTable below). matCounterTop is the same brushed dark-steel PBR
-// family galleyProps.ts uses for its own gunmetal/dark surfaces.
+// keep it under the 300-line limit — see buildClutter/buildMessTable below).
 const matTrayGunmetal: THREE.MeshStandardMaterial = matCounterTop;
 const matTealEmit     = bm(C_TEAL);
 const matMustard      = lm(C_MUSTARD);
 const matMetalTray    = lm(0x3a3d43);
 const matCupGrey      = lm(0x3a3d45);
 const matFoodPackage  = lm(C_RED_BASE);
+// v0.9 RADIANCE fix-round L14: dedicated leg/support material for the mess
+// table + benches — a small dark blob was reading as a hole/dropped object
+// in the lit floor pool near the galley camera. These thin unlit members are
+// near-invisible against the dark floor except where they cross the bright
+// pool; more envMapIntensity/roughness lets them catch enough ambient light
+// to read as a fixture leg, not a cutout. Scoped to legs/supports only.
+const matTableLeg: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
+  map: (matCounterTop as THREE.MeshStandardMaterial).map,
+  roughnessMap: (matCounterTop as THREE.MeshStandardMaterial).roughnessMap,
+  roughness: 0.55,
+  metalness: 0.40,
+  envMapIntensity: 0.85,
+  side: THREE.FrontSide,
+});
 
 function box(
   g: THREE.Group, w: number, h: number, d: number,
@@ -292,14 +304,14 @@ export function buildMessTable(g: THREE.Group): AABB[] {
   box(g, TW, 0.05, TD, TX, TH, TZ, matTrayGunmetal);
   for (const lx of [TX - TW / 2 + 0.08, TX + TW / 2 - 0.08]) {
     for (const lz of [TZ - TD / 2 + 0.08, TZ + TD / 2 + 0.08]) {
-      box(g, 0.05, LEG, 0.05, lx, LEG / 2, lz, matTrayGunmetal);
+      box(g, 0.05, LEG, 0.05, lx, LEG / 2, lz, matTableLeg);
     }
   }
   const BENCH_H = 0.44; const BO = TD / 2 + 0.26;
   for (const [idx, bz] of [[0, TZ - BO], [1, TZ + BO]] as [number, number][]) {
     const bName = idx === 0 ? 'bench-fore' : 'bench-aft';
     box(g, TW * 0.86, 0.05, 0.30, TX, BENCH_H, bz, matTrayGunmetal, bName);
-    box(g, TW * 0.78, BENCH_H - 0.025, 0.06, TX, (BENCH_H - 0.025) / 2, bz, matTrayGunmetal);
+    box(g, TW * 0.78, BENCH_H - 0.025, 0.06, TX, (BENCH_H - 0.025) / 2, bz, matTableLeg);
   }
 
   // Table items

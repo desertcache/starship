@@ -53,9 +53,15 @@ export const DEFAULT_NEBULAE: NebulaConfig[] = [
   {
     name: 'nebula-persistent-a',
     colors: ['rgba(0,90,110,1)', 'rgba(30,180,200,1)'],
-    position: new THREE.Vector3(-900, 200, -1350),
-    scale: [1800, 1400],
-    opacity: 0.11,
+    // v0.9 RADIANCE fix-round M8: was (-900,200,-1350) — ~35° off the
+    // cockpit-canopy camera's -Z forward cone (camera ≈ (0,1.55,-22.5)), so it
+    // barely registered through the canopy window, leaving that sightline
+    // reading flatter than porthole-space's magenta wash (2 critics). Pulled
+    // toward the sightline centerline + closer, opacity bumped for a clearly
+    // visible color wash without overpowering the signature canopy hero.
+    position: new THREE.Vector3(-420, 90, -1150),
+    scale: [1900, 1500],
+    opacity: 0.16,
   },
   {
     name: 'nebula-persistent-b',

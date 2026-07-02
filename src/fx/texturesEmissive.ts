@@ -116,10 +116,17 @@ export function makeOrangeFrameTexture(): THREE.CanvasTexture {
     ctx.fillRect(0, 0, W, H);
 
     // 2. Vertical brushed micro-streaks — 1px columns, seeded ±8% luminance
+    // v0.9 RADIANCE fix-round H3: alpha range cut ~55% (0.18-0.40 → 0.08-0.18).
+    // This texture's U axis maps to whichever geometry dimension is longest
+    // (e.g. the corridor's horizontal handrails, where U = the rail's full
+    // length with no repeat) — at that stretch, the streaks read as
+    // longitudinal wood-plank grain instead of a subtle anodized brush. Kept
+    // "brushed ALONG the rail" (streak direction unchanged) but much lower
+    // contrast so it stops reading as discrete planks.
     const streakRand = rng(1127);
     for (let x = 0; x < W; x++) {
       const delta = (streakRand() - 0.5) * 2 * 0.08; // -0.08..+0.08
-      const alpha = 0.18 + streakRand() * 0.22;
+      const alpha = 0.08 + streakRand() * 0.10;
       ctx.fillStyle = delta > 0
         ? `rgba(255,255,255,${(alpha * delta / 0.08).toFixed(3)})`
         : `rgba(0,0,0,${(alpha * (-delta) / 0.08).toFixed(3)})`;
@@ -157,10 +164,15 @@ export function makeOrangeFrameTexture(): THREE.CanvasTexture {
       }
     }
 
-    // 5. Bottom grounding — darker/redder near floor
+    // 5. Bottom grounding — darker near floor.
+    // v0.9 RADIANCE fix-round H3: was near-black-RED (rgba(30,0,0,...)) — on
+    // repeat-tiled long rails this compounded into a red-brown "wood" cast
+    // across the whole visible strip. Neutralized toward a dark neutral-warm
+    // (less saturated red) and halved alpha so it still grounds tall door
+    // frames near the floor without tinting rails red.
     const groundGrad = ctx.createLinearGradient(0, H * 0.55, 0, H);
     groundGrad.addColorStop(0.0, 'rgba(0,0,0,0.00)');
-    groundGrad.addColorStop(1.0, 'rgba(30,0,0,0.28)');
+    groundGrad.addColorStop(1.0, 'rgba(18,10,6,0.16)');
     ctx.fillStyle = groundGrad;
     ctx.fillRect(0, 0, W, H);
 
