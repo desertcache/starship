@@ -164,7 +164,13 @@ Palettes may leave the ship's interior palette — these are OTHER DIMENSIONS �
 
 ## Codex / relics / holotable (Stage D)
 
-Survey console reads live codex state; relic pickup lights its annex socket (emissive swap + small light NO — emissive only, the light pool is full); all 3 → holotable ignites: additive-teal wireframe-ish **hull miniature** (~1m long, slowly rotating on `onBeforeRender`). Hull design: a chunky worn freighter silhouette that plausibly encloses the interior layout (cockpit nose fore, corridor spine, engine block aft matching engineering, cargo belly aft — interior spans ~43m Z × 13m X; miniature scale ~1:50). This mesh is the reference for v1.1's full-scale hull — build it as a standalone factory `src/fx/hullMiniature.ts` so it can be scaled later.
+Survey console reads live codex state; relic pickup lights its annex socket (emissive swap + small light NO — emissive only, the light pool is full); all 3 → holotable ignites: an additive-teal **hologram of the ship's exterior hull** (~1m, slowly rotating on `onBeforeRender`).
+
+**The hull is NOT a decorative prop — it is the v1.1 full-scale hull skeleton viewed small. Implementation playbook: `docs/research-hull.md` — MANDATORY read.** Structure it as `src/fx/hull/`:
+- `anchors.ts` — export `interiorAnchors` from the real layout (interior AABB slices per Z-station, porthole centers+normals, canopy frame, engine axis). SINGLE SOURCE OF TRUTH; assembly placements are the input.
+- `buildHull.ts` — loft chamfered-octagon stations (keyed to real bulkheads, MARGIN 0.6m, one CHAMFER_RATIO everywhere) + parametric modules at anchors (engine block, cargo doors, canopy frame, porthole sockets) + seam-biased 90°-snapped greeble scatter, merged non-indexed (flat facets). Full-scale geometry (~25k tris), silhouette rules §2 of the research doc.
+- `holoMaterial.ts` — barycentric edge-glow + fresnel + local-space scanlines + sweep + flicker shader from the research doc §6; `addBarycentric()` on the non-indexed geometry. Holotable renders the SAME BufferGeometry at scale 1/45.
+For THRESHOLD only the hologram ships (no PBR hull material needed yet — that's v1.1); but the geometry factory must be full-scale-correct so v1.1 inherits a validated skeleton. Scanlines keyed to local position × uLineDensity (world-space lines at 1/45 = invisible fuzz).
 
 ## Tests & verify
 
