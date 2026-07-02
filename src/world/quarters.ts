@@ -44,6 +44,7 @@ import {
   buildLightSwitchPlate,
 } from './quartersDressing.js';
 import { buildFoldDownDesk, buildDeskWallDressing } from './quartersRightWall.js';
+import { mergeStaticSiblings } from './staticMerge.js';
 import { advanceShipClock, setEnergy } from '../core/state.js';
 import { fadeTransition } from '../ui/hud.js';
 import { restockFridge } from './interactItems.js';
@@ -164,6 +165,10 @@ export function buildQuartersA(): RoomModule {
   // ── Camera: doorway (starboard wall), looking straight across to port ──────
   const camPos  = new THREE.Vector3( 2.1, 1.65,  0.0);
   const camLook = new THREE.Vector3(-2.1, 1.45,  0.0);
+
+  // v0.9 A1 defrag: merge static same-material sibling meshes into fewer
+  // draw calls. Zero visual/functional change — see staticMerge.ts.
+  mergeStaticSiblings(group);
 
   return {
     group,
@@ -291,6 +296,10 @@ export function buildQuartersB(): RoomModule {
   // ── Camera: doorway (port wall), looking straight across to starboard ──────
   const camPos  = new THREE.Vector3(-2.1, 1.65,  0.0);
   const camLook = new THREE.Vector3( 2.1, 1.45,  0.0);
+
+  // v0.9 A1 defrag: merge static same-material sibling meshes into fewer
+  // draw calls. Zero visual/functional change — see staticMerge.ts.
+  mergeStaticSiblings(group);
 
   return {
     group,

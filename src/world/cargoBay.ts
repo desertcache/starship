@@ -10,6 +10,7 @@ import { buildRoom } from './roomBuilder.js';
 import { matWall, matFloor, matCeiling } from './materials.js';
 import { matDoorFrame } from '../fx/shipMaterials.js';
 import { buildCargoBayProps } from './cargoBayProps.js';
+import { mergeStaticSiblings } from './staticMerge.js';
 import type { RoomModule } from './types.js';
 
 // Heavy pressure-hatch frame constants (deeper than standard)
@@ -83,6 +84,10 @@ export function buildCargoBay(): RoomModule {
   // Props (density pass returns extra colliders for new crate cluster + breaker box)
   const densityColliders = buildCargoBayProps(group, W, H, D);
   for (const c of densityColliders) colliders.push(c);
+
+  // v0.9 A1 defrag: merge static same-material sibling meshes into fewer
+  // draw calls. Zero visual/functional change — see staticMerge.ts.
+  mergeStaticSiblings(group);
 
   // Cargo bay camera: stand fore, looking aft across the full 5H volume.
   // Eye height 1.7, position at Z=-3 (fore third), look toward catwalk area.

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
 import { addCockpitProps, liveScreenTick, dustMoteTick } from './cockpitProps.js';
+import { mergeStaticSiblings } from './staticMerge.js';
 import type { RoomModule } from './types.js';
 
 /** Cockpit — fore end of ship. 6W x 3H x 5D. */
@@ -36,6 +37,11 @@ export function buildCockpit(): RoomModule {
   // Add props (console bank, seats, side consoles, pedestal, dust, decals)
   const props = addCockpitProps(group);
   colliders.push(...props.colliders);
+
+  // v0.9 A1 defrag: merge static same-material sibling meshes (walls, seats,
+  // consoles, ...) into fewer draw calls. Zero visual/functional change —
+  // see staticMerge.ts for the safety model.
+  mergeStaticSiblings(group);
 
   // Per-frame tick for live screens and dust motes (onBeforeRender on the group)
   let _lastFrame = 0;

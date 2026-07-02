@@ -185,8 +185,14 @@ export function buildCorridorPortholeBezel(
 
   // Corner-masking annulus — RingGeometry has an open centre so the circular
   // aperture stays fully transparent.
+  // Named (and every other bezel piece below too): the v0.9 A1 defrag pass
+  // merges unnamed same-material siblings, and merging these rotated
+  // Ring/Torus/Cylinder pieces across the 4 porthole instances produced a
+  // visible geometry artifact at grazing angles (qa-porthole-oblique). Root
+  // cause not fully isolated — naming opts them out of that merge pass.
   const cornerGeo = new THREE.RingGeometry(WIN_R, outerR, 48);
   const cornerMask = new THREE.Mesh(cornerGeo, matCorridorCorner);
+  cornerMask.name = 'porthole-bezel-corner';
   cornerMask.rotation.y = Math.PI / 2;
   cornerMask.position.set(faceX, pY, pZ);
   group.add(cornerMask);
@@ -194,6 +200,7 @@ export function buildCorridorPortholeBezel(
   // Cylindrical reveal tube — open-ended, short depth toward exterior
   const tubeGeo = new THREE.CylinderGeometry(WIN_R, WIN_R, 0.08, 28, 1, true);
   const tube = new THREE.Mesh(tubeGeo, matCorridorTube);
+  tube.name = 'porthole-bezel-tube';
   tube.rotation.z = Math.PI / 2;
   tube.position.set(faceX + sign * 0.04, pY, pZ);
   group.add(tube);
@@ -201,6 +208,7 @@ export function buildCorridorPortholeBezel(
   // Torus ring rim — center radius = torusR, tube thickness = TUBE_R
   const ringGeo = new THREE.TorusGeometry(torusR, TUBE_R, 10, 40);
   const ring = new THREE.Mesh(ringGeo, matCorridorBezel);
+  ring.name = 'porthole-bezel-ring';
   ring.rotation.y = Math.PI / 2;
   ring.position.set(faceX + sign * 0.001, pY, pZ);
   group.add(ring);
@@ -210,6 +218,7 @@ export function buildCorridorPortholeBezel(
   const catchR  = torusR - 0.03;
   const catchGeo = new THREE.TorusGeometry(catchR, 0.012, 8, 40);
   const catchRing = new THREE.Mesh(catchGeo, matCatchLight);
+  catchRing.name = 'porthole-bezel-catchring';
   catchRing.rotation.y = Math.PI / 2;
   // 7mm proud of the main bezel torus (which is at faceX + sign*0.001)
   catchRing.position.set(faceX + sign * 0.008, pY, pZ);
@@ -220,6 +229,7 @@ export function buildCorridorPortholeBezel(
   for (let i = 0; i < 8; i++) {
     const angle = (i / 8) * Math.PI * 2;
     const bolt = new THREE.Mesh(boltGeo, matCorridorBolt);
+    bolt.name = 'porthole-bezel-bolt';
     bolt.rotation.z = Math.PI / 2;
     bolt.position.set(
       faceX + sign * 0.028,

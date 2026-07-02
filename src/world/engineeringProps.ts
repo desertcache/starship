@@ -181,6 +181,9 @@ export function buildReactorRail(_H: number): RailResult {
       const x1 = CX + Math.sin(a1) * RAIL_R; const z1 = CZ + Math.cos(a1) * RAIL_R;
       const dx = x1 - x0; const dz = z1 - z0; const len = Math.sqrt(dx*dx + dz*dz);
       const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, len, 5), postMat);
+      // Left unnamed (eligible for the v0.9 A1 defrag merge pass) — screenshot
+      // comparison of the 'engineering' camera showed no artifact here, both
+      // merged and unmerged, unlike the corridor porthole bezel sibling case.
       seg.position.set((x0+x1)/2, railY, (z0+z1)/2);
       seg.rotation.y = -Math.atan2(dz, dx) + Math.PI / 2;
       g.add(seg);

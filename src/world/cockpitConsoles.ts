@@ -138,13 +138,12 @@ export function buildConsoleBank(group: THREE.Group): ConsoleBankResult {
 
   // v0.6 P2: teal + amber emissive status dots along the console FRONT EDGE —
   // 4 small dots, alternating teal/amber, give the ref-05 "live console" feel.
+  // Reuse the shared matTealBasic/matOrangeBasic singletons (was a fresh
+  // material per dot) so the 2 teal + 2 orange dots can merge with siblings.
   const frontDotGeo = new THREE.SphereGeometry(0.015, 6, 4);
-  const frontDotColors = [COL_TEAL, COL_ORANGE, COL_TEAL, COL_ORANGE];
+  const frontDotMats = [matTealBasic, matOrangeBasic, matTealBasic, matOrangeBasic];
   for (let i = 0; i < 4; i++) {
-    const fd = new THREE.Mesh(
-      frontDotGeo,
-      new THREE.MeshBasicMaterial({ color: frontDotColors[i] }),
-    );
+    const fd = new THREE.Mesh(frontDotGeo, frontDotMats[i]);
     fd.position.set(-0.9 + i * 0.6, BH * 0.5, FZ + 0.01); // front face, mid-height
     group.add(fd);
   }

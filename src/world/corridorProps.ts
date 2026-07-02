@@ -34,6 +34,7 @@ const _mats = {
   gunmetal:   new THREE.MeshLambertMaterial({ color: COL_GUNMETAL }),
   orange:     new THREE.MeshLambertMaterial({ color: COL_ORANGE }),
   tealBasic:  new THREE.MeshBasicMaterial({ color: COL_TEAL }),
+  orangeBasic: new THREE.MeshBasicMaterial({ color: COL_ORANGE }),
 };
 
 // ── Geometry helpers ───────────────────────────────────────────────────────────
@@ -272,10 +273,10 @@ export function buildCorridorProps(group: THREE.Group): void {
       jbMesh.position.set(wallX, JB_Y, jbZ);
       group.add(jbMesh);
 
-      // Orange breaker face on junction box (inner face)
+      // Orange breaker face on junction box (inner face). Shared singleton
+      // (was a fresh material per box) so the 6 identical faces can merge.
       const breakerGeo = new THREE.PlaneGeometry(0.16, 0.22);
-      const breakerMat = new THREE.MeshBasicMaterial({ color: COL_ORANGE });
-      const breaker    = new THREE.Mesh(breakerGeo, breakerMat);
+      const breaker    = new THREE.Mesh(breakerGeo, mats.orangeBasic);
       // face toward corridor center
       breaker.position.set(wallX - side * 0.062, JB_Y, jbZ);
       breaker.rotation.y = side === -1 ? 0 : Math.PI;

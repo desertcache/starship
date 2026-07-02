@@ -14,6 +14,7 @@ import {
   buildBreakerCabinet,
   buildCrates,
 } from './engineeringProps.js';
+import { mergeStaticSiblings } from './staticMerge.js';
 
 /** Engineering — 6W x 3H x 7D. Aft end of ship. */
 export function buildEngineering(): RoomModule {
@@ -73,6 +74,10 @@ export function buildEngineering(): RoomModule {
   const reactorLight = new THREE.PointLight(0xff5519, 3.0, 5.5, 2);
   reactorLight.position.set(0, 1.2, 1.0);
   group.add(reactorLight);
+
+  // v0.9 A1 defrag: merge static same-material sibling meshes into fewer
+  // draw calls. Zero visual/functional change — see staticMerge.ts.
+  mergeStaticSiblings(group);
 
   // ── Camera: frame the glowing reactor column as the hero ──────────────────
   // Stand fore-center, looking aft toward the reactor. Shows reactor + rails +

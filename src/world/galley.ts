@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
 import type { RoomModule, Interactable } from './types.js';
 import { addGalleyProps } from './galleyProps.js';
+import { mergeStaticSiblings } from './staticMerge.js';
 import { setHunger } from '../core/state.js';
 import { fadeTransition } from '../ui/hud.js';
 
@@ -42,6 +43,10 @@ export function buildGalley(): RoomModule {
       }, 280, 150);
     },
   };
+
+  // v0.9 A1 defrag: merge static same-material sibling meshes into fewer
+  // draw calls. Zero visual/functional change — see staticMerge.ts.
+  mergeStaticSiblings(group);
 
   // Camera: angled to frame counter + upper cabinets + fridge + stove glow.
   // Position on port side looking toward starboard counter run.
