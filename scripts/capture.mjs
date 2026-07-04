@@ -61,6 +61,11 @@ const TOUR = [
   ['corridor', 6000],
   ['engineering', 5000],
   ['cargo-bay', 5000],
+  ['portal-room', 8000],
+  ['verdant', 7000],
+  ['ashfall', 7000],
+  ['rift', 7000],
+  ['portal-room-qa', 5000],
   ['cockpit', 6000],
 ];
 
