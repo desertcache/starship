@@ -23,8 +23,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const SHOTS_DIR = resolve(ROOT, 'verify', 'shots');
 const REPORT_PATH = resolve(ROOT, 'verify', 'report.json');
+// 127.0.0.1 explicitly (not 'localhost') end to end — the free-port probe,
+// the preview server's own bind, and every fetch/navigation all need to agree
+// on IPv4, or a parallel-repo lane bound on ::1 can pass the probe as "free"
+// while still serving stale content on the same port number.
+const PREVIEW_HOST = '127.0.0.1';
 let PREVIEW_PORT = 4173;
-let BASE_URL = `http://localhost:${PREVIEW_PORT}`;
+let BASE_URL = `http://${PREVIEW_HOST}:${PREVIEW_PORT}`;
 const headed  = process.argv.includes('--headed');
 /** When true, appends ?quality=high to every URL opened by the harness. */
 const quality = process.argv.includes('--quality');
@@ -74,7 +79,7 @@ async function findFreePort(start) {
   const { createServer } = await import('node:net');
   return new Promise((resolve) => {
     const s = createServer();
-    s.listen(start, '127.0.0.1', () => {
+    s.listen(start, PREVIEW_HOST, () => {
       const { port } = s.address();
       s.close(() => resolve(port));
     });
@@ -83,16 +88,19 @@ async function findFreePort(start) {
 }
 
 PREVIEW_PORT = await findFreePort(4173);
-BASE_URL = `http://localhost:${PREVIEW_PORT}`;
+BASE_URL = `http://${PREVIEW_HOST}:${PREVIEW_PORT}`;
 
-console.log(`[verify] Starting preview server on port ${PREVIEW_PORT}…`);
+console.log(`[verify] Starting preview server on ${PREVIEW_HOST}:${PREVIEW_PORT}…`);
 // Spawn vite directly (no shell): on Windows, shell:true makes server.kill()
 // kill the cmd wrapper and orphan the real server, which then serves stale
-// builds to the next verify run.
+// builds to the next verify run. --host pins the bind to IPv4 explicitly —
+// vite's default 'localhost' host can resolve/bind ::1, which the IPv4-only
+// port probe above can't see (a stale IPv4 server on the same port number
+// would otherwise look "free" and get silently verified instead).
 const VITE_BIN = resolve(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 const server = spawn(
   process.execPath,
-  [VITE_BIN, 'preview', '--port', String(PREVIEW_PORT), '--strictPort'],
+  [VITE_BIN, 'preview', '--host', PREVIEW_HOST, '--port', String(PREVIEW_PORT), '--strictPort'],
   { cwd: ROOT, stdio: 'inherit' },
 );
 
@@ -231,6 +239,16 @@ async function run() {
 
     // Helpers
     const sleep = (ms) => page.waitForTimeout(ms);
+    // Wait for one ACTUALLY-RENDERED frame (double rAF, resolved from inside
+    // the page) rather than a fixed real-time sleep. At ~1fps SwiftShader a
+    // 150ms wait doesn't guarantee the game's own rAF loop has ticked even
+    // once with the new teleported position, so tickInteract() (and anything
+    // gated on it, like a fresh raycast/proximity target) can still be
+    // reading stale state when the very next line calls interact(). Always
+    // call this right after __test.teleport(), before interacting.
+    const waitFrame = () => page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(undefined)))),
+    );
 
     function assert(condition, message) {
       if (!condition) {
@@ -253,6 +271,7 @@ async function run() {
 
     // Drain energy below 100 so we can verify it was restored
     await page.evaluate(() => window.__test.teleport(-4, 1.7, -16.5));
+    await waitFrame();
     await sleep(150); // let a frame render so raycast has position
 
     // Headless: proximity interact (no pointer lock needed)
@@ -289,6 +308,7 @@ async function run() {
     console.log(`  pre-eat  — hunger=${preEat.hunger.toFixed(1)}`);
 
     await page.evaluate(() => window.__test.teleport(1.0, 1.7, -1.6));
+    await waitFrame();
     await sleep(150);
 
     const interacted2 = await page.evaluate(() => window.__test.interact());
@@ -321,6 +341,7 @@ async function run() {
 
     // Teleport adjacent to door
     await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
+    await waitFrame();
     await sleep(150);
 
     const interacted3a = await page.evaluate(() => window.__test.interact());
@@ -333,6 +354,7 @@ async function run() {
 
     // Toggle back open
     await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
+    await waitFrame();
     await sleep(150);
     const interacted3b = await page.evaluate(() => window.__test.interact());
     assert(interacted3b, 'interact() returned false on second door interact');
@@ -353,11 +375,13 @@ async function run() {
     console.log(`  pre-fridge hunger=${preHunger.toFixed(1)} (drained via test hook)`);
 
     await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
+    await waitFrame();
     await sleep(150);
     const opened4 = await page.evaluate(() => window.__test.interact()); // opens the door
     assert(opened4, 'interact() returned false — fridge interactable not found');
     await sleep(500); // door tween
     await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
+    await waitFrame();
     await sleep(150);
     const took4 = await page.evaluate(() => window.__test.interact()); // takes a ration
     assert(took4, 'interact() returned false — take-ration step failed');
@@ -381,6 +405,7 @@ async function run() {
 
     // Step 5a: teleport near fridge and interact (should OPEN, no hunger change)
     await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
+    await waitFrame();
     await sleep(150);
 
     const preOpenFridge = await page.evaluate(() => window.__test.getState());
@@ -396,6 +421,7 @@ async function run() {
 
     // Step 5b: interact again → should TAKE RATION (hunger +30)
     await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
+    await waitFrame();
     await sleep(150);
 
     const interacted5b = await page.evaluate(() => window.__test.interact());
@@ -418,14 +444,17 @@ async function run() {
 
     // Step 5c: drain remaining rations then close
     await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
+    await waitFrame();
     await sleep(100);
     await page.evaluate(() => window.__test.interact()); // take ration 2
     await sleep(100);
     await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
+    await waitFrame();
     await sleep(100);
     await page.evaluate(() => window.__test.interact()); // take ration 3
     await sleep(100);
     await page.evaluate(() => window.__test.teleport(1.8, 1.7, 0.5));
+    await waitFrame();
     await sleep(100);
     await page.evaluate(() => window.__test.interact()); // close
     await sleep(500); // let door tween close
@@ -446,12 +475,14 @@ async function run() {
     // Ensure the door is OPEN and ARMED. Interacting arms auto-close; after the
     // prior tests the door is open, so toggle twice to land on open+armed.
     await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
+    await waitFrame();
     await sleep(150);
     if (await page.evaluate((id) => window.__test.getDoorOpen(id), acDoorId)) {
       // It's open — close then reopen so it ends open AND armed.
       await page.evaluate(() => window.__test.interact()); // close + arm
       await sleep(600);
       await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
+      await waitFrame();
       await sleep(150);
       await page.evaluate(() => window.__test.interact()); // reopen (still armed)
       await sleep(600);
@@ -466,6 +497,7 @@ async function run() {
     // Walk far away (cockpit). Wait a couple frames so tickInteract threads the
     // new player position into doors.ts before we force the check.
     await page.evaluate(() => window.__test.teleport(0, 1.7, -22.5));
+    await waitFrame();
     await sleep(250);
 
     const acClosed = await page.evaluate(() => window.__test.forceDoorAutoCloseCheck());
@@ -514,6 +546,7 @@ async function run() {
     // Step 2→3: file report at the save terminal (world -1.44,1.55,-16) via a
     // real proximity interact — the terminal is alone within range here.
     await page.evaluate(() => window.__test.teleport(-1.44, 1.7, -16));
+    await waitFrame();
     await sleep(200);
     const savedInteract = await page.evaluate(() => window.__test.interact());
     assert(savedInteract, 'Test 8: interact() returned false near save terminal');
@@ -525,30 +558,52 @@ async function run() {
 
     console.log('[verify] All 8 functional tests PASSED ✓\n');
 
-    // ── Test 9: Portal roundtrip via the dev-void proof world ───────────────────
-    // ship → switchWorld('dev') → assert active + player near dev spawn →
-    // return portal (real traversal + fade) → assert back on ship + spawn +
-    // tests 1-8 ship state intact. (Stage D repoints this at 'verdant'.)
-    console.log('[verify] Test 9: Portal roundtrip (dev-void)');
+    // ── Test 9: Portal roundtrip via VERDANT ────────────────────────────────────
+    // ship → annex → real gate interact (traversal + fade) → assert active
+    // 'verdant' + player near its spawn → real return-portal interact → assert
+    // back on 'ship' + player near the annex arrival pad + tests 1-8 state
+    // intact. devVoid stays registered (now the creature bench, unreachable in
+    // normal play) but is no longer what this roundtrip exercises.
+    console.log('[verify] Test 9: Portal roundtrip (verdant)');
     const w0 = await page.evaluate(() => window.__test.getActiveWorld());
     assert(w0 === 'ship', `Test 9: expected 'ship' active at start; got ${w0}`);
     const quest9 = (await page.evaluate(() => window.__test.getState())).questStep;
 
-    // Enter dev (headless synchronous switch → teleports to dev spawn).
-    await page.evaluate(() => window.__test.switchWorld('dev'));
-    await sleep(200);
+    // doors-OPEN invariant covers the new cargo→annex door too.
+    const annexDoorOpen = await page.evaluate(() => window.__test.getDoorOpen('cargo-annex'));
+    assert(annexDoorOpen === true, `Test 9: 'cargo-annex' door should start OPEN; got ${annexDoorOpen}`);
+
+    // Walk into the annex, then query the LIVE world position of the verdant
+    // gate's portal interactable (queried, never hardcoded — its position is
+    // synced every frame off the actual mesh, per portalSurface.ts).
+    await page.evaluate(() => window.__test.teleport(0, 1.7, 21.5));
+    await waitFrame();
+    const annexIas = await page.evaluate(() => window.__test.getActiveInteractables());
+    const verdantGate = annexIas.find((ia) => ia.id === 'portal-verdant');
+    assert(verdantGate, "Test 9: 'portal-verdant' interactable not found in the annex");
+
+    await page.evaluate((p) => window.__test.teleport(p.x, p.y, p.z), verdantGate);
+    await waitFrame();
+    const entered = await page.evaluate(() => window.__test.interact());
+    assert(entered, 'Test 9: verdant-gate interact() returned false');
+    console.log('[verify] Waiting for portal fade transition (1300ms)…');
+    await sleep(1300);
+
     const w1 = await page.evaluate(() => window.__test.getActiveWorld());
-    console.log(`  after switchWorld('dev'): active=${w1}`);
-    assert(w1 === 'dev', `Test 9: getActiveWorld should be 'dev'; got ${w1}`);
+    console.log(`  after entering the verdant gate: active=${w1}`);
+    assert(w1 === 'verdant', `Test 9: getActiveWorld should be 'verdant'; got ${w1}`);
 
     const dp = await page.evaluate(() => window.__test.getPlayerPos());
-    const spawnDist = Math.hypot(dp.x - 0, dp.z - 8);
-    console.log(`  dev player pos (${dp.x.toFixed(2)}, ${dp.y.toFixed(2)}, ${dp.z.toFixed(2)}) — dist to spawn ${spawnDist.toFixed(2)}`);
-    assert(spawnDist < 2.0, `Test 9: player should spawn near the dev pad; dist=${spawnDist.toFixed(2)}`);
+    const spawnDist = Math.hypot(dp.x - 0, dp.z - 26);
+    console.log(`  verdant player pos (${dp.x.toFixed(2)}, ${dp.y.toFixed(2)}, ${dp.z.toFixed(2)}) — dist to spawn ${spawnDist.toFixed(2)}`);
+    assert(spawnDist < 2.0, `Test 9: player should spawn near the verdant pad; dist=${spawnDist.toFixed(2)}`);
 
-    // Return via the return portal interactable (real traversal → fade).
-    await page.evaluate(() => window.__test.teleport(0, 1.7, -5.0));
-    await sleep(150);
+    // Return via verdant's OWN return-portal interactable (real traversal → fade).
+    const verdantIas = await page.evaluate(() => window.__test.getActiveInteractables());
+    const returnPortal = verdantIas.find((ia) => ia.id === 'portal-ship');
+    assert(returnPortal, "Test 9: 'portal-ship' return interactable not found in verdant");
+    await page.evaluate((p) => window.__test.teleport(p.x, p.y, p.z), returnPortal);
+    await waitFrame();
     const returned = await page.evaluate(() => window.__test.interact());
     assert(returned, 'Test 9: return-portal interact() returned false');
     console.log('[verify] Waiting for portal fade transition (1300ms)…');
@@ -559,15 +614,109 @@ async function run() {
     assert(w2 === 'ship', `Test 9: should be back on 'ship'; got ${w2}`);
 
     const sp = await page.evaluate(() => window.__test.getPlayerPos());
-    const shipDist = Math.hypot(sp.x - 0, sp.z - 16);
-    console.log(`  ship player pos (${sp.x.toFixed(2)}, ${sp.y.toFixed(2)}, ${sp.z.toFixed(2)}) — dist to arrival ${shipDist.toFixed(2)}`);
-    assert(shipDist < 3.0, `Test 9: player should arrive near the ship spawn; dist=${shipDist.toFixed(2)}`);
+    const shipDist = Math.hypot(sp.x - 0, sp.z - 18.75);
+    console.log(`  ship player pos (${sp.x.toFixed(2)}, ${sp.y.toFixed(2)}, ${sp.z.toFixed(2)}) — dist to annex arrival pad (0, 18.75) ${shipDist.toFixed(2)}`);
+    assert(shipDist < 3.0, `Test 9: player should arrive within 3.0 of the annex arrival pad; dist=${shipDist.toFixed(2)}`);
 
     const quest9b = (await page.evaluate(() => window.__test.getState())).questStep;
     assert(quest9b === quest9, `Test 9: ship quest state changed across roundtrip (${quest9} → ${quest9b})`);
-    console.log('[verify] Test 9 PASSED ✓ (ship → dev → ship; spawn + return + state intact)');
+    console.log('[verify] Test 9 PASSED ✓ (ship → verdant → ship; spawn + return + state intact)');
 
     console.log('[verify] All 9 functional tests PASSED ✓\n');
+
+    // ── Test 10: Codex / relic / save-load roundtrip ────────────────────────────
+    // Scan one verdant creature (dupe-guarded) → collect the verdant relic →
+    // reload the ACTUAL page (fresh JS state, same localStorage) → assert both
+    // survived AND that the socket lights + relic stop being offered purely
+    // from boot-time state (no live pickup event fires on a fresh page load).
+    console.log('[verify] Test 10: Codex / relic / save-load roundtrip');
+
+    const codexBefore = await page.evaluate(() => window.__test.getCodex());
+    assert(codexBefore.scans.length === 0, `Test 10: expected a clean codex before this test; got ${JSON.stringify(codexBefore.scans)}`);
+    assert(codexBefore.relics.length === 0, `Test 10: expected no relics before this test; got ${JSON.stringify(codexBefore.relics)}`);
+
+    await page.evaluate(() => window.__test.switchWorld('verdant'));
+    await waitFrame();
+
+    // Scan a creature. Position is queried live (creatures wander) rather than
+    // hardcoded — any verdant-grazer/-skitterer instance works.
+    const t10Ias = await page.evaluate(() => window.__test.getActiveInteractables());
+    const t10Creature = t10Ias.find((ia) => ia.id.startsWith('verdant-grazer') || ia.id.startsWith('verdant-skitterer'));
+    assert(t10Creature, 'Test 10: no verdant creature interactable found');
+    const t10SpeciesId = t10Creature.id.replace(/-\d+$/, '');
+
+    await page.evaluate((p) => window.__test.teleport(p.x, p.y, p.z), t10Creature);
+    await waitFrame();
+    const t10Scanned = await page.evaluate(() => window.__test.interact());
+    assert(t10Scanned, 'Test 10: creature interact() returned false');
+
+    const codexAfterScan = await page.evaluate(() => window.__test.getCodex());
+    assert(codexAfterScan.scans.includes(t10SpeciesId), `Test 10: codex should include '${t10SpeciesId}'; got ${JSON.stringify(codexAfterScan.scans)}`);
+    console.log(`  scanned '${t10SpeciesId}' — codex now [${codexAfterScan.scans.join(', ')}]`);
+
+    // Dupe scan — re-locate the (moved) creature and interact again; codex
+    // must NOT double-count.
+    const t10IasAgain = await page.evaluate(() => window.__test.getActiveInteractables());
+    const t10CreatureAgain = t10IasAgain.find((ia) => ia.id.startsWith(t10SpeciesId));
+    assert(t10CreatureAgain, `Test 10: '${t10SpeciesId}' instance vanished before the dupe-scan check`);
+    await page.evaluate((p) => window.__test.teleport(p.x, p.y, p.z), t10CreatureAgain);
+    await waitFrame();
+    const t10DupeScanned = await page.evaluate(() => window.__test.interact());
+    assert(t10DupeScanned, 'Test 10: dupe creature interact() returned false');
+    const codexAfterDupe = await page.evaluate(() => window.__test.getCodex());
+    assert(codexAfterDupe.scans.length === codexAfterScan.scans.length, `Test 10: dupe scan changed codex length (${codexAfterScan.scans.length} → ${codexAfterDupe.scans.length})`);
+    console.log('[verify]   dupe scan did not double-count ✓');
+
+    // Collect the verdant relic.
+    const t10IasForRelic = await page.evaluate(() => window.__test.getActiveInteractables());
+    const t10Relic = t10IasForRelic.find((ia) => ia.id === 'verdant-relic');
+    assert(t10Relic, "Test 10: 'verdant-relic' interactable not found (already collected earlier in this run?)");
+    await page.evaluate((p) => window.__test.teleport(p.x, p.y, p.z), t10Relic);
+    await waitFrame();
+    const t10Collected = await page.evaluate(() => window.__test.interact());
+    assert(t10Collected, 'Test 10: relic interact() returned false');
+    const codexAfterRelic = await page.evaluate(() => window.__test.getCodex());
+    assert(codexAfterRelic.relics.includes('verdant'), `Test 10: relics should include 'verdant'; got ${JSON.stringify(codexAfterRelic.relics)}`);
+    console.log(`  collected the verdant relic — relics now [${codexAfterRelic.relics.join(', ')}]`);
+
+    await page.evaluate(() => window.__test.switchWorld('ship'));
+    await waitFrame();
+
+    // ── Reload the actual page — fresh JS state, same localStorage. Proves
+    // the roundtrip through REAL persistence, not just leftover memory. ─────
+    console.log('[verify] Reloading page to exercise the loadState() roundtrip…');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForFunction(() => window.__ready instanceof Promise, { timeout: 15000 });
+    await page.evaluate(() => window.__ready);
+    await page.waitForTimeout(600);
+
+    const codexAfterReload = await page.evaluate(() => window.__test.getCodex());
+    assert(codexAfterReload.scans.includes(t10SpeciesId), `Test 10: codex scan lost across reload; got ${JSON.stringify(codexAfterReload.scans)}`);
+    assert(codexAfterReload.relics.includes('verdant'), `Test 10: relic lost across reload; got ${JSON.stringify(codexAfterReload.relics)}`);
+    console.log('[verify]   codex + relic survived saveState()/loadState() ✓');
+
+    // Relic persistence: must not be re-offered after the reload.
+    await page.evaluate(() => window.__test.switchWorld('verdant'));
+    await waitFrame();
+    const t10IasPostReload = await page.evaluate(() => window.__test.getActiveInteractables());
+    assert(!t10IasPostReload.some((ia) => ia.id === 'verdant-relic'), 'Test 10: collected relic was re-offered after reload');
+    console.log('[verify]   collected relic not re-offered after reload ✓');
+
+    // Socket lighting: state-driven, not event-driven — this is a FRESH page
+    // load, so no pickup event could possibly have fired this session.
+    await page.evaluate(() => window.__test.switchWorld('ship'));
+    await waitFrame();
+    await page.evaluate((n) => window.__setCam(n), 'portal-room');
+    await waitFrame();
+    await sleep(150);
+    const socketColor = await page.evaluate(() => window.__test.getRelicSocketColor('verdant'));
+    assert(socketColor, "Test 10: 'relic-socket-verdant' mesh not found");
+    console.log(`  verdant relic socket color after reload: ${JSON.stringify(socketColor)}`);
+    assert(socketColor.g > 1.2, `Test 10: verdant relic socket should read LIT (g>1.2, biome-tinted) after reload; got g=${socketColor.g.toFixed(3)}`);
+
+    console.log('[verify] Test 10 PASSED ✓ (codex + relic + save/load + socket-lit-on-reload)');
+
+    console.log('[verify] All 10 functional tests PASSED ✓\n');
 
     await browser.close();
     console.log('[verify] Done. ✓');

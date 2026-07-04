@@ -17,16 +17,24 @@ import {
   buildCockpitBed, buildEngineeringBed, buildGalleyBed, buildCorridorBed,
   scheduleStep, playOneShotInternal, buildQuartersPersonality,
 } from './audioSynth.js';
+import { buildVerdantBed, buildAshfallBed, buildRiftBed } from './worldBeds.js';
 
 // Re-export types callers need
 export type { RoomName, SurfaceType, OneShotType } from './audioSynth.js';
 
 import type { RoomName, SurfaceType, OneShotType } from './audioSynth.js';
 
+/** v1.0 THRESHOLD pocket worlds that carry their own ambient bed. */
+export type PocketWorldId = 'verdant' | 'ashfall' | 'rift';
+
 export interface AudioSystem {
   tick(moving: boolean): void;
   playOneShot(type: OneShotType): void;
   setRoom(room: RoomName): void;
+  /** Crossfade to a pocket world's ambient bed, or back to the current ship
+   *  room bed when passed null. Ship's own room-crossfade system is untouched
+   *  — this only ever mutes/restores the SAME room branches it already owns. */
+  setWorldBed(id: PocketWorldId | null): void;
   dispose(): void;
 }
 
@@ -69,6 +77,9 @@ let currentSurface: SurfaceType = 'soft';
 
 const roomBranches: Partial<Record<RoomName, RoomBranch>> = {};
 let currentRoom: RoomName = 'corridor';
+
+const worldBranches: Partial<Record<PocketWorldId, RoomBranch>> = {};
+let currentWorldBed: PocketWorldId | null = null;
 
 // Module-level function refs so playOneShot/setAudioRoom work before initAudio()
 let _playOneShotFn: ((type: OneShotType) => void) | null = null;
@@ -116,6 +127,11 @@ function initAudioContext(): void {
   if (corridorBranch) corridorBranch.gainNode.gain.value = 1;
 
   buildQuartersPersonality(ctx, masterGain);
+
+  // v1.0 THRESHOLD — pocket-world ambient beds (silent until a world switch).
+  worldBranches['verdant'] = buildVerdantBed(ctx, masterGain);
+  worldBranches['ashfall'] = buildAshfallBed(ctx, masterGain);
+  worldBranches['rift']    = buildRiftBed(ctx, masterGain);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -152,6 +168,35 @@ export function initAudio(): AudioSystem {
     playOneShotInternal(ctx, masterGain, type);
   };
 
+  // ── Pocket-world bed crossfade ────────────────────────────────────────────
+  // Orthogonal to crossfadeToRoom above (never calls it, never touches the
+  // ship's currentRoom bookkeeping): entering a world fades the CURRENT ship
+  // room bed out and the world bed in; returning (id=null) reverses it, so
+  // whichever ship room the player is standing in resumes exactly where the
+  // room-crossfade system already had it.
+  function crossfadeToWorldBed(id: PocketWorldId | null): void {
+    if (!ctx || id === currentWorldBed) return;
+    const now = ctx.currentTime;
+    const fadeT = CROSSFADE_MS / 1000;
+
+    const fadeOut = (b?: RoomBranch): void => {
+      if (!b) return;
+      b.gainNode.gain.cancelScheduledValues(now);
+      b.gainNode.gain.setValueAtTime(b.gainNode.gain.value, now);
+      b.gainNode.gain.linearRampToValueAtTime(0, now + fadeT);
+    };
+    const fadeIn = (b?: RoomBranch): void => {
+      if (!b) return;
+      b.gainNode.gain.cancelScheduledValues(now);
+      b.gainNode.gain.setValueAtTime(0, now);
+      b.gainNode.gain.linearRampToValueAtTime(1, now + fadeT);
+    };
+
+    fadeOut(currentWorldBed ? worldBranches[currentWorldBed] : roomBranches[currentRoom]);
+    fadeIn(id ? worldBranches[id] : roomBranches[currentRoom]);
+    currentWorldBed = id;
+  }
+
   function tick(moving: boolean): void {
     if (!ctx || !masterGain || ctx.state !== 'running') return;
     const now = ctx.currentTime;
@@ -182,6 +227,7 @@ export function initAudio(): AudioSystem {
     tick,
     playOneShot: (type) => { _playOneShotFn?.(type); },
     setRoom: crossfadeToRoom,
+    setWorldBed: crossfadeToWorldBed,
     dispose,
   };
   return system;

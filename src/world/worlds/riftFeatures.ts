@@ -9,7 +9,7 @@
 
 import * as THREE from 'three';
 import type { Interactable } from '../types.js';
-import { recordScan, collectRelic } from '../../core/state.js';
+import { recordScan, collectRelic, getCodex } from '../../core/state.js';
 import { showRoomToast } from '../../ui/hud.js';
 import type { ClusterInfo } from './riftCrystals.js';
 
@@ -189,7 +189,12 @@ export function buildRiftFeatures(
       else showRoomToast('RIFT SHARD ALREADY HELD');
     },
   };
-  interactables.push(relicIA);
+  // v1.0 THRESHOLD Stage D: already-collected relics must not be re-offered
+  // after a loadState() reload — hide the shard and never hand out the
+  // pickup interactable for it.
+  const riftRelicHeld = getCodex().relics.includes('rift');
+  if (riftRelicHeld) shard.visible = false;
+  else interactables.push(relicIA);
 
   let t = 0;
   return {

@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { makeRng } from '../../fx/space/rng.js';
 import type { AABB, Interactable } from '../types.js';
-import { collectRelic, recordScan } from '../../core/state.js';
+import { collectRelic, recordScan, getCodex } from '../../core/state.js';
 import { showRoomToast } from '../../ui/hud.js';
 
 /** Fixed, deterministic vent positions — also the crack-wave pulse origins. */
@@ -40,8 +40,10 @@ function makeBlobGeometry(seed: number, detail: 1 | 2): THREE.IcosahedronGeometr
 export interface CooledFlowMound {
   group: THREE.Group;
   colliders: AABB[];
-  /** "Take the Ember Core" pickup → collectRelic('ashfall'). */
-  relicInteractable: Interactable;
+  /** "Take the Ember Core" pickup → collectRelic('ashfall'). null when the
+   *  relic was already collected before this world was built (loadState()
+   *  ran before boot) — never offered again. */
+  relicInteractable: Interactable | null;
   /** "Scan COOLED FLOW" → recordScan('ashfall-cooled-flow'). */
   scanInteractable: Interactable;
   dispose(): void;
@@ -100,6 +102,12 @@ export function buildCooledFlowMound(groundHeight: (x: number, z: number) => num
   };
   group.add(relicMesh);
 
+  // v1.0 THRESHOLD Stage D: already-collected relics must not be re-offered
+  // after a loadState() reload — hide the core and never hand out an
+  // interactable for it.
+  const ashfallRelicHeld = getCodex().relics.includes('ashfall');
+  if (ashfallRelicHeld) relicMesh.visible = false;
+
   const relicInteractable: Interactable = {
     id: 'ashfall-relic-core',
     prompt: 'Take the Ember Core',
@@ -142,7 +150,7 @@ export function buildCooledFlowMound(groundHeight: (x: number, z: number) => num
   ];
 
   return {
-    group, colliders, relicInteractable, scanInteractable,
+    group, colliders, relicInteractable: ashfallRelicHeld ? null : relicInteractable, scanInteractable,
     dispose(): void {
       for (const g of geos) g.dispose();
       rockMat.dispose();

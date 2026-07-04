@@ -119,6 +119,10 @@ export function tickInteract(): void {
 
   for (const hit of hits) {
     if (hit.distance > MAX_INTERACT_DIST) break;
+    // Raycaster ignores Object3D.visible entirely (three.js core behavior) —
+    // a hidden mesh (e.g. a collected relic, left in the scene at visible=false)
+    // would otherwise still show a prompt and fire onInteract. Skip it.
+    if (hit.object.visible === false) continue;
     // Walk up the ancestor chain to see if any hit mesh is inside an interactable group
     const interactable = findInteractableForObject(hit.object);
     if (interactable) {
@@ -190,4 +194,15 @@ export function headlessInteract(): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * Test-only: snapshot of the ACTIVE world's interactable ids + live positions
+ * (ship interactables when on ship, the pocket world's own list otherwise).
+ * Lets verify.mjs locate a wandering creature or a relic without hardcoding
+ * world-space coordinates that would drift out of sync with world authors'
+ * layout tweaks.
+ */
+export function getActiveInteractablesForTest(): Array<{ id: string; x: number; y: number; z: number }> {
+  return effectiveList().map((ia) => ({ id: ia.id, x: ia.position.x, y: ia.position.y, z: ia.position.z }));
 }

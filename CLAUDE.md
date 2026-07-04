@@ -54,3 +54,4 @@ Palette: `#E8E2D4` panel · `#C7641E` trim · `#46E0D8` emissive teal · `#1C1E2
 - PointerLock requires a user gesture — the harness cannot use mouse-look. That's why `__setCam` teleports exist. Never gate scene readiness on pointer lock.
 - Bloom (UnrealBloomPass) costs 2–4ms. It's a Phase 5 luxury, added last, re-verified against budget. If it blows the budget, ship without it.
 - Planet through windows: rooms need actual geometry cutouts (CSG-free — build walls from sub-panels and omit one), not transparent textures, or depth sorting will fight you.
+- Large THREE.Sprites render un-billboarded into GTAOPass's G-buffer (dark slabs in bright skies) — use Points or camera-facing mesh planes instead.

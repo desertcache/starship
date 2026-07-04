@@ -35,6 +35,12 @@ import { showOverlay, showRoomToast } from '../ui/hud.js';
 import { playOneShot } from '../fx/audio.js';
 import type { RoomModule, Interactable, InteractContext } from './types.js';
 import type { WorldId } from '../core/worldTypes.js';
+// v1.0 THRESHOLD Stage D — holotable hologram. src/fx/hull/* is OWNED by an
+// external (Antigravity) lane; consumed as-is here, never edited. See
+// buildIgnitedHologram()'s try/catch below for the runtime-failure fallback.
+import { buildHullGeometry } from '../fx/hull/buildHull.js';
+import { interiorAnchors } from '../fx/hull/anchors.js';
+import { addBarycentric, createHoloMaterial } from '../fx/hull/holoMaterial.js';
 
 const W = 8;
 const H = 3.6;
@@ -45,6 +51,10 @@ const DOOR_GAP_H = 2.2;
 const WORLD_LABELS: Record<WorldId, string> = {
   ship: 'SHIP', verdant: 'VERDANT', ashfall: 'ASHFALL', rift: 'RIFT',
 };
+
+/** Each pocket world ships exactly 4 non-creature scannables + 2 creature
+ *  species = 6 catalogable codex entries (design doc, Stage D codex item). */
+const CODEX_ENTRIES_PER_WORLD = 6;
 
 // Arrival pad center, room-local. Ring (r=0.72) stays fully inside the room
 // (fore wall at local z=-3.5). Also the ship-world spawn (see bottom of file).
@@ -78,6 +88,53 @@ function makeGracefulPortalInteractable(
   };
 }
 
+const HOLO_SEED = 0x1704;
+
+interface IgnitedHologram {
+  mesh: THREE.Mesh;
+  timeUniform: THREE.IUniform<number> | null;
+}
+
+/**
+ * Builds the ship-hull hologram from the external src/fx/hull/ lane (consumed
+ * as-is — never edited here). Retries once on a runtime failure; if the
+ * import is still broken, ships a simple additive-teal cone placeholder
+ * behind the same ignition/rotation logic so the annex never regresses.
+ */
+function buildIgnitedHologram(): IgnitedHologram {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const hull = buildHullGeometry(HOLO_SEED, interiorAnchors);
+      addBarycentric(hull.geometry);
+      const holoMat = createHoloMaterial(0x59d9ff);
+      // Consume-side intensity trim (uniform tweak, NOT an edit to the hull
+      // lane's files): at 1/45 scale the wire term's fwidth() covers most of
+      // each tiny triangle, so at full uColor the whole miniature saturates
+      // into one bloomed blob. 0.35x drops faces below the bloom threshold —
+      // fresnel silhouettes + the sweep band survive, hull structure reads.
+      (holoMat.uniforms['uColor'].value as THREE.Vector3).multiplyScalar(0.35);
+      const mesh = new THREE.Mesh(hull.geometry, holoMat);
+      mesh.name = 'ship-hologram';
+      mesh.scale.setScalar(1 / 45);
+      mesh.visible = false;
+      return { mesh, timeUniform: holoMat.uniforms['uTime'] as THREE.IUniform<number> };
+    } catch (err) {
+      console.error(`[portalRoom] hull hologram build attempt ${attempt + 1} failed`, err);
+    }
+  }
+  console.error('[portalRoom] hull import unavailable after retry — shipping additive-teal cone placeholder (deviation, see report)');
+  const mesh = new THREE.Mesh(
+    new THREE.ConeGeometry(0.16, 0.5, 10, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0x46e0d8, transparent: true, opacity: 0.6, toneMapped: false,
+      side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
+    }),
+  );
+  mesh.name = 'ship-hologram';
+  mesh.visible = false;
+  return { mesh, timeUniform: null };
+}
+
 function buildSurveyConsoleInteractable(anchor: THREE.Vector3): Interactable {
   const worlds: WorldId[] = ['verdant', 'ashfall', 'rift'];
   return {
@@ -92,7 +149,7 @@ function buildSurveyConsoleInteractable(anchor: THREE.Vector3): Interactable {
         if (!hasWorld(id)) return `${WORLD_LABELS[id]} — CALIBRATING`;
         const scans = codex.scans.filter((s) => s.startsWith(`${id}-`)).length;
         const relic = codex.relics.includes(id) ? 'RELIC SECURED' : 'RELIC UNCONFIRMED';
-        return `${WORLD_LABELS[id]} — ${scans} CATALOGUED — ${relic}`;
+        return `${WORLD_LABELS[id]} — ${scans}/${CODEX_ENTRIES_PER_WORLD} CATALOGUED — ${relic}`;
       });
       showOverlay('DIMENSIONAL SURVEY', lines);
     },
@@ -147,6 +204,39 @@ export function buildPortalRoom(): RoomModule {
     }
   };
   group.add(latchGuard);
+
+  // ── Holotable hologram: additive-teal ship-hull miniature, dormant until
+  // all 3 relics are held. Built once at room-build time; visibility +
+  // rotation are polled every frame off `getCodex()` (state-driven, not
+  // event-driven — survives a loadState() reload with no live pickup event).
+  const holoAnchor = group.getObjectByName('holotable-projection') as THREE.Group | undefined;
+  if (holoAnchor) {
+    const built = buildIgnitedHologram();
+    holoAnchor.add(built.mesh);
+
+    // Object3D.visible===false short-circuits BEFORE onBeforeRender ever runs
+    // (three.js core: WebGLRenderer.projectObject returns early), so the
+    // hologram mesh itself cannot poll its own state while dormant. A tiny
+    // always-rendered, visually-negligible proxy mesh drives it instead —
+    // frustumCulled=false so it never silently stops ticking off-camera.
+    const holoDriver = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.001, 0.001),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.001, depthWrite: false }),
+    );
+    holoDriver.frustumCulled = false;
+    holoDriver.position.set(0, 1.6, -0.6);
+    holoDriver.onBeforeRender = (): void => {
+      const relics = getCodex().relics;
+      const ignited = relics.includes('verdant') && relics.includes('ashfall') && relics.includes('rift');
+      built.mesh.visible = ignited;
+      if (ignited) {
+        const t = performance.now() / 1000;
+        built.mesh.rotation.y = t * 0.3;
+        if (built.timeUniform) built.timeUniform.value = t;
+      }
+    };
+    group.add(holoDriver);
+  }
 
   mergeStaticSiblings(group);
 

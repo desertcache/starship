@@ -168,7 +168,7 @@ export function buildAshfall(): World {
     ],
     interactables: [
       portal.interactable,
-      mound.relicInteractable,
+      ...(mound.relicInteractable ? [mound.relicInteractable] : []),
       mound.scanInteractable,
       fumaroles.interactable,
       shards.interactable,

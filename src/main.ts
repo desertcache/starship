@@ -3,27 +3,26 @@ import { PMREMGenerator } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { initPerf, recordFrame, installPerfGlobal } from './core/perf.js';
 import { installCameraGlobal, setActiveCamera } from './core/cameras.js';
-import { tickState, getState, loadState, setHunger, getQuestStep, getCodex } from './core/state.js';
+import { tickState, getState, loadState } from './core/state.js';
 import { initDebug, tickDebug } from './ui/debug.js';
 import { initHud, tickHud, showRoomToast } from './ui/hud.js';
 import { assembleShip } from './world/assembly.js';
 import { initController, tickController, isMoving, tickBob } from './player/controller.js';
-import { initInteract, registerInteractables, tickInteract, headlessInteract } from './player/interact.js';
+import { initInteract, registerInteractables, tickInteract } from './player/interact.js';
 import { tickSway } from './fx/sway.js';
 import { initAudio, getRoomForPosition, playOneShot } from './fx/audio.js';
 import type { RoomName } from './fx/audio.js';
-import { buildAllInteractables, questRevealAndReadPanel } from './world/interactWiring.js';
-import { getFridgeStateForTest, resetFridgeForTest, questAdvanceViaBreaker } from './world/interactItems.js';
-import { isDoorOpen, forceDoorAutoCloseCheck } from './world/doors.js';
+import { buildAllInteractables } from './world/interactWiring.js';
 import { initBloom } from './fx/bloom.js';
 import { tickStarfield } from './fx/starfield.js';
 import { setScanProvider } from './world/interactConsole.js';
 import { QUALITY_LOW, SHADOWS_OFF } from './core/perf.js';
 import type { ScanData } from './fx/space/types.js';
 import { applyMaxAnisotropy } from './fx/textureHelpers.js';
-import { getActiveWorld, getActiveWorldId, switchWorld } from './core/worlds.js';
+import { getActiveWorld, getActiveWorldId } from './core/worlds.js';
 import { bootWorlds } from './core/worldBoot.js';
 import { tickPortals } from './fx/portalSurface.js';
+import { installTestApi } from './core/testApi.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -171,86 +170,12 @@ const readyPromise = new Promise<void>((res) => { readyResolve = res; });
 // ── Start time for elapsed-based animations ───────────────────────────────────
 const startTime = performance.now();
 
-// ── window.__test — functional test hooks ────────────────────────────────────
-interface TestAPI {
-  teleport(x: number, y: number, z: number): void;
-  interact(): boolean;
-  getState(): { clock: number; energy: number; hunger: number; clockString: string; questStep: number };
-  getDoorOpen(id: string): boolean;
-  getFridgeState(): { state: string; stock: number };
-  resetFridge(): void;
-  setHunger(v: number): void;
-  getScan(): ScanData | null;
-  forceDoorAutoCloseCheck(): string[];
-  questRevealAndReadPanel(): number;
-  questAdvanceViaBreaker(): number;
-  getActiveWorld(): string;
-  switchWorld(id: string): Promise<void>;
-  getCodex(): { scans: string[]; relics: string[] };
-  getPlayerPos(): { x: number; y: number; z: number };
-}
-
-const EYE_HEIGHT_MAIN = 1.7;
-
-const testAPI: TestAPI = {
-  teleport(x: number, y: number, z: number): void {
-    camera.position.set(x, EYE_HEIGHT_MAIN, z);
-    // Allow explicit Y override when y significantly differs from eye height
-    if (Math.abs(y - EYE_HEIGHT_MAIN) > 0.5) camera.position.y = y;
-  },
-  interact(): boolean {
-    return headlessInteract();
-  },
-  getState(): { clock: number; energy: number; hunger: number; clockString: string; questStep: number } {
-    const s = getState();
-    return {
-      clock: s.shipMinutes,
-      energy: s.energy,
-      hunger: s.hunger,
-      clockString: `${String(Math.floor(s.shipMinutes / 60) % 24).padStart(2, '0')}:${String(Math.floor(s.shipMinutes) % 60).padStart(2, '0')}`,
-      questStep: getQuestStep(),
-    };
-  },
-  getDoorOpen(id: string): boolean {
-    return isDoorOpen(id);
-  },
-  getFridgeState(): { state: string; stock: number } {
-    return getFridgeStateForTest();
-  },
-  resetFridge(): void {
-    resetFridgeForTest();
-  },
-  setHunger(v: number): void {
-    setHunger(v);
-  },
-  getScan(): ScanData | null {
-    return ship.planet.getScanData?.() ?? null;
-  },
-  forceDoorAutoCloseCheck(): string[] {
-    return forceDoorAutoCloseCheck();
-  },
-  questRevealAndReadPanel(): number {
-    return questRevealAndReadPanel();
-  },
-  questAdvanceViaBreaker(): number {
-    return questAdvanceViaBreaker();
-  },
-  getActiveWorld(): string {
-    return getActiveWorldId();
-  },
-  switchWorld(id: string): Promise<void> {
-    // Tests switch SYNCHRONOUSLY (no fade); resolves immediately.
-    return switchWorld(id, { instant: true });
-  },
-  getCodex(): { scans: string[]; relics: string[] } {
-    return getCodex();
-  },
-  getPlayerPos(): { x: number; y: number; z: number } {
-    return { x: camera.position.x, y: camera.position.y, z: camera.position.z };
-  },
-};
-
-(window as unknown as Record<string, unknown>)['__test'] = testAPI;
+// ── window.__test — functional test hooks (extracted: core/testApi.ts) ───────
+installTestApi({
+  camera,
+  scene,
+  getScanData: (): ScanData | null => ship.planet.getScanData?.() ?? null,
+});
 
 // ── Room tracking for ambient crossfade + toast ───────────────────────────────
 let lastRoom: RoomName = 'corridor';
@@ -301,6 +226,10 @@ function animate(now: number): void {
   } else {
     activeWorld.update(dtSeconds, camera.position);
   }
+  // v1.0 THRESHOLD — pocket-world ambient bed crossfade (no-op when unchanged).
+  audio.setWorldBed(
+    activeId === 'verdant' || activeId === 'ashfall' || activeId === 'rift' ? activeId : null,
+  );
 
   // Portal live-preview tier — before bloom.render() (it borrows + restores the
   // render target). No-op when the active scene has no portal near the player.

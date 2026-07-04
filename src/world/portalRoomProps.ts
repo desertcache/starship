@@ -30,6 +30,7 @@ import { matPipeDark, matConsoleHousing } from '../fx/propMaterials.js';
 import { addLedCluster, addUnderglow, LedColors } from '../fx/glow.js';
 import { createPortalSurface, type PortalSurface } from '../fx/portalSurface.js';
 import { rng } from '../fx/textureHelpers.js';
+import { attachRelicSocketGlow } from './portalRoomSocket.js';
 import { makeRelicSocketTexture, makeSurveyConsoleTexture } from './portalRoomTextures.js';
 
 // ── Canonical gate geometry constants (local frame: wall at z=0) ─────────────
@@ -198,6 +199,8 @@ function buildGateCluster(cfg: GateConfig): GateBuild {
   ring.rotation.x = -Math.PI / 2;
   ring.position.set(socketX, 0.305, -0.55);
   ring.name = `relic-socket-${cfg.worldId}`;
+  // Stage D ignition: emissive swap ONLY, state-driven — see portalRoomSocket.ts.
+  attachRelicSocketGlow(ring, ringMat, cfg.worldId, cfg.tint, cfg.pulseHex);
   g.add(ring);
   colliders.push({ minX: socketX - 0.16, minY: 0, minZ: -0.71, maxX: socketX + 0.16, maxY: 0.30, maxZ: -0.39 });
 

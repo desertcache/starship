@@ -27,7 +27,7 @@ import type { Interactable } from '../types.js';
 import { buildTerrain } from '../../fx/terrain.js';
 import { createReturnPortal } from '../../fx/portalSurface.js';
 import { spawnCreatures } from '../../fx/creatures/index.js';
-import { recordScan, collectRelic } from '../../core/state.js';
+import { recordScan, collectRelic, getCodex } from '../../core/state.js';
 import { showRoomToast } from '../../ui/hud.js';
 import { buildVerdantSky } from './verdantSky.js';
 import { buildMushroomClusters, buildFrondClusters } from './verdantFlora.js';
@@ -155,7 +155,12 @@ export function buildVerdant(): World {
   const iaSpring = scannable('verdant-flora-4', 'GLIMMER SPRING', spring.position);
 
   // ── Relic: glowing seed-pod inside the hollow heartwood ───────────────────
+  // v1.0 THRESHOLD Stage D: after loadState() a previously-collected relic
+  // must not be re-offered — hide the pod and drop its interactable from the
+  // returned list (never even reaches the raycast/proximity systems).
   trees.relicMesh.name = 'verdant-relic';
+  const verdantRelicHeld = getCodex().relics.includes('verdant');
+  if (verdantRelicHeld) trees.relicMesh.visible = false;
   const iaRelic: Interactable = {
     id: 'verdant-relic',
     prompt: 'Take VERDANT SEED-POD',
@@ -221,7 +226,7 @@ export function buildVerdant(): World {
     colliders: [...terrain.boundaryColliders, ...trees.colliders],
     interactables: [
       portal.interactable,
-      iaRelic,
+      ...(verdantRelicHeld ? [] : [iaRelic]),
       iaLumenCap, iaWhisperFrond, iaHeartwood, iaSpring,
       ...creatures.interactables,
     ],
