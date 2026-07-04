@@ -90,32 +90,53 @@ export function buildDevVoid(): World {
     },
   };
 
-  // ── Stub creature (1 species, herd of 3) ──
-  const creatures = spawnCreatures(
-    [{
-      id: 'dev-wisp',
-      scanName: 'VOIDWISP',
-      lore: 'A drifting mote of the between.',
-      plan: 'floater',
-      sizeM: 0.9,
+  // ── Creature-engine menagerie: one species per BodyPlan, distinct palettes,
+  // separate spawn centers — all kept well clear of the portal at (0,-6) so
+  // Test 9's proximity interact at (0,-5) can never be stolen by a wanderer
+  // (nearest legged/floater roam edge ≥ ~7m; the glider passes overhead but
+  // its altitude band keeps it beyond both raycast reach and scan radius).
+  const menagerie = [
+    spawnCreatures([{
+      id: 'dev-grazer', scanName: 'DUNEGRAZER',
+      lore: 'A placid herd-walker of the between.',
+      plan: 'quadruped', sizeM: 1.4,
+      palette: { primary: '#7a5c3e', secondary: '#d9a066', emissive: '#ffb84d' },
+      gaitHz: 1.2, temperament: 'placid', count: 3, seed: 0x5151, roamRadius: 6,
+    }], g, new THREE.Vector3(-9, 0, 4)),
+    spawnCreatures([{
+      id: 'dev-skitter', scanName: 'GLASSMITE',
+      lore: 'Six legs, zero trust.',
+      plan: 'skitterer', sizeM: 0.55,
+      palette: { primary: '#3e4a52', secondary: '#9fd0c8', emissive: '#46e0d8' },
+      gaitHz: 2.5, temperament: 'skittish', count: 3, seed: 0xa7a7, roamRadius: 4.5,
+    }], g, new THREE.Vector3(10, 0, 2)),
+    spawnCreatures([{
+      id: 'dev-jelly', scanName: 'VOIDMEDUSA',
+      lore: 'It breathes the dark and exhales light.',
+      plan: 'floater', sizeM: 0.9,
       palette: { primary: '#3a6ea5', secondary: '#9fd0ff', emissive: '#7fd8ff' },
-      gaitHz: 0.4,
-      temperament: 'placid',
-      count: 3,
-      seed: 0x5151,
-      roamRadius: 8,
-    }],
-    g,
-    new THREE.Vector3(0, 0, 0),
-  );
-  scene.add(creatures.group);
+      gaitHz: 0.45, temperament: 'placid', count: 2, seed: 0x3c3c, roamRadius: 4,
+    }], g, new THREE.Vector3(-11, 0, -4)),
+    spawnCreatures([{
+      id: 'dev-ray', scanName: 'ASHWING',
+      lore: 'It writes figure-eights on the sky.',
+      plan: 'glider', sizeM: 1.6,
+      palette: { primary: '#5c3a66', secondary: '#c9a0dd', emissive: '#d98cff' },
+      gaitHz: 0.4, temperament: 'curious', count: 1, seed: 0xe1e1, roamRadius: 8,
+    }], g, new THREE.Vector3(6, 0, -6)),
+  ];
+  for (const m of menagerie) scene.add(m.group);
 
   const cameras: NamedCamera[] = [
     // Art hero — ~15m from the portal → dormant swirl (fully seeded/deterministic),
-    // framing portal + monolith + wisps.
+    // framing portal + monolith + the glider's figure-8.
     { name: 'dev-void', position: new THREE.Vector3(7, 1.7, 10), lookAt: new THREE.Vector3(0, 1.3, -3) },
     // QA — ~4m from the portal → exercises the live-preview tier (ship through the portal).
     { name: 'dev-void-qa', position: new THREE.Vector3(0, 1.7, -2), lookAt: new THREE.Vector3(0, 1.5, -6) },
+    // Gait judging — side-on view of the quadruped herd (legs in profile).
+    { name: 'dev-void-herd', position: new THREE.Vector3(-9, 1.2, 11), lookAt: new THREE.Vector3(-9, 0.7, 4) },
+    // Menagerie 3/4 — skitterers foreground, glider figure-8 + portal beyond.
+    { name: 'dev-void-menagerie', position: new THREE.Vector3(14, 4.5, 6), lookAt: new THREE.Vector3(2, 1.5, -5) },
   ];
 
   return {
@@ -123,13 +144,13 @@ export function buildDevVoid(): World {
     id: 'dev' as WorldId,
     scene,
     colliders: [...terrain.boundaryColliders],
-    interactables: [portal.interactable, monoIA, ...creatures.interactables],
+    interactables: [portal.interactable, monoIA, ...menagerie.flatMap((m) => m.interactables)],
     cameras,
     spawn: { position: new THREE.Vector3(0, 0, 8), lookAt: new THREE.Vector3(0, 1.4, -6) },
     groundHeight: g,
     update(dt: number, playerPos: THREE.Vector3): void {
       // Portals are ticked by main.tickPortals (needs camera); creatures here.
-      creatures.update(dt, playerPos);
+      for (const m of menagerie) m.update(dt, playerPos);
     },
     dispose(): void {
       terrain.mesh.geometry.dispose();
@@ -138,7 +159,7 @@ export function buildDevVoid(): World {
       padGeo.dispose(); padMat.dispose();
       monoGeo.dispose(); monoMat.dispose();
       portal.dispose();
-      creatures.dispose();
+      for (const m of menagerie) m.dispose();
       scene.remove(hemi, point);
     },
   };
