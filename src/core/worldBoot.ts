@@ -18,6 +18,7 @@ import {
 } from './worlds.js';
 import { configurePortals } from '../fx/portalSurface.js';
 import { buildDevVoid } from '../world/worlds/devVoid.js';
+import { getAnnexArrivalSpawn } from '../world/portalRoom.js';
 
 export interface WorldBootDeps {
   scene: THREE.Scene;
@@ -32,16 +33,17 @@ export function bootWorlds(d: WorldBootDeps): void {
   // Ship-as-World adapter: groundHeight → 0, scene = main scene, cameras already
   // registered. update/dispose are no-ops (main drives ship ticks). Switching to
   // 'ship' resets interaction overrides to null → byte-for-byte ship behavior.
+  //
+  // v1.0 THRESHOLD: spawn moved from cargo bay (0,1.7,16) to the Dimensional
+  // Annex arrival pad — this is where players land returning from any pocket
+  // world (Stage A note). Single source of truth: portalRoom.getAnnexArrivalSpawn().
   const shipWorld: World = {
     id: 'ship',
     scene: d.scene,
     colliders: d.shipColliders,
     interactables: d.shipInteractables,
     cameras: [],
-    spawn: {
-      position: new THREE.Vector3(0, 1.7, 16),
-      lookAt: new THREE.Vector3(0, 1.7, 10),
-    },
+    spawn: getAnnexArrivalSpawn(),
     groundHeight: (): number => 0,
     update: (): void => { /* ship ticks run in the main loop */ },
     dispose: (): void => { /* ship is never disposed */ },

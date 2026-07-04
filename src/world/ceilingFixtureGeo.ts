@@ -48,7 +48,7 @@ export interface FixtureSpec {
   grille: boolean;
 }
 
-export type RoomType = 'cockpit' | 'corridor' | 'quarters' | 'galley' | 'engineering' | 'cargo';
+export type RoomType = 'cockpit' | 'corridor' | 'quarters' | 'galley' | 'engineering' | 'cargo' | 'portal-room';
 
 // ── Seeded PRNG ────────────────────────────────────────────────────────────────
 
@@ -69,6 +69,7 @@ export function identifyRoom(W: number, D: number): RoomType {
   if (W === 6 && D === 6)  return 'galley';
   if (W === 6 && D === 7)  return 'engineering';
   if (W === 8 && D === 9)  return 'cargo';
+  if (W === 8 && D === 7)  return 'portal-room'; // v1.0 THRESHOLD Dimensional Annex
   return 'quarters'; // fallback
 }
 
@@ -107,6 +108,13 @@ export function getFixtureSpecs(room: RoomType, rng: () => number): FixtureSpec[
       s.push({ x: -2.0, z: -2.0, grille: rng() > 0.5 });
       s.push({ x:  0.0, z:  0.5, grille: rng() > 0.5 });
       s.push({ x:  2.0, z:  2.5, grille: rng() > 0.5 });
+      break;
+    case 'portal-room':
+      // 4 fixtures in a straight ceiling strip down the room's spine
+      s.push({ x: 0, z: -2.4, grille: rng() > 0.5 });
+      s.push({ x: 0, z: -0.8, grille: rng() > 0.5 });
+      s.push({ x: 0, z:  0.8, grille: rng() > 0.5 });
+      s.push({ x: 0, z:  2.4, grille: rng() > 0.5 });
       break;
   }
   return s;

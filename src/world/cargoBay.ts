@@ -81,6 +81,10 @@ export function buildCargoBay(): RoomModule {
     wallMaterial: matWall,
     doors: [
       { wall: 'fore', gapW: DOOR_GAP_W, gapH: DOOR_GAP_H, offset: 0, framed: false },
+      // v1.0 THRESHOLD: aft wall connects to the Dimensional Annex (portalRoom.ts,
+      // world Z=18 — flush, zero gap, same convention as this room's own fore
+      // hatch). Plain gap; the annex owns its door frame on the far side.
+      { wall: 'aft', gapW: 1.4, gapH: 2.2, offset: 0, framed: false },
     ],
   });
 

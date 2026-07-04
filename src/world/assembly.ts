@@ -6,6 +6,7 @@ import { buildQuartersA, buildQuartersB } from './quarters.js';
 import { buildGalley } from './galley.js';
 import { buildEngineering } from './engineering.js';
 import { buildCargoBay } from './cargoBay.js';
+import { buildPortalRoom } from './portalRoom.js';
 import { buildDoors, tickDoors } from './doors.js';
 import type { DoorEntry } from './doors.js';
 import { buildStarfield } from '../fx/starfield.js';
@@ -44,6 +45,7 @@ function shouldCastShadow(obj: THREE.Mesh): boolean {
  *   galley          (0, 0, -1)      6W x 3H x 6D
  *   engineering     (0, 0, +5.5)    6W x 3H x 7D
  *   cargo-bay       (0, 0, +13.5)   8W x 5H x 9D
+ *   portal-room     (0, 0, +21.5)   8W x 3.6H x 7D  (Dimensional Annex, v1.0 THRESHOLD)
  */
 
 interface RoomPlacement {
@@ -97,6 +99,7 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
     { module: buildGalley(),       worldPos: new THREE.Vector3(0,  0, -1)    },
     { module: buildEngineering(),  worldPos: new THREE.Vector3(0,  0, 5.5)   },
     { module: buildCargoBay(),     worldPos: new THREE.Vector3(0,  0, 13.5)  },
+    { module: buildPortalRoom(),   worldPos: new THREE.Vector3(0,  0, 21.5)  },
   ];
 
   const allColliders: AABB[] = [];
@@ -141,6 +144,8 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
     { id: 'galley-engineering',  position: new THREE.Vector3(0,   0, -1),  facing: 'Z' },
     // (f) engineering-aft → cargo at (0, 0, 9), facing Z
     { id: 'engineering-cargo',   position: new THREE.Vector3(0,   0, 9),   facing: 'Z' },
+    // (g) cargo-aft → portal-room-fore at (0, 0, 18), facing Z (v1.0 THRESHOLD)
+    { id: 'cargo-annex',         position: new THREE.Vector3(0,   0, 18),  facing: 'Z' },
   ];
 
   buildDoors(scene, doorSpecs);

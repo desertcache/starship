@@ -53,6 +53,8 @@ const DOOR_POSITIONS: Record<string, THREE.Vector3> = {
   // On engineering side: keeps radius from reaching galley stove area
   'galley-engineering':  v3(0,    1.1, -0.3),
   'engineering-cargo':   v3(0,    1.1,   9),
+  // v1.0 THRESHOLD: cargo-bay aft ↔ Dimensional Annex fore
+  'cargo-annex':         v3(0,    1.1,  18),
 };
 
 function buildDoorInteractables(): Interactable[] {
