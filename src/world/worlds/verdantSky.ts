@@ -21,7 +21,9 @@ import { makeRng, type Rng } from '../../fx/space/rng.js';
 import { hexToRgb, lerpRgb } from '../../fx/space/noise.js';
 
 const DOME_RADIUS = 340;
-const ZENITH = '#2a1d4e'; // deep violet-indigo (extra saturation survives ACES)
+// F11 (Stage E): deepened/saturated slightly vs the prior '#2a1d4e' (less
+// grey lift at the top of the dusk gradient).
+const ZENITH = '#221648'; // deep violet-indigo (extra saturation survives ACES)
 const HORIZON = '#1c4a46'; // teal horizon band — MUST equal verdant.ts fog color
 
 export interface VerdantSkyHandle {
@@ -97,20 +99,32 @@ function bakeMoonTexture(rng: Rng, baseHex: string, shadeHex: string): THREE.Can
     ctx.fill();
   }
 
-  // Mare-like darker patches in the shade tint.
+  // Mare-like darker patches in the shade tint. F11 (Stage E): more of them,
+  // a touch stronger, so the face reads as a body instead of a featureless
+  // egg (was 3-5 @ 0.4 alpha).
   const shade = hexToRgb(shadeHex);
-  const mares = rng.int(3, 5);
+  const mares = rng.int(5, 8);
   for (let i = 0; i < mares; i++) {
     const cx = rng() * size;
     const cy = rng() * size;
-    const cr = rng.range(0.1, 0.2) * size;
+    const cr = rng.range(0.1, 0.22) * size;
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
-    grad.addColorStop(0, `rgba(${shade.r},${shade.g},${shade.b},0.4)`);
+    grad.addColorStop(0, `rgba(${shade.r},${shade.g},${shade.b},0.5)`);
     grad.addColorStop(1, `rgba(${shade.r},${shade.g},${shade.b},0)`);
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(cx, cy, cr, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  // F11 (Stage E): faint horizontal banding — a few low-alpha latitude
+  // streaks in the shade tint, breaking up the otherwise-smooth face.
+  const bands = rng.int(4, 6);
+  for (let i = 0; i < bands; i++) {
+    const by = rng() * size;
+    const bh = rng.range(0.02, 0.05) * size;
+    ctx.fillStyle = `rgba(${shade.r},${shade.g},${shade.b},${rng.range(0.08, 0.16).toFixed(3)})`;
+    ctx.fillRect(0, by, size, bh);
   }
 
   // Gentle latitude vignette only (equator bright, poles a touch darker) —
@@ -142,16 +156,18 @@ interface MoonSpec {
 
 // Both placed over the -Z horizon the hero camera faces from the spawn pad:
 // big pale-lavender moon upper right, small teal-grey companion center-left.
+// F11 (Stage E): darker base tints — was reading as an overbright blank egg.
 const MOON_SPECS: MoonSpec[] = [
-  { seed: 0x7a55, radius: 13, position: new THREE.Vector3(140, 95, -210), spinSpeed: 0.006, base: '#cfd2e6', shade: '#8b87b8' },
-  { seed: 0x7a66, radius: 8, position: new THREE.Vector3(-60, 78, -255), spinSpeed: -0.009, base: '#a8c8c0', shade: '#5f8a82' },
+  { seed: 0x7a55, radius: 13, position: new THREE.Vector3(140, 95, -210), spinSpeed: 0.006, base: '#9a9dc0', shade: '#6f6a9c' },
+  { seed: 0x7a66, radius: 8, position: new THREE.Vector3(-60, 78, -255), spinSpeed: -0.009, base: '#7ea89e', shade: '#4a6f68' },
 ];
 
 function buildMoon(spec: MoonSpec): THREE.Mesh {
   const rng = makeRng(spec.seed);
   const tex = bakeMoonTexture(rng, spec.base, spec.shade);
   const geo = new THREE.SphereGeometry(spec.radius, 22, 16);
-  const mat = new THREE.MeshBasicMaterial({ map: tex, fog: false });
+  // F11: material-level dim on top of the darker bake (0xcccccc ≈ 0.8x).
+  const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0xcccccc, fog: false });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'verdant-moon';
   mesh.position.copy(spec.position);

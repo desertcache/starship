@@ -74,7 +74,7 @@ export function buildAshfall(): World {
     seed: TERRAIN_SEED,
     radius: RADIUS,
     maxHeight: MAX_HEIGHT,
-    colorRamp: { low: '#0c0909', mid: '#2c211a', high: '#5a4433' },
+    colorRamp: { low: '#302219', mid: '#4c392b', high: '#7e5e40' },
     texture: ashfallBasaltMottle(),
   });
   scene.add(terrain.mesh);
@@ -85,7 +85,12 @@ export function buildAshfall(): World {
   scene.add(sky.dome, sky.sun, sky.rim);
 
   // ── Lights: 1 hemi + 5 positional (≤6 positional budget) ───────────────────
-  const hemi = new THREE.HemisphereLight(0x6b4a34, 0x0c0a08, 0.85);
+  // F2 (Stage E): hemi 0.85→1.0 — with the old ramp × mottle × hemi product
+  // the surface landed at ~0.006 luminance (black by construction). Ground
+  // hemisphere lifted too (0x0c0a08→0x30201a, ember bounce): steep camera-
+  // facing slopes sample mostly the GROUND color, and at near-black they
+  // stayed silhouettes even after the ramp/mottle/intensity fixes.
+  const hemi = new THREE.HemisphereLight(0x6b4a34, 0x30201a, 1.0);
   scene.add(hemi);
 
   const lights: THREE.PointLight[] = [];
@@ -148,10 +153,12 @@ export function buildAshfall(): World {
       lookAt: new THREE.Vector3(-8, g(-8, 8) + 2.5, 8),
     },
     // QA: cooled lava flow (relic gap glow) center + fumarole 0 at right.
+    // F15 (Stage E): re-aimed at the relic core itself (was a generic point
+    // near the mound gap that left the relic outside the frame).
     {
       name: 'ashfall-qa',
       position: new THREE.Vector3(17, g(17, 12) + EYE_HEIGHT, 12),
-      lookAt: new THREE.Vector3(9, g(9, 21) + 2.0, 21),
+      lookAt: new THREE.Vector3(8, g(8, 19.5) + 1.0, 19.7),
     },
   ];
 

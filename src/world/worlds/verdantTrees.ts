@@ -86,7 +86,9 @@ export function buildVerdantTrees(g: (x: number, z: number) => number): TreesHan
   });
   const canopyMat = new THREE.MeshStandardMaterial({
     color: CANOPY_COLOR, roughness: 0.85, metalness: 0.0,
-    emissive: 0x14301f, emissiveIntensity: 0.7,
+    // F5 (Stage E): canopies were reading dead-black — brighter emissive
+    // floor while staying below the bloom threshold (silhouette, not glow).
+    emissive: 0x1e5238, emissiveIntensity: 1.0,
   });
 
   const trunkTemplate = new THREE.CylinderGeometry(1, 1.2, 1, 9);

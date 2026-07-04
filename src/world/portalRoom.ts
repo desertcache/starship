@@ -210,8 +210,18 @@ export function buildPortalRoom(): RoomModule {
   // rotation are polled every frame off `getCodex()` (state-driven, not
   // event-driven — survives a loadState() reload with no live pickup event).
   const holoAnchor = group.getObjectByName('holotable-projection') as THREE.Group | undefined;
+  // F9 (Stage E): named standby cone (portalRoomProps.buildHolotable) — hidden
+  // until the first relic is held, so the truly-empty table reads empty.
+  const standbyCone = group.getObjectByName('holotable-standby-cone') as THREE.Mesh | undefined;
   if (holoAnchor) {
     const built = buildIgnitedHologram();
+    // F1 (Stage E): the 1/45 miniature was lying flat on the table (foil
+    // read) and the hero cam looked straight down on it. Float it within its
+    // anchor and bank the whole anchor into a hero pose so the spinning hull
+    // silhouette reads as a ship, not a coin. Scale stays exactly 1/45 —
+    // scanline density in the hull shader is keyed to it.
+    built.mesh.position.set(0, 0.38, 0);
+    holoAnchor.rotation.z = 0.45;
     holoAnchor.add(built.mesh);
 
     // Object3D.visible===false short-circuits BEFORE onBeforeRender ever runs
@@ -229,6 +239,7 @@ export function buildPortalRoom(): RoomModule {
       const relics = getCodex().relics;
       const ignited = relics.includes('verdant') && relics.includes('ashfall') && relics.includes('rift');
       built.mesh.visible = ignited;
+      if (standbyCone) standbyCone.visible = relics.length > 0; // F9
       if (ignited) {
         const t = performance.now() / 1000;
         built.mesh.rotation.y = t * 0.3;
@@ -242,8 +253,10 @@ export function buildPortalRoom(): RoomModule {
 
   // Hero — from the arrival pad: all three gates in frame (side gates sit
   // ~±49° off-axis, inside the ~54° half-hFOV at 16:9) + holotable shimmer.
-  const localCamPos = new THREE.Vector3(0, 1.7, -2.75);
-  const localCamLook = new THREE.Vector3(0, 1.45, 3.5);
+  // F4 (Stage E): raised + pulled back so both side-gate daises/jambs and the
+  // ignited holotable's hero pose (F1) all read from one shot.
+  const localCamPos = new THREE.Vector3(0, 1.9, -3.1);
+  const localCamLook = new THREE.Vector3(0, 1.5, 3.5);
 
   // QA — oblique from beside the rift dais, sighted straight fore (-Z): the
   // cargo doorway (~27° left), rift conduit strip + socket (~19-27° right),

@@ -73,7 +73,12 @@ void main() {
   float fresnel = pow(1.0 - clamp(dot(normalize(vWorldNormal), normalize(vViewDir)), 0.0, 1.0), 2.2);
   vec3 core = vColor * (0.5 + vWave);
   vec3 rim = vColor * fresnel * 1.5;
-  gl_FragColor = vec4(core + rim, 1.0);
+  // F13 (Stage E): cap the peak (never touches the wave math above) — when a
+  // cluster sits close to camera, many overlapping crystals each hitting the
+  // old uncapped peak bloomed into one solid mass. Capping keeps individual
+  // diamond silhouettes readable through bloom at any distance.
+  vec3 litColor = min(core + rim, vec3(2.0));
+  gl_FragColor = vec4(litColor, 1.0);
 }`;
 
 const MOTE_VERT = /* glsl */ `

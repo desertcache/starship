@@ -100,9 +100,12 @@ export function buildVerdant(): World {
   // the edge-on ring was invisible). fog:false so the rim glows THROUGH the
   // mist instead of being swallowed at 60m.
   const rimGeo = new THREE.CylinderGeometry(RADIUS - 0.5, RADIUS - 0.5, 5, 96, 1, true);
+  // F6 (Stage E): opacity down (0.5→0.28) + the gradient itself reshaped
+  // (dim-at-base/peak-mid-height, see verdantRimGradientTexture) — the old
+  // bright-at-ground band traced every hill crest as a jagged bright line.
   const rimMat = new THREE.MeshBasicMaterial({
     map: verdantRimGradientTexture(),
-    color: 0x46e0d8, transparent: true, opacity: 0.5,
+    color: 0x46e0d8, transparent: true, opacity: 0.28,
     side: THREE.BackSide, toneMapped: false, fog: false,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });

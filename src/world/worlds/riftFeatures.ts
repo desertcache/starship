@@ -170,8 +170,12 @@ export function buildRiftFeatures(
 
   const shardGeo = new THREE.OctahedronGeometry(0.42, 0).toNonIndexed();
   shardGeo.computeVertexNormals();
+  // F15 (Stage E): unify relic grammar — verdant's + ashfall's relic
+  // materials are already toneMapped:false (bright, readable, ACES-immune);
+  // this one wasn't, so it read duller/muddier than the other two pickups.
   const shardMat = new THREE.MeshStandardMaterial({
-    color: '#e6d8ff', emissive: '#c060ff', emissiveIntensity: 1.8, roughness: 0.15, metalness: 0.1,
+    color: '#e6d8ff', emissive: '#c060ff', emissiveIntensity: 1.5, roughness: 0.15, metalness: 0.1,
+    toneMapped: false,
   });
   const shard = new THREE.Mesh(shardGeo, shardMat);
   const shardBaseY = relicY + 1.6;

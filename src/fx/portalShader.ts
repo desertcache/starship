@@ -77,11 +77,13 @@ void main() {
   band = mix(band, sw, 0.25);
 
   float edge = max(abs(uv.x), abs(uv.y)) * 2.0; // 0 center .. 1 edge
-  float rim  = smoothstep(0.72, 0.98, edge);
+  // F3 (Stage E): thinner + cooler rim — was reading as a solid glow slab
+  // instead of a swirl with a frame around it.
+  float rim  = smoothstep(0.86, 0.99, edge);
 
   float state = 0.35 + 0.65 * uState;           // T2 ramp
   vec3 col = uTint * (0.22 + 0.9 * band) * state;
-  col += uTint * rim * 1.4 * state;
+  col += uTint * rim * 0.9 * state;
 
   // live preview — captured-VP projected UVs (research §2)
   if (uUseLive > 0.001) {
@@ -89,7 +91,7 @@ void main() {
     vec3 live = texture2D(uLive, puv).rgb;      // RAW linear HalfFloat sample
     float interior = 1.0 - rim;
     col = mix(col, live, clamp(uUseLive, 0.0, 1.0) * interior);
-    col += uTint * rim * 0.8;
+    col += uTint * rim * 0.45;
   }
 
   // T3 — discharge burst

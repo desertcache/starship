@@ -195,12 +195,16 @@ export function initHud(): void {
 
 // ── Tick ──────────────────────────────────────────────────────────────────────
 
-export function tickHud(shipMinutes: number, energy: number, hunger: number): void {
+// F10 (Stage E): the HUD title strip never acknowledged being off-ship. Any
+// non-'ship' id renders its uppercased name; unknown ids fall back safely.
+export function tickHud(shipMinutes: number, energy: number, hunger: number, activeWorldId: string): void {
   if (clockEl) clockEl.textContent = formatShipClock(shipMinutes);
   if (energyFill) energyFill.style.width = `${Math.round(energy)}%`;
   if (hungerFill)  hungerFill.style.width  = `${Math.round(hunger)}%`;
   if (flightStripEl) {
-    flightStripEl.textContent = `STREL-7 · T+${formatShipClock(shipMinutes)} · CRUISE`;
+    flightStripEl.textContent = activeWorldId === 'ship'
+      ? `STREL-7 · T+${formatShipClock(shipMinutes)} · CRUISE`
+      : `STREL-7 ⟶ ${activeWorldId.toUpperCase()}`;
   }
 }
 

@@ -23,6 +23,12 @@ import { makeRng } from '../../fx/space/rng.js';
 import type { AABB } from '../types.js';
 import { riftRockVeinTexture } from './riftTextures.js';
 
+// F7 (Stage E): dedicated seed for the bridge deck's facet texture — distinct
+// cached() key from the island underside seeds (0x7111/0x7112/etc.), so
+// tweaking its .repeat below never mutates a texture instance shared with
+// other meshes.
+const BRIDGE_TEX_SEED = 0x7bb1;
+
 export const MAIN_RADIUS = 22.5;
 export const MAIN_MAX_HEIGHT = 2.4;
 export const SIDE_RADIUS = 6;
@@ -197,12 +203,14 @@ export function buildRiftIslands(): RiftIslands {
   const edgeSideH = sideT.groundHeight(-SIDE_RADIUS, 0);
   const bridgeSegs = 10;
   const bp: number[] = [];
+  const bUv: number[] = [];
   const bi: number[] = [];
   for (let i = 0; i <= bridgeSegs; i++) {
     const t = i / bridgeSegs;
     const x = THREE.MathUtils.lerp(BRIDGE_START_X, BRIDGE_END_X, t);
     const y = THREE.MathUtils.lerp(edgeMainH, edgeSideH, t) + Math.sin(Math.PI * t) * 0.35;
     bp.push(x, y, -BRIDGE_HALF_W, x, y, BRIDGE_HALF_W);
+    bUv.push(t, 0, t, 1);
   }
   for (let i = 0; i < bridgeSegs; i++) {
     const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
@@ -210,10 +218,19 @@ export function buildRiftIslands(): RiftIslands {
   }
   const bridgeGeo = new THREE.BufferGeometry();
   bridgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
+  bridgeGeo.setAttribute('uv', new THREE.Float32BufferAttribute(bUv, 2));
   bridgeGeo.setIndex(bi);
   bridgeGeo.computeVertexNormals();
+  // F7 (Stage E): facet-patterned map + emissiveMap (was a flat unmapped
+  // emissive slab) — same map+emissiveMap treatment as the island undersides,
+  // so the deck's GLOW carries the vein/facet pattern (a map alone couldn't
+  // help: the visible teal was all unmapped emissive). Intensity 0.3→0.55
+  // compensates the dark texture average; net glow is dimmer than before.
+  const bridgeTex = riftRockVeinTexture(BRIDGE_TEX_SEED);
+  bridgeTex.repeat.set(4, 1);
   const bridgeMat = new THREE.MeshStandardMaterial({
-    color: '#4a3468', emissive: '#57e6ff', emissiveIntensity: 0.3, roughness: 0.32, metalness: 0.18,
+    map: bridgeTex, emissiveMap: bridgeTex, color: '#4a3468',
+    emissive: '#57e6ff', emissiveIntensity: 0.55, roughness: 0.32, metalness: 0.18,
     transparent: true, opacity: 0.95, side: THREE.DoubleSide,
   });
   const bridge = new THREE.Mesh(bridgeGeo, bridgeMat);

@@ -249,7 +249,7 @@ function animate(now: number): void {
   }
 
   const s = getState();
-  tickHud(s.shipMinutes, s.energy, s.hunger);
+  tickHud(s.shipMinutes, s.energy, s.hunger, activeId);
 
   bloom.render();
   if (firstFrame) {

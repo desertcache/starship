@@ -108,7 +108,9 @@ export function buildRift(): World {
     // QA: standing mid-bridge looking east down the deck — rail crystals
     // converging on the side island, relic beacon on top, the island's rocky
     // underside cone + bottomless starfield below.
-    { name: 'rift-qa', position: new THREE.Vector3(26.5, qaY, 0), lookAt: new THREE.Vector3(37.5, qaY - 1.6, 0.6) },
+    // F15 (Stage E): re-aimed at the relic's actual position (39.5, 1.0) and
+    // raised toward its hover height — was aimed short/low, cropping it out.
+    { name: 'rift-qa', position: new THREE.Vector3(26.5, qaY, 0), lookAt: new THREE.Vector3(39.5, qaY - 0.4, 1.0) },
   ];
 
   return {

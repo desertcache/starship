@@ -63,7 +63,9 @@ export function attachRelicSocketGlow(
 ): void {
   const dimMap = ringMat.map;
   const litMap = makeRelicSocketLitTexture(tintHex);
-  const litColor = new THREE.Color(pulseHex).multiplyScalar(2.5);
+  // F12 (Stage E): ignition under-registered — brighter emissive-only ramp
+  // (2.5→3.3), no new lights.
+  const litColor = new THREE.Color(pulseHex).multiplyScalar(3.3);
   let litState = false;
   ring.onBeforeRender = (): void => {
     const lit = getCodex().relics.includes(worldId);

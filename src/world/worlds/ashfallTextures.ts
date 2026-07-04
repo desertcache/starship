@@ -35,7 +35,12 @@ export function ashfallBasaltMottle(): THREE.CanvasTexture {
     const rng = makeRng(MOTTLE_SEED);
     const size = 512;
     const { canvas, ctx } = makeCanvas(size);
-    ctx.fillStyle = '#5a4a3c';
+    // F2 (Stage E): this texture MULTIPLIES the terrain's vertex-color ramp
+    // in linear space — with the old '#5a4a3c' base the product was ~0.3%
+    // albedo (black by construction). Same fix as verdantGroundDetailTexture:
+    // keep the detail texture near-white on average and let the RAMP carry
+    // the basalt color; the dark blobs below still supply the relief detail.
+    ctx.fillStyle = '#d0c4b8';
     ctx.fillRect(0, 0, size, size);
     for (let i = 0; i < 46; i++) {
       const x = rng() * size;

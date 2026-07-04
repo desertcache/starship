@@ -15,11 +15,9 @@
  * Math.random(). Segment meshes are excluded from mergeStaticSiblings
  * automatically (custom onBeforeRender).
  *
- * Geometry strategy: one canonical gate cluster is built at a LOCAL origin
- * (wall at local z=0, portal facing local -Z, room extending toward -z),
- * then wrapped in a THREE.Group positioned+rotated per gate. This means the
- * chamfer/frame/conduit language is written exactly once and is guaranteed
- * identical across all three gates.
+ * Geometry strategy: one canonical gate cluster built at a LOCAL origin (wall
+ * at z=0, portal facing -Z), wrapped in a THREE.Group positioned+rotated per
+ * gate — the chamfer/frame/conduit language is written once, identically.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -32,6 +30,7 @@ import { createPortalSurface, type PortalSurface } from '../fx/portalSurface.js'
 import { rng } from '../fx/textureHelpers.js';
 import { attachRelicSocketGlow } from './portalRoomSocket.js';
 import { makeRelicSocketTexture, makeSurveyConsoleTexture } from './portalRoomTextures.js';
+import { getCodex } from '../core/state.js';
 
 // ── Canonical gate geometry constants (local frame: wall at z=0) ─────────────
 const GATE_W = 2.2;
@@ -185,6 +184,9 @@ function buildGateCluster(cfg: GateConfig): GateBuild {
     { pos: new THREE.Vector3(GATE_W / 2, ledY, 0.02), color: LedColors.teal, blink: true, period: 1.6 + rand() * 1.2, phase: rand() },
     { pos: new THREE.Vector3(-(GATE_W / 2 + JAMB_W - 0.02), DAIS_Y + 0.3, 0.02), color: LedColors.teal },
     { pos: new THREE.Vector3(GATE_W / 2 + JAMB_W - 0.02, DAIS_Y + 0.3, 0.02), color: LedColors.teal },
+    // F14: dais-biased extras — same InstancedMesh as above, zero added draws.
+    { pos: new THREE.Vector3(-GATE_W * 0.35, 0.11, -1.0), color: LedColors.teal },
+    { pos: new THREE.Vector3(GATE_W * 0.35, 0.11, -1.0), color: LedColors.teal },
   ]);
 
   // ── Relic socket — dark/empty pedestal + biome-tinted rune ring ──────────
@@ -215,8 +217,9 @@ function buildHolotable(group: THREE.Group, x: number, z: number): AABB {
   pedestal.position.set(x, HT / 2, z);
   group.add(pedestal);
 
-  // Subtle standby shimmer — additive light-cone, apex at the emitter (Stage D
-  // adds the real hologram). depthWrite off so it never punches the scene.
+  // Subtle standby shimmer — additive light-cone, apex at the emitter.
+  // F9: named + hidden until the first relic is held (state-driven, polled
+  // by portalRoom.ts's holoDriver) so an empty table reads truly empty.
   const cone = new THREE.Mesh(
     new THREE.ConeGeometry(0.2, 0.45, 8, 1, true),
     new THREE.MeshBasicMaterial({
@@ -224,8 +227,10 @@ function buildHolotable(group: THREE.Group, x: number, z: number): AABB {
       side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
     }),
   );
+  cone.name = 'holotable-standby-cone';
   cone.position.set(x, HT + 0.225, z);
   cone.rotation.x = Math.PI;
+  cone.visible = getCodex().relics.length > 0;
   group.add(cone);
 
   const anchor = new THREE.Group();

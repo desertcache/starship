@@ -146,8 +146,11 @@ export function verdantGroundDetailTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Vertical alpha gradient for the boundary glow wall: bright at the bottom
- * (ground level), feathering to fully transparent at the top edge.
+ * Vertical alpha gradient for the boundary glow wall. F6 (Stage E): reshaped
+ * from "bright at the ground, feathering up" — that shape traced every hill
+ * crest along the rim as a jagged bright line — to dim-at-base/peak-at-
+ * mid-height, so the rim reads as a soft ambient glow band instead of a
+ * contour line hugging the terrain silhouette.
  */
 export function verdantRimGradientTexture(): THREE.CanvasTexture {
   return cached('verdant-rim-gradient', () => {
@@ -159,8 +162,8 @@ export function verdantRimGradientTexture(): THREE.CanvasTexture {
     const ctx = canvas.getContext('2d')!;
     const grad = ctx.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0.0, 'rgba(255,255,255,0.0)');   // top — vanish
-    grad.addColorStop(0.55, 'rgba(255,255,255,0.12)');
-    grad.addColorStop(1.0, 'rgba(255,255,255,0.65)');  // bottom — ground glow
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.55)');  // mid-height — peak
+    grad.addColorStop(1.0, 'rgba(255,255,255,0.15)');  // bottom — dim
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
     const tex = new THREE.CanvasTexture(canvas);

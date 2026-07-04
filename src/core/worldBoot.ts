@@ -72,7 +72,12 @@ export function bootWorlds(d: WorldBootDeps): void {
   });
 
   registerWorld(shipWorld);
-  registerWorld(buildDevVoid());
+  // F8 (Stage E, orchestrator decision): devVoid is the creature bench, not a
+  // 5th world — only register it when explicitly requested via ?world=dev,
+  // so it's unreachable (and its cameras absent from verify's sweep) in
+  // normal play/verification. The file stays; nothing here deletes it.
+  const worldParam = new URLSearchParams(window.location.search).get('world');
+  if (worldParam === 'dev') registerWorld(buildDevVoid());
   registerWorld(buildVerdant());
   registerWorld(buildAshfall());
   registerWorld(buildRift());
@@ -80,7 +85,6 @@ export function bootWorlds(d: WorldBootDeps): void {
   const camNames = getRegisteredCamNames();
   (window as unknown as Record<string, unknown>)['__camNames'] = camNames;
 
-  const worldParam = new URLSearchParams(window.location.search).get('world');
   if (worldParam && hasWorld(worldParam)) {
     void switchWorld(worldParam, { instant: true }); // spawn directly into the world
   } else {
