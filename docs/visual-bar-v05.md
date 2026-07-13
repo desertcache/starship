@@ -1,7 +1,7 @@
 # v0.5 Visual Bar — Reference Analysis
 
-Source: Sam's reference video (another Three.js starship, 2026-06-12). Extracted frames at
-`C:\Users\bates\AppData\Local\Temp\claude\starship-ref-frames\ref-01..10.png` (02/05/08 are the keepers).
+Source: Sam's reference video (another Three.js starship, 2026-06-12). Frames ref-01..10 extracted
+to a local temp folder, not committed (02/05/08 are the keepers).
 Goal: close the gap between our build and this bar. Interior = Starfield, exterior = No Man's Sky.
 
 ## What the reference does that we don't (ranked by impact)

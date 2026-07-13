@@ -1,7 +1,7 @@
 # TASK BRIEF — Exterior hull geometry factory + hologram material
 
-> Audience: an autonomous coding agent (Google Antigravity) working in this repo at
-> `C:\Users\bates\Documents\Coding\starship`. This brief is self-contained; you do NOT
+> Audience: an autonomous coding agent (Google Antigravity) working in this repo.
+> This brief is self-contained; you do NOT
 > have access to the conversation that produced it. Follow it exactly. Where this brief
 > and your own judgment conflict, this brief wins.
 

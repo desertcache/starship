@@ -6,6 +6,7 @@ import { installCameraGlobal, setActiveCamera } from './core/cameras.js';
 import { tickState, getState, loadState } from './core/state.js';
 import { initDebug, tickDebug } from './ui/debug.js';
 import { initHud, tickHud, showRoomToast } from './ui/hud.js';
+import { initStartOverlay } from './ui/startOverlay.js';
 import { assembleShip } from './world/assembly.js';
 import { initController, tickController, isMoving, tickBob } from './player/controller.js';
 import { initInteract, registerInteractables, tickInteract } from './player/interact.js';
@@ -91,6 +92,9 @@ setActiveCamera(camera);
 initPerf(renderer);
 initDebug(renderer, camera);
 initHud();
+// First-boot "click to start" overlay for public visitors (portfolio embeds,
+// cold GitHub Pages links). No-ops under Playwright (navigator.webdriver).
+initStartOverlay();
 
 // ── Load persisted state if available ────────────────────────────────────────
 loadState();
