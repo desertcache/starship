@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { matWall } from './materials.js';
 import { matPipeDark } from '../fx/propMaterials.js';
+import { SURFACE_EPS } from './constants.js';
 import type { AABB } from './types.js';
 
 const BB_H = 0.18;  // baseboard height
@@ -48,6 +49,10 @@ const WALL_T     = 0.05;
 /**
  * Add baseboard + crown channel strips to both side walls and end caps.
  * Merged per wall → 4 draw calls total (2 sides × baseboard+crown merged).
+ * Room-facing faces sit SURFACE_EPS proud of the wall planes and baseboard
+ * bottoms sink SURFACE_EPS into the floor; exact coplanarity here caused the
+ * doorway-header sawtooth z-fight (a prior material swap could not fix —
+ * see rib comment above).
  */
 export function addBaseboardsAndCrowns(
   group: THREE.Group,
@@ -61,13 +66,14 @@ export function addBaseboardsAndCrowns(
   // Side walls — baseboard + crown merged per side
   for (const side of ['port', 'starboard'] as const) {
     const sign  = side === 'port' ? -1 : 1;
-    const wXOuter = sign * (halfW + BB_D / 2);
+    const wXOuter = sign * (halfW + BB_D / 2 - SURFACE_EPS);
 
     const bbGeo = new THREE.BoxGeometry(BB_D, BB_H, D);
-    bbGeo.translate(wXOuter, BB_H / 2, 0);
+    bbGeo.translate(wXOuter, BB_H / 2 - SURFACE_EPS, 0);
 
     const crGeo = new THREE.BoxGeometry(CR_D, CR_H, D);
-    crGeo.translate(sign * (halfW + CR_D / 2), H - CR_H / 2, 0);
+    // Crown Y stays at H: top face is opposite-facing vs ceiling (no fight); lowering would open a visible slit.
+    crGeo.translate(sign * (halfW + CR_D / 2 - SURFACE_EPS), H - CR_H / 2, 0);
 
     const parts = [bbGeo, crGeo];
     const merged = mergeGeometries(parts);
@@ -79,9 +85,9 @@ export function addBaseboardsAndCrowns(
   // Fore/aft end caps
   for (const [wZEnd, sign] of [[-halfD, -1], [halfD, 1]] as [number, number][]) {
     const bbGeo = new THREE.BoxGeometry(W, BB_H, BB_D);
-    bbGeo.translate(0, BB_H / 2, wZEnd + sign * BB_D / 2);
+    bbGeo.translate(0, BB_H / 2 - SURFACE_EPS, wZEnd + sign * (BB_D / 2 - SURFACE_EPS));
     const crGeo = new THREE.BoxGeometry(W, CR_H, CR_D);
-    crGeo.translate(0, H - CR_H / 2, wZEnd + sign * CR_D / 2);
+    crGeo.translate(0, H - CR_H / 2, wZEnd + sign * (CR_D / 2 - SURFACE_EPS));
     const parts = [bbGeo, crGeo];
     const merged = mergeGeometries(parts);
     for (const g of parts) g.dispose();
@@ -92,6 +98,9 @@ export function addBaseboardsAndCrowns(
 
 /**
  * Add 5 vertical ribs per side wall, merged per side → 2 draw calls total.
+ * Rib faces sit SURFACE_EPS proud of the wall plane — flush placement made
+ * ribs render only by WINNING a depth tie vs the wall; any change to the
+ * merged matPipeDark bucket flips the tie and ribs comb/vanish.
  */
 export function addVerticalRibs(
   group: THREE.Group,
@@ -101,7 +110,7 @@ export function addVerticalRibs(
 
   for (const side of ['port', 'starboard'] as const) {
     const sign  = side === 'port' ? -1 : 1;
-    const wX    = sign * (halfW + RIB_D / 2);
+    const wX    = sign * (halfW + RIB_D / 2 - SURFACE_EPS);
 
     const ribGeos: THREE.BufferGeometry[] = [];
     for (const rz of RIB_ZS) {

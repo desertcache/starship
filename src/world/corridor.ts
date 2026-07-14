@@ -19,6 +19,7 @@ import { addBaseboardsAndCrowns, addVerticalRibs, addQuartersJunction } from './
 import { buildCorridorPortholeBezel } from './corridorPortholes.js';
 import { mergeStaticSiblings } from './staticMerge.js';
 import { buildLightShaft } from '../fx/volumetrics.js';
+import { SURFACE_EPS } from './constants.js';
 import type { AABB, RoomModule } from './types.js';
 
 // ── UV tile sizes (must match roomBuilder / texturesPanels) ───────────────────
@@ -178,17 +179,20 @@ export function buildCorridor(): RoomModule {
     }
 
     // ── Teal floor strips (split around door gap, collected for one merge) ──
+    // Inline duplicate of roomDressing.addFloorStrips port/stbd branch — kept because
+    // buildRoom's doors array (gapW=D+1 wall suppression) can't express the real side-door
+    // gap. Keep Y epsilon (SURFACE_EPS) in sync.
     const STRIP_H = 0.06; const STRIP_W = 0.04; const STRIP_OFF = 0.025;
     const sX = side === 'port' ? -halfW + STRIP_OFF : halfW - STRIP_OFF;
     const fsl = DOOR_FORE_EDGE - (-halfD);
     const asl = halfD - DOOR_AFT_EDGE;
     if (fsl > 0.05) {
       const g = new THREE.BoxGeometry(STRIP_W, STRIP_H, fsl);
-      g.translate(sX, STRIP_H / 2, -halfD + fsl / 2); stripGeos.push(g);
+      g.translate(sX, STRIP_H / 2 - SURFACE_EPS, -halfD + fsl / 2); stripGeos.push(g);
     }
     if (asl > 0.05) {
       const g = new THREE.BoxGeometry(STRIP_W, STRIP_H, asl);
-      g.translate(sX, STRIP_H / 2, DOOR_AFT_EDGE + asl / 2); stripGeos.push(g);
+      g.translate(sX, STRIP_H / 2 - SURFACE_EPS, DOOR_AFT_EDGE + asl / 2); stripGeos.push(g);
     }
   }
 

@@ -4,6 +4,7 @@
  * Consumed exclusively by ceilingFixtures.ts.
  */
 import * as THREE from 'three';
+import { SURFACE_EPS } from './constants.js';
 
 // ── Fixture geometry constants (exported for ceilingFixtures.ts) ───────────────
 
@@ -127,7 +128,7 @@ export function pushHousingGeos(
   geos: THREE.BufferGeometry[],
   cx: number, cz: number, ceilY: number,
 ): void {
-  const hY      = ceilY - FRAME_DEPTH / 2;
+  const hY      = ceilY - FRAME_DEPTH / 2 + SURFACE_EPS; // raised into ceiling: top face hidden above y=H (anti-z-fight)
   const innerLen = FIX_D_LEN - FRAME_BORDER * 2;
 
   const left = new THREE.BoxGeometry(FRAME_BORDER, FRAME_DEPTH, FIX_D_LEN);

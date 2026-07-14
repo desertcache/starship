@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { matTealStrip, matDoorFrame } from '../fx/shipMaterials.js';
 import { buildCeilingFixtures } from './ceilingFixtures.js';
+import { SURFACE_EPS } from './constants.js';
 import type { DoorSpec } from './roomBuilder.js';
 
 const GAP_W_DEFAULT = 1.4;
@@ -148,6 +149,9 @@ export function addDoorFrame(
  * v0.4 defrag: all strip BoxGeometries are collected, translated in place,
  * merged into ONE geometry, inputs disposed, ONE mesh added to group.
  * Saves ~5 geos + ~5 draws per room vs the old per-strip approach.
+ *
+ * Strips sink SURFACE_EPS into the floor (bottom face buried below y=0) to
+ * avoid a coplanar bottom face at y=0 (anti-z-fight).
  */
 export function addFloorStrips(
   group: THREE.Group,
@@ -176,17 +180,17 @@ export function addFloorStrips(
       const rightLen = halfW - (gapOff + gapW / 2);
       if (leftLen > 0.05) {
         const g = new THREE.BoxGeometry(leftLen, STRIP_H, STRIP_D);
-        g.translate(-halfW + leftLen / 2, STRIP_H / 2, wZ);
+        g.translate(-halfW + leftLen / 2, STRIP_H / 2 - SURFACE_EPS, wZ);
         stripGeos.push(g);
       }
       if (rightLen > 0.05) {
         const g = new THREE.BoxGeometry(rightLen, STRIP_H, STRIP_D);
-        g.translate(halfW - rightLen / 2, STRIP_H / 2, wZ);
+        g.translate(halfW - rightLen / 2, STRIP_H / 2 - SURFACE_EPS, wZ);
         stripGeos.push(g);
       }
     } else {
       const g = new THREE.BoxGeometry(roomW, STRIP_H, STRIP_D);
-      g.translate(0, STRIP_H / 2, wZ);
+      g.translate(0, STRIP_H / 2 - SURFACE_EPS, wZ);
       stripGeos.push(g);
     }
   }
@@ -203,17 +207,17 @@ export function addFloorStrips(
       const aftLen  = halfD - (gapOff + gapW / 2);
       if (foreLen > 0.05) {
         const g = new THREE.BoxGeometry(STRIP_D, STRIP_H, foreLen);
-        g.translate(wX, STRIP_H / 2, -halfD + foreLen / 2);
+        g.translate(wX, STRIP_H / 2 - SURFACE_EPS, -halfD + foreLen / 2);
         stripGeos.push(g);
       }
       if (aftLen > 0.05) {
         const g = new THREE.BoxGeometry(STRIP_D, STRIP_H, aftLen);
-        g.translate(wX, STRIP_H / 2, halfD - aftLen / 2);
+        g.translate(wX, STRIP_H / 2 - SURFACE_EPS, halfD - aftLen / 2);
         stripGeos.push(g);
       }
     } else {
       const g = new THREE.BoxGeometry(STRIP_D, STRIP_H, roomD);
-      g.translate(wX, STRIP_H / 2, 0);
+      g.translate(wX, STRIP_H / 2 - SURFACE_EPS, 0);
       stripGeos.push(g);
     }
   }
