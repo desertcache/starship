@@ -262,6 +262,16 @@ async function run() {
     await page.evaluate(() => window.__test.switchWorld('ship'));
     await sleep(150);
 
+    // Lane D defensive reset: the perf-probe above __setCam()s through every
+    // registered camera (including 'chase') and picks the worst-fps one for
+    // the 5s sample — if that happens to be 'chase', the flight-view shim is
+    // still parked in 'exterior' here, and tickChaseCam() would keep
+    // hijacking camera.position every ship-world frame, corrupting every
+    // teleport()-then-interact() call below. One frame is enough for
+    // chaseCam's own next-tick sync to restore fov/up/layers.
+    await page.evaluate(() => window.__test.setFlightView('interior'));
+    await waitFrame();
+
     // ── Test 1: Sleep (bunk-a in quarters-a) ───────────────────────────────────
     // quarters-a world offset: (-4, 0, -16).
     // Bunk world centre: (-4, 0.84, -17.98). Teleport player adjacent, within radius.
@@ -717,6 +727,40 @@ async function run() {
     console.log('[verify] Test 10 PASSED ✓ (codex + relic + save/load + socket-lit-on-reload)');
 
     console.log('[verify] All 10 functional tests PASSED ✓\n');
+
+    // ── Test 13b: Exterior hull + chase camera view toggle (Lane D) ────────────
+    // __setCam('chase') flips the flight-view shim to 'exterior' via the camera
+    // registry (teleportToCamera → shim setView + snapChaseConverged, see
+    // core/cameras.ts) — the full-scale hull (layer 1) becomes visible to the
+    // (now layer 0+1) camera. __setCam('cockpit') flips back: view resets to
+    // 'interior' and the camera drops layer 1 again (hull invisible from
+    // inside, per design D4). getHullInfo().layer1 reads the ACTIVE CAMERA's
+    // current layer-1 state (not the hull mesh's, which never changes), so the
+    // same hook proves the toggle both ways. chase.png itself is already
+    // captured for free by the generic per-camera screenshot sweep above.
+    console.log('[verify] Test 13b: Exterior hull + chase cam view toggle');
+
+    await page.evaluate((n) => window.__setCam(n), 'chase');
+    await waitFrame();
+    await sleep(200);
+
+    const chaseHull = await page.evaluate(() => window.__test.getHullInfo());
+    console.log(`  chase — present=${chaseHull.present} layer1=${chaseHull.layer1} tris=${chaseHull.tris}`);
+    assert(chaseHull.present, "Test 13b: 'exterior-hull' mesh not found in the scene");
+    assert(chaseHull.layer1 === true, `Test 13b: camera should see layer 1 in chase view; got ${chaseHull.layer1}`);
+    assert(chaseHull.tris > 0, `Test 13b: exterior hull should have triangles; got ${chaseHull.tris}`);
+
+    await page.evaluate((n) => window.__setCam(n), 'cockpit');
+    await waitFrame();
+    await sleep(200);
+
+    const cockpitHull = await page.evaluate(() => window.__test.getHullInfo());
+    console.log(`  cockpit — layer1=${cockpitHull.layer1}`);
+    assert(cockpitHull.layer1 === false, `Test 13b: camera should NOT see layer 1 back in interior view; got ${cockpitHull.layer1}`);
+
+    console.log('[verify] Test 13b PASSED ✓ (chase view shows hull on layer 1; cockpit view hides it)');
+
+    console.log('[verify] All 11 functional tests PASSED ✓\n');
 
     await browser.close();
     console.log('[verify] Done. ✓');

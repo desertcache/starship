@@ -13,6 +13,7 @@ import { questRevealAndReadPanel } from '../world/interactWiring.js';
 import { isDoorOpen, forceDoorAutoCloseCheck } from '../world/doors.js';
 import { getActiveWorldId, switchWorld } from './worlds.js';
 import type { ScanData } from '../fx/space/types.js';
+import { setView } from '../flight/flightShimD.js';
 
 interface TestAPI {
   teleport(x: number, y: number, z: number): void;
@@ -32,6 +33,8 @@ interface TestAPI {
   getPlayerPos(): { x: number; y: number; z: number };
   getActiveInteractables(): Array<{ id: string; x: number; y: number; z: number }>;
   getRelicSocketColor(worldId: string): { r: number; g: number; b: number } | null;
+  setFlightView(v: 'interior' | 'exterior'): void;
+  getHullInfo(): { present: boolean; layer1: boolean; tris: number };
 }
 
 export interface TestApiDeps {
@@ -122,6 +125,19 @@ export function installTestApi(deps: TestApiDeps): void {
       if (!mesh) return null;
       const mat = mesh.material as THREE.MeshBasicMaterial;
       return { r: mat.color.r, g: mat.color.g, b: mat.color.b };
+    },
+    // v1.1 SOVEREIGN Stage 3 (Lane D) — exterior hull / chase-cam view hooks.
+    setFlightView(v: 'interior' | 'exterior'): void {
+      setView(v);
+    },
+    getHullInfo(): { present: boolean; layer1: boolean; tris: number } {
+      const mesh = scene.getObjectByName('exterior-hull') as THREE.Mesh | undefined;
+      const tris = mesh ? (mesh.geometry as THREE.BufferGeometry).attributes.position.count / 3 : 0;
+      return {
+        present: !!mesh,
+        layer1: camera.layers.isEnabled(1),
+        tris,
+      };
     },
   };
 
