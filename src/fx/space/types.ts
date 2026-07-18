@@ -19,6 +19,9 @@ export interface SpaceDirector {
   tick(elapsed: number): void;
   /** Nearest visible hero scan, or null when none is in scan range. */
   getScanData(): ScanData | null;
+  /** Live 'body' cast entry count (heroes + ambients) — used by the T12
+   *  universe-coherence test to assert the HERO_CAP invariant. */
+  getBodyCount(): number;
   /** Dispose all live cast + far starfield, remove from scene. */
   dispose(): void;
   /** Container the director adds bodies/asteroids/events into. */

@@ -22,6 +22,9 @@ export interface PlanetResult {
   dispose(): void;
   /** Nearest visible hero scan, or null. Widened member (optional). */
   getScanData?(): ScanData | null;
+  /** Live body count (heroes+ambients). Widened member (optional), v1.1
+   *  SOVEREIGN Lane C — same pattern as getScanData. */
+  getBodyCount?(): number;
 }
 
 /**
@@ -35,5 +38,6 @@ export function wrapDirectorAsPlanetResult(director: SpaceDirector): PlanetResul
     tick: (elapsed: number): void => director.tick(elapsed),
     dispose: (): void => director.dispose(),
     getScanData: (): ScanData | null => director.getScanData(),
+    getBodyCount: (): number => director.getBodyCount(),
   };
 }

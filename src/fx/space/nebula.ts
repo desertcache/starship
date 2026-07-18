@@ -81,15 +81,21 @@ export const DEFAULT_NEBULAE: NebulaConfig[] = [
 
 export interface NebulaField {
   sprites: THREE.Sprite[];
-  /** Advance parallax drift by `dz` (same delta the FAR star layer scrolls
-   *  by); wraps sprites at +500/-3500 so they stay perpetually in view. */
-  tick(dz: number): void;
+  /**
+   * Advance parallax drift by `dz` (same delta the FAR star layer scrolls
+   * by); wraps sprites at +500/-3500 so they stay perpetually in view.
+   * Accepts a THREE.Vector3 (v1.1 SOVEREIGN: full flowW-scaled delta) or a
+   * legacy `number` (+Z-only) — the latter kept for the pocket-world caller
+   * in src/world/worlds/riftSky.ts, which this lane does not touch.
+   */
+  tick(dz: THREE.Vector3 | number): void;
   dispose(): void;
 }
 
-/** Build the persistent nebula field and add its sprites directly to `scene`. */
+/** Build the persistent nebula field and add its sprites directly to `parent`
+ *  (a THREE.Scene or, under the universe rig, a THREE.Group). */
 export function createNebulaField(
-  scene: THREE.Scene,
+  parent: THREE.Object3D,
   configs: NebulaConfig[] = DEFAULT_NEBULAE,
 ): NebulaField {
   const sprites: THREE.Sprite[] = [];
@@ -113,21 +119,22 @@ export function createNebulaField(
     sprite.position.copy(cfg.position);
     sprite.name = cfg.name;
     sprite.renderOrder = -1;
-    scene.add(sprite);
+    parent.add(sprite);
     sprites.push(sprite);
     mats.push(mat);
     texs.push(tex);
   }
 
-  function tick(dz: number): void {
+  function tick(dz: THREE.Vector3 | number): void {
     for (const s of sprites) {
-      s.position.z += dz;
+      if (typeof dz === 'number') s.position.z += dz;
+      else s.position.add(dz);
       if (s.position.z > 500) s.position.z -= 3500;
     }
   }
 
   function dispose(): void {
-    for (const s of sprites) scene.remove(s);
+    for (const s of sprites) parent.remove(s);
     for (const m of mats) m.dispose();
     for (const t of texs) t.dispose();
   }
