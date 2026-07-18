@@ -13,6 +13,8 @@ import { questRevealAndReadPanel } from '../world/interactWiring.js';
 import { isDoorOpen, forceDoorAutoCloseCheck } from '../world/doors.js';
 import { getActiveWorldId, switchWorld } from './worlds.js';
 import type { ScanData } from '../fx/space/types.js';
+import { getFlight, setFlightInput, tickFlight } from '../flight/flightState.js';
+import type { FlightInput, FlightSnapshot } from '../flight/types.js';
 
 interface TestAPI {
   teleport(x: number, y: number, z: number): void;
@@ -32,6 +34,11 @@ interface TestAPI {
   getPlayerPos(): { x: number; y: number; z: number };
   getActiveInteractables(): Array<{ id: string; x: number; y: number; z: number }>;
   getRelicSocketColor(worldId: string): { r: number; g: number; b: number } | null;
+  // v1.1 SOVEREIGN — flight model hooks (Stage 1 Lane A). Headless has no
+  // pointer lock, so setFlightInput + flightTickN drive the model directly.
+  getFlight(): FlightSnapshot;
+  setFlightInput(partial: Partial<FlightInput>): void;
+  flightTickN(n: number, dtMs: number): void;
 }
 
 export interface TestApiDeps {
@@ -122,6 +129,16 @@ export function installTestApi(deps: TestApiDeps): void {
       if (!mesh) return null;
       const mat = mesh.material as THREE.MeshBasicMaterial;
       return { r: mat.color.r, g: mat.color.g, b: mat.color.b };
+    },
+    getFlight(): FlightSnapshot {
+      return getFlight();
+    },
+    setFlightInput(partial: Partial<FlightInput>): void {
+      setFlightInput(partial);
+    },
+    flightTickN(n: number, dtMs: number): void {
+      const dt = dtMs / 1000;
+      for (let i = 0; i < n; i++) tickFlight(dt);
     },
   };
 
