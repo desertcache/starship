@@ -26,7 +26,7 @@ import { bootWorlds } from './core/worldBoot.js';
 import { tickPortals } from './fx/portalSurface.js';
 import { installTestApi } from './core/testApi.js';
 import { initPlanetScaleSpike, tickPlanetScaleSpike } from './flight/spikes/planetScale.js';
-import { tickFlight } from './flight/flightState.js';
+import { tickFlight, getView } from './flight/flightState.js';
 import { createUniverseRig } from './flight/universeRig.js';
 import { createExteriorHull } from './fx/hull/exterior.js';
 import { initChaseCam, tickChaseCam } from './flight/chaseCam.js';
@@ -282,8 +282,11 @@ function animate(now: number): void {
   tickDebug(now);
   audio.tick(isMoving());
 
-  // Room ambient crossfade + toast on room change (ship only)
-  if (activeId === 'ship') {
+  // Room ambient crossfade + toast on room change (ship only). Skipped while
+  // the chase view is active: the exterior camera's position maps into
+  // whatever room volume it flies through, firing bogus room toasts/ambience
+  // from deep space (found via Stage 2's third-person "CARGO"-in-space shot).
+  if (activeId === 'ship' && getView() === 'interior') {
     const currentRoom = getRoomForPosition(camera.position.x, camera.position.z);
     if (currentRoom !== lastRoom) {
       audio.setRoom(currentRoom);

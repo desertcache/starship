@@ -76,6 +76,15 @@ export function initFlightHud(): void {
   modeEl = makeRow(panelEl, 'MODE');
   viewEl = makeRow(panelEl, 'VIEW');
 
+  // Keybind legend — the V chase view shipped invisible (no hint anywhere);
+  // every helm binding earns a permanent one-line legend.
+  const legend = makeDiv([
+    `color:${TEAL}`, 'font-size:9px', 'letter-spacing:0.08em', 'opacity:0.55',
+    'margin-top:3px', 'white-space:nowrap',
+  ].join(';'));
+  legend.textContent = 'V VIEW · W/S THR · SHIFT BOOST · X STOP · A/D ROLL · E STAND';
+  panelEl.appendChild(legend);
+
   document.body.appendChild(panelEl);
 }
 
