@@ -18,8 +18,8 @@
  * here — they stay direct THREE.Scene children, unchanged from v1.0.
  */
 import * as THREE from 'three';
-// LANE-C SHIM — replaced by flightState at merge (see flightShim.ts header).
-import { getAttitudeInverse } from './flightShim.js';
+// Stage 2 repoint: live flight state (was the static Lane C shim).
+import { getAttitudeInverseRef as getAttitudeInverse } from './flightState.js';
 
 export interface UniverseRig {
   /** The rig group itself — reparented content lives under this node. */

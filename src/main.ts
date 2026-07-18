@@ -249,11 +249,14 @@ function animate(now: number): void {
   const activeId = getActiveWorldId();
   const activeWorld = getActiveWorld();
   if (activeId === 'ship') {
+    // tickFlight FIRST (Stage 2): the rig/starfield/director now read LIVE
+    // flight state, so the writer must run before its consumers or every
+    // frame renders last frame's attitude/flow.
+    tickFlight(dtSeconds); // no-op under ?flight=0 (flightState.ts)
     universeRig.tick(dtSeconds);
     ship.planet.tick(elapsed);
     tickStarfield(ship.starfield, elapsed);
-    tickFlight(dtSeconds); // v1.1 SOVEREIGN — no-op under ?flight=0 (flightState.ts)
-    tickChaseCam(dtSeconds); // Lane D — no-op while view is 'interior'; after tickFlight so it reads fresh attitude
+    tickChaseCam(dtSeconds); // Lane D — no-op while view is 'interior'
   } else {
     activeWorld.update(dtSeconds, camera.position);
   }

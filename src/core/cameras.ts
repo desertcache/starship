@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { setView } from '../flight/flightShimD.js';
+import { setFlightView as setView } from '../flight/flightState.js';
 import { syncChaseView, snapChaseConverged } from '../flight/chaseCam.js';
 
 export interface NamedCamera {

@@ -21,7 +21,7 @@
 
 import * as THREE from 'three';
 import { buildStarLayer, setStarUniforms, disposeStarLayer } from './space/starLayer.js';
-import { getFlowW } from '../flight/flightShim.js'; // LANE-C SHIM — replaced by flightState at merge
+import { getFlowWRef as getFlowW } from '../flight/flightState.js'; // Stage 2: live ref, same zero-alloc semantics the shim had
 
 // ── Cruise tuning ───────────────────────────────────────────────────────────────
 

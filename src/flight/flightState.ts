@@ -65,6 +65,26 @@ function freshState(): InternalFlightState {
 
 let state: InternalFlightState = freshState();
 
+// ── Cached derived refs (Stage 2 shim repoint) ──────────────────────────────
+// Zero-alloc per-frame reads for the universe rig / starfield / director /
+// cast / chase cam — the same ref-return semantics the Lane C/D shims had.
+// Recomputed after every state write (tickFlight, reset, __testSetFlight) and
+// initialized at boot, so under `?flight=0` (tickFlight no-ops) they serve
+// frozen boot values forever: identity attitude, flowW (0,0,14) — the
+// v1.0-identical kill-switch behavior the shims guaranteed.
+const _attitudeInverse = new THREE.Quaternion();
+const _flowAxis = new THREE.Vector3(0, 0, 1);
+
+function refreshDerived(): void {
+  _attitudeInverse.copy(state.attitude).invert();
+  if (state.flowW.lengthSq() > 1e-8) {
+    _flowAxis.copy(state.flowW).normalize();
+  } else {
+    _flowAxis.copy(state.travelDir);
+  }
+}
+refreshDerived();
+
 // `?flight=0` kill-switch (house pattern — see core/perf.ts QUALITY_LOW).
 // tickFlight() no-ops entirely when set; no other call site needs to know
 // (main.ts always calls tickFlight() unconditionally, gated only on
@@ -121,6 +141,7 @@ export function setFlightInput(partial: Partial<FlightInput>): void {
 export function tickFlight(dt: number): void {
   if (FLIGHT_DISABLED) return;
   tickFlightModel(state, dt);
+  refreshDerived();
 }
 
 /** Apparent universe flow direction (unit) — the axis Lane C's spawn/despawn
@@ -137,6 +158,73 @@ export function getFlowAxis(): THREE.Vector3 {
 export function resetFlightForLoad(): void {
   state = freshState();
   resetFlightModelInternals();
+  refreshDerived();
+}
+
+// ── Zero-alloc ref getters (Stage 2 — the live replacements for the Lane C/D
+// shims). Returned objects are LIVE INTERNAL REFS: read-only by contract,
+// never mutate, never cache across frames. HUD/tests wanting safe copies use
+// getFlight() instead. ─────────────────────────────────────────────────────
+
+/** Ship attitude q (S→W). Live ref — do not mutate. */
+export function getAttitudeRef(): THREE.Quaternion {
+  return state.attitude;
+}
+
+/** q⁻¹ — what the universe rig writes to its group quaternion. Live ref. */
+export function getAttitudeInverseRef(): THREE.Quaternion {
+  return _attitudeInverse;
+}
+
+/** Apparent universe velocity, world frame. Live ref. */
+export function getFlowWRef(): THREE.Vector3 {
+  return state.flowW;
+}
+
+/** Unit spawn/despawn axis = normalize(flowW), travelDir fallback. Live ref. */
+export function getFlowAxisRef(): THREE.Vector3 {
+  return _flowAxis;
+}
+
+/** Speed as a 0..1 fraction of cruise max — boots 0.35, byte-matching the
+ *  old Lane D shim default so chase FOV/arm visuals are unchanged. Boost
+ *  saturates at 1 (its smoothstep consumers clamp anyway). */
+export function getSpeedFrac(): number {
+  return THREE.MathUtils.clamp(state.speed / MAX_SPEED_CRUISE, 0, 1);
+}
+
+/** Current camera view mode (D4). */
+export function getView(): 'interior' | 'exterior' {
+  return state.view;
+}
+
+/** Direct throttle write — the helm's X all-stop. Speed then exponentially
+ *  approaches the new target via the model's DECEL_LAMBDA (a satisfying
+ *  coast, not a brake slam). */
+export function setThrottle(v: number): void {
+  state.throttle = THREE.MathUtils.clamp(v, 0, 1);
+}
+
+/** TEST-ONLY driver (replaces the shims' __shimSet): plant an attitude and
+ *  speed, then derive velocityW/flowW/travelDir/throttle consistently so the
+ *  next tickFlightModel doesn't erode the planted state (flowW is DERIVED
+ *  from attitude+speed every tick — a raw flow write would last one frame).
+ *  Speeds above MAX_SPEED_CRUISE settle back toward it (throttle clamps at
+ *  1); T12's fast-flight segment only needs sustained fast flow, not an
+ *  exact number. No-op under `?flight=0`, preserving the kill-switch
+ *  semantics __shimSet had. */
+export function __testSetFlight(attitude: THREE.Quaternion, speed: number): void {
+  if (FLIGHT_DISABLED) return;
+  state.attitude.copy(attitude).normalize();
+  state.speed = Math.max(0, speed);
+  state.throttle = THREE.MathUtils.clamp(state.speed / MAX_SPEED_CRUISE, 0, 1);
+  const nose = new THREE.Vector3(0, 0, -1).applyQuaternion(state.attitude);
+  state.velocityW.copy(nose).multiplyScalar(state.speed);
+  state.flowW.copy(state.velocityW).multiplyScalar(-1);
+  if (state.flowW.lengthSq() > 1e-6) {
+    state.travelDir.copy(state.flowW).normalize();
+  }
+  refreshDerived();
 }
 
 // ── Narrow setters for the fields other lanes assign (design doc D2/D4/D5) ──

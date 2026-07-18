@@ -27,6 +27,10 @@ export const BOOT_THROTTLE = 0.35;
 /** design doc §9 — boost multiplier; boost max speed = 40 × 2.5 = 100 u/s. */
 export const BOOST_MULT = 2.5;
 
+/** Throttle-units per second a held throttleDelta of ±1 ramps the 0..1
+ *  throttle — held W reaches full throttle in ~2s (helm-feel default). */
+export const THROTTLE_RATE = 0.5;
+
 /** research-flight.md §3 — asymmetric speed-approach λ (satisfying coast on decel). */
 export const ACCEL_LAMBDA = 2.0;
 export const DECEL_LAMBDA = 1.0;

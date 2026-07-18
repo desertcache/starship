@@ -43,13 +43,8 @@ import {
   ACCEL_LAMBDA,
   DECEL_LAMBDA,
   LATERAL_BLEED_LAMBDA,
+  THROTTLE_RATE,
 } from './flightTuning.js';
-
-/** Rate, in throttle-units per second, that a persistent throttleDelta of ±1
- *  ramps the 0..1 throttle. Not in §9 (the table has no throttle-rate row) —
- *  chosen so a held W/S reaches full throttle in ~2s, a helm-feel default;
- *  Stage 5's all-hands tuning pass may move this alongside flightTuning.ts. */
-const THROTTLE_RATE = 0.5;
 
 /** Pipeline step 1 persistent state — smoothed copy of the raw input. */
 const smoothed = { pitch: 0, yaw: 0, roll: 0 };

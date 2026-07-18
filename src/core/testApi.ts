@@ -13,10 +13,16 @@ import { questRevealAndReadPanel } from '../world/interactWiring.js';
 import { isDoorOpen, forceDoorAutoCloseCheck } from '../world/doors.js';
 import { getActiveWorldId, switchWorld } from './worlds.js';
 import type { ScanData } from '../fx/space/types.js';
-import { getFlight, setFlightInput, tickFlight } from '../flight/flightState.js';
+import {
+  getFlight,
+  setFlightInput,
+  tickFlight,
+  getFlowAxisRef,
+  resetFlightForLoad,
+  setFlightView as setFlightViewState,
+  __testSetFlight,
+} from '../flight/flightState.js'; // Stage 2: shims deleted, all hooks drive live flight state
 import type { FlightInput, FlightSnapshot } from '../flight/types.js';
-import { getFlowAxis, getFlowW, __shimSet } from '../flight/flightShim.js'; // shim delegates to flightState; __shimSet = test override
-import { setView } from '../flight/flightShimD.js';
 
 interface TestAPI {
   teleport(x: number, y: number, z: number): void;
@@ -48,13 +54,19 @@ interface TestAPI {
     flowDir: [number, number, number];
     sunBearing: [number, number, number];
   };
-  /** T12: __shimSet's a 180° yaw quaternion, preserving current flowW. */
+  /** T12: plant a 180° yaw attitude at the current speed. Post-repoint the
+   *  flow is DERIVED, so it flips with the nose — physically correct. */
   shimYaw180(): void;
-  /** T12: __shimSet's identity attitude + an elevated flowW (0,0,z-ish),
-   *  for the fast-flight despawn-bound check. */
+  /** T12: plant identity attitude at speed=|v| → flowW=(0,0,+|v|). Speeds
+   *  above cruise max settle back toward it (throttle clamps at 1). */
   shimSetFlow(x: number, y: number, z: number): void;
   setFlightView(v: 'interior' | 'exterior'): void;
   getHullInfo(): { present: boolean; layer1: boolean; tris: number };
+  /** Stage 2: full flight reset (attitude → identity, speed → boot cruise).
+   *  Tests share ONE page, so anything that asserts against boot-state
+   *  bearings/poses (T12, T13b) MUST call this first — T11 deliberately
+   *  leaves a yawed attitude and elevated speed behind. */
+  resetFlight(): void;
 }
 
 export interface TestApiDeps {
@@ -163,7 +175,7 @@ export function installTestApi(deps: TestApiDeps): void {
       flowDir: [number, number, number];
       sunBearing: [number, number, number];
     } {
-      const axis = getFlowAxis();
+      const axis = getFlowAxisRef();
       const sunObj = scene.getObjectByName('hero-sun');
       const bearing = new THREE.Vector3();
       if (sunObj) {
@@ -178,14 +190,17 @@ export function installTestApi(deps: TestApiDeps): void {
     },
     shimYaw180(): void {
       const yaw180 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
-      __shimSet(yaw180, getFlowW());
+      __testSetFlight(yaw180, getFlight().speed);
     },
     shimSetFlow(x: number, y: number, z: number): void {
-      __shimSet(new THREE.Quaternion(), new THREE.Vector3(x, y, z));
+      __testSetFlight(new THREE.Quaternion(), Math.hypot(x, y, z));
     },
     // v1.1 SOVEREIGN Stage 3 (Lane D) — exterior hull / chase-cam view hooks.
     setFlightView(v: 'interior' | 'exterior'): void {
-      setView(v);
+      setFlightViewState(v);
+    },
+    resetFlight(): void {
+      resetFlightForLoad();
     },
     getHullInfo(): { present: boolean; layer1: boolean; tris: number } {
       const mesh = scene.getObjectByName('exterior-hull') as THREE.Mesh | undefined;

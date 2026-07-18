@@ -23,7 +23,7 @@ import { createNebulaField } from './nebula.js';
 import { createHeroSun } from './sun.js';
 import type { ScanData, SpaceDirector } from './types.js';
 import type { EventKind } from './events.js';
-import { getFlowW } from '../../flight/flightShim.js'; // LANE-C SHIM — replaced by flightState at merge
+import { getFlowWRef as getFlowW } from '../../flight/flightState.js'; // Stage 2: live ref, same zero-alloc semantics the shim had
 import {
   spawnHero,
   spawnAmbient,

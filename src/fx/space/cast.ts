@@ -23,7 +23,7 @@ import { createAsteroidField } from './asteroids.js';
 import type { AsteroidField } from './asteroids.js';
 import { createRareEvent } from './events.js';
 import type { RareEvent, EventKind } from './events.js';
-import { getFlowW, getFlowAxis } from '../../flight/flightShim.js'; // shim static until Stage 2 repoints it to flightState
+import { getFlowWRef as getFlowW, getFlowAxisRef as getFlowAxis } from '../../flight/flightState.js'; // Stage 2: live refs, same zero-alloc semantics the shim had
 import { CRUISE_SPEED_NEAR } from '../starfield.js';
 
 export type CastRole = 'HERO' | 'AMBIENT';

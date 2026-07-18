@@ -7,3 +7,5 @@ verify/refs-v08/
 verify/shots/
 verify/shots-iso-*/
 verify/report.json
+
+verify/

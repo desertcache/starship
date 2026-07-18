@@ -25,7 +25,13 @@
  */
 import * as THREE from 'three';
 import { damp, dampVec3, slerpDamp } from '../core/damp.js';
-import { getAttitude, getAttitudeInverse, getSpeedFrac, getView } from './flightShimD.js';
+// Stage 2 repoint: live flight state (was the static Lane D shim).
+import {
+  getAttitudeRef as getAttitude,
+  getAttitudeInverseRef as getAttitudeInverse,
+  getSpeedFrac,
+  getView,
+} from './flightState.js';
 
 // ── Tuning (design §9) ──────────────────────────────────────────────────────
 const CAM_ROT_LAMBDA = 3;

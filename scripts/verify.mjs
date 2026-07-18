@@ -861,15 +861,17 @@ async function run() {
     // v1.1 SOVEREIGN Stage 1 Lane C — universeRig's group.quaternion is set to
     // the ship attitude's inverse each frame (design §2); a 180° yaw must flip
     // world-fixed landmarks (the hero sun) to the opposite hemisphere, and the
-    // rolling cast must stay well-formed under fast off-nominal flow. Driven
-    // entirely via the LANE-C flightShim test hooks (shimYaw180 / shimSetFlow)
-    // — Lane A's real flightState replaces the shim at merge; these hooks
-    // move with it. Numbered 12 per the design doc (T11 is Lane A's flight-
-    // model test, appended separately).
+    // rolling cast must stay well-formed under fast off-nominal flow. Stage 2:
+    // shimYaw180/shimSetFlow now drive the LIVE flightState (__testSetFlight),
+    // and since every test shares this one page, T11's deliberately dirty exit
+    // state (yawed attitude, speed > boot) must be reset before the boot
+    // bearing capture below.
     console.log('[verify] Test 12: Universe coherence (rig rotation + flow)');
 
     await page.evaluate(() => window.__test.switchWorld('ship'));
     await sleep(150);
+    await page.evaluate(() => window.__test.resetFlight());
+    await waitFrame();
 
     const info0 = await page.evaluate(() => window.__test.getUniverseInfo());
     console.log(`  boot — bodyCount=${info0.bodyCount} flowDir=${JSON.stringify(info0.flowDir)} sunBearing=${JSON.stringify(info0.sunBearing)}`);
@@ -924,8 +926,9 @@ async function run() {
       'Test 12: getScan() returned a malformed object after fast flight',
     );
 
-    // Restore boot-equivalent shim state for any downstream consumers.
-    await page.evaluate(() => window.__test.shimSetFlow(0, 0, 14));
+    // Restore boot state for any downstream consumers (full reset — also
+    // clears input + model internals, unlike the old shim restore).
+    await page.evaluate(() => window.__test.resetFlight());
     await waitFrame();
 
     console.log('[verify] Test 12 PASSED ✓ (rig rotation flips world-fixed bearing; cast stays well-formed under fast flow)');
@@ -943,6 +946,11 @@ async function run() {
     // same hook proves the toggle both ways. chase.png itself is already
     // captured for free by the generic per-camera screenshot sweep above.
     console.log('[verify] Test 13b: Exterior hull + chase cam view toggle');
+
+    // Stage 2: chase convergence reads LIVE attitude now — reset so the
+    // snapped pose matches the clean boot-attitude baseline (shared page).
+    await page.evaluate(() => window.__test.resetFlight());
+    await waitFrame();
 
     await page.evaluate((n) => window.__setCam(n), 'chase');
     await waitFrame();
