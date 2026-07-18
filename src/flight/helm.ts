@@ -22,6 +22,7 @@ import { enterAnchor, exitAnchor, setPointerLookEnabled } from '../player/contro
 import { playOneShot } from '../fx/audio.js';
 import { setHelmActive, setFlightMode, setFlightInput } from './flightState.js';
 import { attachHelmInput, detachHelmInput, tickHelmInput } from './helmInput.js';
+import { forceInteriorKeepPose } from './chaseCam.js';
 import { setFlightStripText } from '../ui/hud.js';
 
 // Seat-port positions — byte-identical to the plain seat this replaces in
@@ -48,6 +49,9 @@ function teardown(): void {
   setFlightMode('CRUISE');
   setHelmActive(false);
   setFlightStripText(null);
+  // Standing up while in the chase view: force interior (V is detached now),
+  // keeping the standing pose the E-stand just restored — see chaseCam.ts.
+  forceInteriorKeepPose();
 }
 
 /** Take the helm: seat the camera (existing anchor pipeline), surrender

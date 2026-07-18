@@ -52,12 +52,16 @@ function pushHolds(): void {
   });
 }
 
+// SIGN CONVENTION (matches flightModel's local-axis integration): positive
+// yaw input rotates the nose LEFT (+Y right-hand rule), positive pitch input
+// rotates the nose UP (+X right-hand rule) — T11 exercises exactly this. The
+// INPUT layer therefore maps the pilot's intent onto those signs:
+//   mouse right  → nose right  → NEGATIVE yaw
+//   mouse down   → pull back   → nose up → POSITIVE pitch (flight-sim style)
 function onMouseMove(e: MouseEvent): void {
   if (document.pointerLockElement === null) return;
-  stickX = clamp1(stickX + e.movementX * HELM_MOUSE_SENS);
-  // Screen-down mouse motion (movementY > 0) pitches the nose UP — the usual
-  // non-inverted flight-sim convention — hence the negation.
-  stickY = clamp1(stickY - e.movementY * HELM_MOUSE_SENS);
+  stickX = clamp1(stickX - e.movementX * HELM_MOUSE_SENS);
+  stickY = clamp1(stickY + e.movementY * HELM_MOUSE_SENS);
 }
 
 function onKeyDown(e: KeyboardEvent): void {
@@ -141,8 +145,11 @@ export function tickHelmInput(dt: number): void {
   }
   stickChannelActive = true;
 
-  const arrowYaw = (held.yawRight ? 1 : 0) - (held.yawLeft ? 1 : 0);
-  const arrowPitch = (held.pitchUp ? 1 : 0) - (held.pitchDown ? 1 : 0);
+  // Arrow signs follow the same convention as the mouse (see onMouseMove):
+  // ArrowRight = nose right = negative yaw; ArrowUp = push forward = nose
+  // down = negative pitch (ArrowDown pulls back = nose up).
+  const arrowYaw = (held.yawLeft ? 1 : 0) - (held.yawRight ? 1 : 0);
+  const arrowPitch = (held.pitchDown ? 1 : 0) - (held.pitchUp ? 1 : 0);
   setFlightInput({
     pitch: clamp1(stickY + arrowPitch),
     yaw: clamp1(stickX + arrowYaw),

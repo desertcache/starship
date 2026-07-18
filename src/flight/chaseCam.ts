@@ -31,6 +31,7 @@ import {
   getAttitudeInverseRef as getAttitudeInverse,
   getSpeedFrac,
   getView,
+  setFlightView,
 } from './flightState.js';
 
 // ── Tuning (design §9) ──────────────────────────────────────────────────────
@@ -151,6 +152,27 @@ export function tickChaseCam(dt: number): void {
   currentFov = damp(currentFov, wantFov, wantFov > currentFov ? FOV_WIDEN_LAMBDA : FOV_NARROW_LAMBDA, dt);
 
   applyPose(cam);
+}
+
+/**
+ * Force interior view while KEEPING the camera's current pose — the helm
+ * stand-up path (helm.ts teardown). Standing up mid-chase-view would strand
+ * the walking player behind the exterior camera with the V key detached; and
+ * the normal exitExterior restore is wrong here too, because the pose stored
+ * at V-press time is the SEAT pose while the player already stands at their
+ * exitAnchor return spot. So: run the normal exit (restores fov/up, drops
+ * layer 1), then re-apply the live standing pose on top.
+ */
+export function forceInteriorKeepPose(): void {
+  if (!cam) return;
+  if (getView() === 'interior' && trackedView === 'interior') return;
+  const pos = cam.position.clone();
+  const quat = cam.quaternion.clone();
+  setFlightView('interior');
+  syncChaseView();
+  cam.position.copy(pos);
+  cam.quaternion.copy(quat);
+  cam.up.set(0, 1, 0);
 }
 
 /**
