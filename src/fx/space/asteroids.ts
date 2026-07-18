@@ -3,12 +3,18 @@
  *
  * A single low-poly rock geometry (icosahedron, base verts jittered once) is
  * instanced N times across a slab that crosses the cruise lane at distance.
- * The whole field translates +Z at a field drift speed; each instance tumbles
- * about its own seeded axis. Despawn is owned by the director (Z > +500).
+ * The whole field streams by (flowW + driftW)·dt each tick — same
+ * frame-correct pattern cast.ts uses for bodies/events (v1.1 SOVEREIGN fix:
+ * was a raw `basePos.z += driftSpeed*dt`, a world-fixed +Z translation that
+ * ignored attitude) — while each instance also tumbles about its own seeded
+ * local axis. Despawn is owned by cast.ts's tickEntry (bounding-box center
+ * projected onto the flow axis).
  */
 
 import * as THREE from 'three';
 import type { Rng } from './rng.js';
+import { getFlowWRef as getFlowW } from '../../flight/flightState.js';
+import { CRUISE_SPEED_NEAR } from '../starfield.js';
 
 export interface AsteroidField {
   mesh: THREE.InstancedMesh;
@@ -22,6 +28,7 @@ const _pos = new THREE.Vector3();
 const _scl = new THREE.Vector3();
 const _axis = new THREE.Vector3();
 const _spin = new THREE.Quaternion();
+const _flowDelta = new THREE.Vector3();
 
 /** Jitter the base icosahedron vertices once for a chunky rock silhouette. */
 function makeRockGeo(rng: Rng): THREE.IcosahedronGeometry {
@@ -57,6 +64,10 @@ export function createAsteroidField(rng: Rng): AsteroidField {
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 
   const driftSpeed = rng.range(11, 18);
+  // Own Z rate stored RELATIVE to the boot cruise flow (same pattern as
+  // cast.ts's BodyEntry/EventEntry driftW) so apparent boot motion =
+  // flowW + driftW = the v1.0-tuned raw driftSpeed exactly.
+  const driftW = driftSpeed - CRUISE_SPEED_NEAR;
 
   // Per-instance transform + tumble state.
   const basePos = new Float32Array(count * 3);
@@ -101,8 +112,15 @@ export function createAsteroidField(rng: Rng): AsteroidField {
   writeMatrices();
 
   function tick(dt: number): void {
+    // (flowW + driftW) * dt — identical to bodies/events; at boot flowW is
+    // (0,0,14) so this reduces exactly to the old raw (0,0,driftSpeed*dt).
+    _flowDelta.copy(getFlowW());
+    _flowDelta.z += driftW;
+    _flowDelta.multiplyScalar(dt);
     for (let i = 0; i < count; i++) {
-      basePos[i * 3 + 2] += driftSpeed * dt;
+      basePos[i * 3] += _flowDelta.x;
+      basePos[i * 3 + 1] += _flowDelta.y;
+      basePos[i * 3 + 2] += _flowDelta.z;
       rotAngle[i] += rotRate[i] * dt;
     }
     writeMatrices();

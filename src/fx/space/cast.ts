@@ -56,6 +56,14 @@ export interface FieldEntry {
 export interface EventEntry {
   kind: 'event';
   event: RareEvent;
+  /** Own motion in world/rig-local space, added on top of getFlowW() — same
+   *  pattern as BodyEntry.driftW. Events have no lateral own-motion (x=y=0),
+   *  just a Z rate stored RELATIVE to the boot cruise flow (old driftSpeed
+   *  − CRUISE_SPEED_NEAR) so apparent boot motion = flowW + driftW = the
+   *  v1.0-tuned raw driftSpeed exactly, and events respond correctly once
+   *  flight changes the flow (was a raw `position.z += driftSpeed*dt`,
+   *  ignoring attitude — the v1.1 SOVEREIGN bug this field fixes). */
+  driftW: THREE.Vector3;
 }
 
 export type CastEntry = BodyEntry | FieldEntry | EventEntry;
@@ -221,7 +229,11 @@ export function spawnEvent(rng: Rng, kind: EventKind): EventEntry {
   const lateralU = rng.range(-500, 500);
   const lateralV = rng.range(-200, 300);
   event.group.position.copy(flowPosition(lateralU, lateralV, along));
-  return { kind: 'event', event };
+  return {
+    kind: 'event',
+    event,
+    driftW: new THREE.Vector3(0, 0, event.driftSpeed - CRUISE_SPEED_NEAR),
+  };
 }
 
 // ── Per-tick motion + despawn ─────────────────────────────────────────────────────
@@ -252,10 +264,12 @@ export function tickEntry(entry: CastEntry, dt: number): boolean {
     }
     return false;
   }
-  // event — self-scrolls on its own +Z driftSpeed (events.ts, unchanged);
-  // despawn boundary still generalizes to the flow axis for consistency.
+  // event — pos += (flowW + driftW) * dt, same frame-correct pattern as
+  // bodies (v1.1 SOVEREIGN fix: was a raw `position.z += driftSpeed*dt`,
+  // which ignored attitude and slid the wrong way under a yawed ship).
   const g = entry.event.group;
-  g.position.z += entry.event.driftSpeed * dt;
+  _drift.copy(getFlowW()).add(entry.driftW).multiplyScalar(dt);
+  g.position.add(_drift);
   entry.event.tick(dt);
   return g.position.dot(flowAxis) > DESPAWN_Z + 200; // nebulae are large; give margin
 }

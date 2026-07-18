@@ -23,7 +23,7 @@ import { createNebulaField } from './nebula.js';
 import { createHeroSun } from './sun.js';
 import type { ScanData, SpaceDirector } from './types.js';
 import type { EventKind } from './events.js';
-import { getFlowWRef as getFlowW } from '../../flight/flightState.js'; // Stage 2: live ref, same zero-alloc semantics the shim had
+import { getFlowWRef as getFlowW, getAttitudeRef } from '../../flight/flightState.js'; // Stage 2: live ref, same zero-alloc semantics the shim had
 import {
   spawnHero,
   spawnAmbient,
@@ -50,8 +50,15 @@ const HERO_FLOOR = 1;
 const AMBIENT_FLOOR = 2;
 const AMBIENT_CEIL = 4;
 
-/** Canopy scan anchor (cockpit cam looks toward -Z). */
+/** Canopy scan anchor — a SHIP-FRAME point (cockpit cam looks toward -Z).
+ *  Body positions live in rig-local/world frame, so getScanData() must
+ *  rotate this into the rig frame per query (see _scanAnchorW below) before
+ *  comparing distances — a raw comparison mixes frames under a rotated
+ *  attitude (v1.1 SOVEREIGN bug this fixes). */
 const SCAN_ANCHOR = new THREE.Vector3(0, 1.5, -22.5);
+/** Scratch: SCAN_ANCHOR rotated into the rig/world frame — p_W = attitude·p_S.
+ *  At boot (identity attitude) this is byte-identical to SCAN_ANCHOR. */
+const _scanAnchorW = new THREE.Vector3();
 
 /** Hero sun world position — well inside the cockpit-canopy's -Z forward cone
  *  (camera ≈ (0,1.55,-22.5) looking -Z), offset right/up of the signature
@@ -230,13 +237,14 @@ export function createSpaceDirector(
   }
 
   function getScanData(): ScanData | null {
+    _scanAnchorW.copy(SCAN_ANCHOR).applyQuaternion(getAttitudeRef());
     let best: BodyEntry | null = null;
     let bestDist = Infinity;
     for (const e of cast) {
       if (e.kind !== 'body' || e.role !== 'HERO') continue;
       const proj = heroFlowPos(e);
       if (proj < SCAN_Z_NEAR || proj > SCAN_Z_FAR) continue;
-      const dist = e.body.group.position.distanceTo(SCAN_ANCHOR);
+      const dist = e.body.group.position.distanceTo(_scanAnchorW);
       if (dist < bestDist) {
         bestDist = dist;
         best = e;
