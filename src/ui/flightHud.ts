@@ -20,6 +20,8 @@ let throttleFill: HTMLDivElement | null = null;
 let throttlePctEl: HTMLDivElement | null = null;
 let modeEl: HTMLDivElement | null = null;
 let viewEl: HTMLDivElement | null = null;
+let distRow: HTMLDivElement | null = null;
+let distEl: HTMLDivElement | null = null;
 
 function makeDiv(styles: string): HTMLDivElement {
   const d = document.createElement('div');
@@ -76,13 +78,25 @@ export function initFlightHud(): void {
   modeEl = makeRow(panelEl, 'MODE');
   viewEl = makeRow(panelEl, 'VIEW');
 
+  // DIST row (v1.1 SOVEREIGN Stage 4, Lane E) — only shown while an approach
+  // snapshot exists (tickFlightHud toggles display); starts hidden.
+  distRow = makeDiv('display:none;align-items:center;gap:8px');
+  const distLbl = makeDiv([
+    `color:${TEAL}`, 'font-size:10px', 'letter-spacing:0.1em', 'width:48px', 'opacity:0.75',
+  ].join(';'));
+  distLbl.textContent = 'DIST';
+  distRow.appendChild(distLbl);
+  distEl = makeDiv([`color:${CREAM}`, 'font-size:13px', 'letter-spacing:0.06em'].join(';'));
+  distRow.appendChild(distEl);
+  panelEl.appendChild(distRow);
+
   // Keybind legend — the V chase view shipped invisible (no hint anywhere);
   // every helm binding earns a permanent one-line legend.
   const legend = makeDiv([
     `color:${TEAL}`, 'font-size:9px', 'letter-spacing:0.08em', 'opacity:0.55',
     'margin-top:3px', 'white-space:nowrap',
   ].join(';'));
-  legend.textContent = 'V VIEW · W/S THR · SHIFT BOOST · X STOP · A/D ROLL · E STAND';
+  legend.textContent = 'V VIEW · W/S THR · SHIFT BOOST · X STOP · A/D ROLL · E STAND · F ASSIST';
   panelEl.appendChild(legend);
 
   document.body.appendChild(panelEl);
@@ -112,6 +126,16 @@ export function tickFlightHud(): void {
   if (throttlePctEl) throttlePctEl.textContent = `${throttlePct}%`;
   if (modeEl) modeEl.textContent = modeTag;
   if (viewEl) viewEl.textContent = snap.view.toUpperCase();
+
+  // v1.1 SOVEREIGN Stage 4 (Lane E) — DIST row, visible only while the
+  // destination planet is live (approach snapshot non-null). Distance
+  // formatted in the same "km" convention interactConsole.ts's scan HUD uses.
+  if (snap.approach) {
+    if (distRow) distRow.style.display = 'flex';
+    if (distEl) distEl.textContent = `${snap.approach.targetName} · ${Math.round(snap.approach.trueDist).toLocaleString('en-US')} km`;
+  } else if (distRow) {
+    distRow.style.display = 'none';
+  }
 
   setFlightStripText(`STREL-7 · HELM · ${snap.speed.toFixed(1)} U/S · HDG ${heading3}°`);
 }

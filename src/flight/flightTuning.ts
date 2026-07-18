@@ -89,6 +89,16 @@ export const HOLD_RELEASE_FRAC = 0.5;
 export const DEST_TRUE_RADIUS = 4000; // units
 export const DEST_TRUE_DIST = 90000; // units
 
+/** design doc §8.2 (Stage 4, Lane E approach.ts) — damp() smoothing applied to
+ *  the assist's closing rate itself, so engaging doesn't snap the closure
+ *  speed instantly. Ported from the Stage 0 spike's local RATE_LAMBDA. */
+export const APPROACH_RATE_LAMBDA = 2;
+
+/** design doc §5 (Stage 4, Lane E approach.ts) — proportional gain (per
+ *  radian of bearing error) for the F-assist's autopilot steering commands,
+ *  written through setFlightInput and clamped to the ±1 FlightInput range. */
+export const APPROACH_STEER_GAIN = 1.2;
+
 /** design doc D2 (Lane B helmInput.ts) — mouse-to-virtual-stick sensitivity:
  *  stick fraction (-1..1) accumulated per pixel of raw mousemove delta. */
 export const HELM_MOUSE_SENS = 0.0015;

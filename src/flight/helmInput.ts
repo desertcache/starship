@@ -23,6 +23,7 @@
 import { damp } from '../core/damp.js';
 import { setFlightInput, setThrottle, setFlightView, getView } from './flightState.js';
 import { HELM_MOUSE_SENS, HELM_STICK_DECAY_LAMBDA } from './flightTuning.js';
+import { toggleApproachAssist, approachNoteManualInput } from './approach.js'; // v1.1 SOVEREIGN Stage 4 (Lane E)
 
 const STICK_EPS = 1e-3;
 
@@ -62,6 +63,7 @@ function pushHolds(): void {
 //   mouse down   → pull back   → nose up → POSITIVE pitch (flight-sim style)
 function onMouseMove(e: MouseEvent): void {
   if (document.pointerLockElement === null) return;
+  approachNoteManualInput(); // real stick input — drops F-assist (NMS behavior)
   stickX = clamp1(stickX - e.movementX * HELM_MOUSE_SENS);
   stickY = clamp1(stickY + e.movementY * HELM_MOUSE_SENS);
 }
@@ -78,10 +80,11 @@ function onKeyDown(e: KeyboardEvent): void {
     // e.repeat guard: OS key-repeat on a held V would thrash the view every
     // repeat event, corrupting the stored enter/exit camera pose.
     case 'KeyV': if (!e.repeat) setFlightView(getView() === 'interior' ? 'exterior' : 'interior'); break;
-    case 'ArrowUp': held.pitchUp = true; break;
-    case 'ArrowDown': held.pitchDown = true; break;
-    case 'ArrowLeft': held.yawLeft = true; break;
-    case 'ArrowRight': held.yawRight = true; break;
+    case 'KeyF': if (!e.repeat) toggleApproachAssist(); break;
+    case 'ArrowUp': held.pitchUp = true; approachNoteManualInput(); break;
+    case 'ArrowDown': held.pitchDown = true; approachNoteManualInput(); break;
+    case 'ArrowLeft': held.yawLeft = true; approachNoteManualInput(); break;
+    case 'ArrowRight': held.yawRight = true; approachNoteManualInput(); break;
   }
 }
 

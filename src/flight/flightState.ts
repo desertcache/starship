@@ -94,6 +94,18 @@ const _flightParams = new URLSearchParams(
 );
 const FLIGHT_DISABLED: boolean = _flightParams.get('flight') === '0';
 
+// Injected provider (house pattern — see world/interactConsole.ts's
+// setScanProvider): approach.ts (Stage 4, Lane E) supplies the destination
+// planet's live snapshot without flightState.ts ever importing approach.ts
+// (avoids a cycle — approach.ts already imports FROM this file).
+let approachProvider: (() => FlightSnapshot['approach']) | null = null;
+
+/** Wired once by main.ts after approach.ts's init — getFlight() below reads
+ *  through this rather than hardcoding null once the destination planet exists. */
+export function setApproachProvider(fn: () => FlightSnapshot['approach']): void {
+  approachProvider = fn;
+}
+
 /** Aircraft-instrument-style angle extraction. Heading/pitch come straight
  *  off the nose vector; bank compares the actual "up" against the up you'd
  *  have at zero roll for that same nose direction — robust to gimbal/order
@@ -127,7 +139,7 @@ export function getFlight(): FlightSnapshot {
     travelDir: state.travelDir.clone(),
     helmActive: state.helmActive,
     view: state.view,
-    approach: null, // Stage 4 (Lane E) fills this in; no destination planet yet
+    approach: approachProvider?.() ?? null,
   };
 }
 

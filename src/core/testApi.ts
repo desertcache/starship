@@ -24,6 +24,13 @@ import {
 } from '../flight/flightState.js'; // Stage 2: shims deleted, all hooks drive live flight state
 import type { FlightInput, FlightSnapshot } from '../flight/types.js';
 import { enterHelm, helmExitForTest } from '../flight/helm.js'; // Stage 2 (Lane B)
+import {
+  toggleApproachAssist,
+  getApproachDebug,
+  resetApproach,
+  tickApproach,
+  type ApproachDebugInfo,
+} from '../flight/approach.js'; // v1.1 SOVEREIGN Stage 4 (Lane E)
 
 interface TestAPI {
   teleport(x: number, y: number, z: number): void;
@@ -74,6 +81,14 @@ interface TestAPI {
    *  real keypress (T13a exercises the real E-stand path separately). */
   helmEnter(): void;
   helmExit(): void;
+  /** v1.1 SOVEREIGN Stage 4 (Lane E) — approach-assist test hooks. */
+  engageApproach(): void;
+  getApproachInfo(): ApproachDebugInfo | null;
+  /** Deterministic fast-forward (mirrors flightTickN): ticks flight model +
+   *  approach together each iteration, in main.ts's real per-frame order, so
+   *  headless tests don't wait real wall-clock seconds for the assist's
+   *  ~12s-normalized closure or the HOLD hysteresis to resolve. */
+  approachTickN(n: number, dtMs: number): void;
 }
 
 export interface TestApiDeps {
@@ -208,6 +223,7 @@ export function installTestApi(deps: TestApiDeps): void {
     },
     resetFlight(): void {
       resetFlightForLoad();
+      resetApproach();
     },
     getHullInfo(): { present: boolean; layer1: boolean; tris: number } {
       const mesh = scene.getObjectByName('exterior-hull') as THREE.Mesh | undefined;
@@ -223,6 +239,19 @@ export function installTestApi(deps: TestApiDeps): void {
     },
     helmExit(): void {
       helmExitForTest();
+    },
+    engageApproach(): void {
+      toggleApproachAssist();
+    },
+    getApproachInfo(): ApproachDebugInfo | null {
+      return getApproachDebug();
+    },
+    approachTickN(n: number, dtMs: number): void {
+      const dt = dtMs / 1000;
+      for (let i = 0; i < n; i++) {
+        tickFlight(dt);
+        tickApproach(dt);
+      }
     },
   };
 

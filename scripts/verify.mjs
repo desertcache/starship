@@ -1081,7 +1081,139 @@ async function run() {
 
     console.log('[verify] Test 13b PASSED ✓ (chase view shows hull on layer 1; cockpit view hides it)');
 
-    console.log('[verify] All 14 functional tests PASSED ✓\n');
+    // ── Test 14: Planet approach (destination planet, F-assist, HOLD) ──────────
+    // v1.1 SOVEREIGN Stage 4 (Lane E) — flight/approach.ts productionizes the
+    // Stage 0 spike. approachTickN mirrors flightTickN (T11/T13a precedent):
+    // ticks flightModel + approach together, in main.ts's real per-frame
+    // order, so this test never waits real wall-clock seconds for the
+    // ~12s-normalized assist closure or the HOLD hysteresis to resolve.
+    console.log('[verify] Test 14: Planet approach (destination planet, F-assist, HOLD)');
+
+    await page.evaluate(() => window.__test.switchWorld('ship'));
+    await waitFrame();
+    await page.evaluate((n) => window.__setCam(n), 'cockpit');
+    await waitFrame();
+
+    // Boot invariant. resetFlight()+getApproachInfo() are combined into ONE
+    // evaluate call — the live page keeps ticking tickApproach() on its own
+    // rAF loop between separate evaluate() round trips (the "honest closure"
+    // branch genuinely nibbles at trueDist every real ship-world frame, by
+    // design), so reading in the same synchronous turn as the reset is what
+    // makes trueDist land on an exact 90,000 rather than a frame or two short.
+    const bootApproach = await page.evaluate(() => {
+      window.__test.resetFlight();
+      return window.__test.getApproachInfo();
+    });
+    assert(bootApproach !== null, 'Test 14: approach snapshot should be non-null at boot');
+    console.log(`  boot — target=${bootApproach.targetName} trueDist=${bootApproach.trueDist.toFixed(1)} renderDist=${bootApproach.renderDist.toFixed(1)} angErr=${bootApproach.angErr.toExponential(2)}`);
+    assert(Math.abs(bootApproach.trueDist - 90000) < 0.01, `Test 14: boot trueDist should be ~90000; got ${bootApproach.trueDist}`);
+    assert(Math.abs(bootApproach.renderDist - 1500) < 1e-6, `Test 14: boot renderDist should be exactly 1500 (parked); got ${bootApproach.renderDist}`);
+    assert(bootApproach.angErr < 1e-6, `Test 14: angular-size invariant should hold at boot; err=${bootApproach.angErr}`);
+    assert(bootApproach.holdEngaged === false, 'Test 14: should not start in HOLD');
+
+    // Engage F-assist — over ~3s (simulated) trueDist must strictly decrease,
+    // the angular-size invariant must hold throughout, and renderDist must
+    // track min(trueDist, 1500) exactly.
+    await page.evaluate(() => window.__test.engageApproach());
+    let prevDist = bootApproach.trueDist;
+    let maxAngErr = bootApproach.angErr;
+    for (let i = 0; i < 30; i++) {
+      await page.evaluate(() => window.__test.approachTickN(1, 100)); // 100ms sim time/step
+      const info = await page.evaluate(() => window.__test.getApproachInfo());
+      assert(info !== null, 'Test 14: approach info should stay non-null while engaged');
+      assert(info.trueDist < prevDist, `Test 14: trueDist should strictly decrease while engaged; prev=${prevDist} now=${info.trueDist}`);
+      assert(info.angErr < 1e-6, `Test 14: angular-size invariant broke while engaged; err=${info.angErr}`);
+      const expectedRenderDist = Math.min(info.trueDist, 1500);
+      assert(Math.abs(info.renderDist - expectedRenderDist) < 1e-6, `Test 14: renderDist should track min(trueDist,1500); got ${info.renderDist} expected ${expectedRenderDist}`);
+      maxAngErr = Math.max(maxAngErr, info.angErr);
+      prevDist = info.trueDist;
+    }
+    console.log(`  after ~3s engaged — trueDist=${prevDist.toFixed(1)} maxAngErr=${maxAngErr.toExponential(2)} (assist steering nose onto bearing)`);
+
+    const approachFarShot = resolve(SHOTS_DIR, 'approach-far.png');
+    await page.screenshot({ path: approachFarShot });
+    console.log(`[verify] Shot saved: ${approachFarShot}`);
+
+    // Drive to HOLD via the fast-forward hook — the T_ARRIVE=12s-normalized
+    // virtual closure needs roughly 30 real-equivalent seconds to close from
+    // 90,000u down to the ~65%-of-FOV HOLD threshold; ticked in dt=50ms chunks.
+    let holdInfo = await page.evaluate(() => window.__test.getApproachInfo());
+    let midShotTaken = false;
+    let chunks = 0;
+    while (holdInfo && !holdInfo.holdEngaged && chunks < 40) {
+      await page.evaluate(() => window.__test.approachTickN(200, 50)); // 10 sim-s/chunk
+      holdInfo = await page.evaluate(() => window.__test.getApproachInfo());
+      if (holdInfo && !midShotTaken && holdInfo.trueDist < 30000) {
+        const approachMidShot = resolve(SHOTS_DIR, 'approach-mid.png');
+        await page.screenshot({ path: approachMidShot });
+        console.log(`[verify] Shot saved: ${approachMidShot} (trueDist=${holdInfo.trueDist.toFixed(1)})`);
+        midShotTaken = true;
+      }
+      chunks++;
+    }
+    assert(holdInfo !== null && holdInfo.holdEngaged === true, `Test 14: HOLD should engage within the simulated approach; got ${JSON.stringify(holdInfo)} after ${chunks} chunks`);
+    console.log(`  reached HOLD after ${chunks} chunks — trueDist=${holdInfo.trueDist.toFixed(1)} angErr=${holdInfo.angErr.toExponential(2)} holdEngaged=${holdInfo.holdEngaged}`);
+    if (!midShotTaken) {
+      // Defensive fallback — should not happen given HOLD triggers well above 30,000u.
+      const approachMidShot = resolve(SHOTS_DIR, 'approach-mid.png');
+      await page.screenshot({ path: approachMidShot });
+      console.log(`[verify] Shot saved: ${approachMidShot} (fallback, post-hold)`);
+    }
+
+    const modeAtHold = (await page.evaluate(() => window.__test.getFlight())).mode;
+    assert(modeAtHold === 'HOLD', `Test 14: flight mode should be HOLD; got ${modeAtHold}`);
+
+    const approachHoldShot = resolve(SHOTS_DIR, 'approach-hold.png');
+    await page.screenshot({ path: approachHoldShot });
+    console.log(`[verify] Shot saved: ${approachHoldShot}`);
+
+    // Closure clamped: further ticks must not shrink trueDist further.
+    const distAtHold = holdInfo.trueDist;
+    await page.evaluate(() => window.__test.approachTickN(20, 50));
+    const afterHoldTicks = await page.evaluate(() => window.__test.getApproachInfo());
+    assert(afterHoldTicks !== null, 'Test 14: approach info should stay non-null post-hold');
+    console.log(`  post-hold ticks — trueDist=${afterHoldTicks.trueDist.toFixed(1)} (was ${distAtHold.toFixed(1)})`);
+    assert(afterHoldTicks.trueDist >= distAtHold - 1e-6, `Test 14: trueDist should not shrink further once HOLD clamps closure; before=${distAtHold} after=${afterHoldTicks.trueDist}`);
+
+    // Steer away: sustained yaw + throttle — HOLD lets outward flight through
+    // (only the inward half is eaten), so trueDist genuinely grows until the
+    // release hysteresis (HOLD_RELEASE_FRAC × HOLD_ANGULAR_FRAC) fires. A
+    // generous chunk budget absorbs the reduced average rate under continuous
+    // yaw (the nose sweeps a coupled 3-axis path per flightModel's auto-bank
+    // — see Test 11's own comment on this coupling — but HOLD's asymmetric
+    // clamp only ever ratchets trueDist upward, so it reaches the release
+    // threshold regardless of the exact path).
+    await page.evaluate(() => window.__test.setFlightInput({ yaw: 1, throttleDelta: 1 }));
+    let releaseInfo = afterHoldTicks;
+    let releaseChunks = 0;
+    while (releaseInfo && releaseInfo.holdEngaged && releaseChunks < 60) {
+      await page.evaluate(() => window.__test.approachTickN(6000, 50)); // 300 sim-s/chunk
+      releaseInfo = await page.evaluate(() => window.__test.getApproachInfo());
+      releaseChunks++;
+    }
+    await page.evaluate(() => window.__test.setFlightInput({ yaw: 0, throttleDelta: 0 }));
+    assert(releaseInfo !== null && releaseInfo.holdEngaged === false, `Test 14: HOLD should release once steered away past the hysteresis; got ${JSON.stringify(releaseInfo)} after ${releaseChunks} chunks`);
+    console.log(`  HOLD release after ${releaseChunks} chunks — trueDist=${releaseInfo.trueDist.toFixed(1)} holdEngaged=${releaseInfo.holdEngaged}`);
+
+    const modeAfterRelease = (await page.evaluate(() => window.__test.getFlight())).mode;
+    assert(modeAfterRelease !== 'HOLD', `Test 14: flight mode should leave HOLD after release; got ${modeAfterRelease}`);
+    console.log(`  mode after release: ${modeAfterRelease}`);
+
+    // End: full reset so nothing downstream sees a swollen planet or a stuck
+    // assist/hold (resetFlight() also resets approach — T1-state untouched).
+    // Combined into one evaluate call for the same reason as the boot check.
+    const afterReset = await page.evaluate(() => {
+      window.__test.resetFlight();
+      return window.__test.getApproachInfo();
+    });
+    assert(
+      afterReset !== null && Math.abs(afterReset.trueDist - 90000) < 0.01 && afterReset.holdEngaged === false,
+      `Test 14: resetFlight() should restore the approach boot state; got ${JSON.stringify(afterReset)}`,
+    );
+
+    console.log('[verify] Test 14 PASSED ✓ (boot invariant, monotonic engage, HOLD reached + clamped, release via hysteresis, reset)');
+
+    console.log('[verify] All 15 functional tests PASSED ✓\n');
 
     await browser.close();
     console.log('[verify] Done. ✓');

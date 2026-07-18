@@ -25,8 +25,8 @@ import { getActiveWorld, getActiveWorldId } from './core/worlds.js';
 import { bootWorlds } from './core/worldBoot.js';
 import { tickPortals } from './fx/portalSurface.js';
 import { installTestApi } from './core/testApi.js';
-import { initPlanetScaleSpike, tickPlanetScaleSpike } from './flight/spikes/planetScale.js';
-import { tickFlight, getView } from './flight/flightState.js';
+import { initApproach, tickApproach, getApproachSnapshot } from './flight/approach.js'; // v1.1 SOVEREIGN Stage 4 (Lane E)
+import { tickFlight, getView, setApproachProvider } from './flight/flightState.js';
 import { createUniverseRig } from './flight/universeRig.js';
 import { createExteriorHull } from './fx/hull/exterior.js';
 import { initChaseCam, tickChaseCam } from './flight/chaseCam.js';
@@ -115,16 +115,17 @@ const audio = initAudio();
 // ── Assemble ship ─────────────────────────────────────────────────────────────
 const ship = assembleShip(scene);
 
-// Stage 0 SPIKE (v1.1 SOVEREIGN, design §5): planet-scaling proof. No-op
-// unless ?spike=planet — byte-identical to today otherwise.
-initPlanetScaleSpike(scene, camera);
-
 // ── Universe rig (v1.1 Lane C) — reparents all space content under one
 // group whose quaternion = ship attitude⁻¹ each frame (design §2). No-op at
 // boot (identity attitude), so v1.0 t=0 rendering is unchanged.
 const universeRig = createUniverseRig(scene);
 universeRig.attach(ship.starfield);
 universeRig.attach(ship.planet.mesh);
+
+// v1.1 SOVEREIGN Stage 4 (Lane E) — destination planet + F approach-assist +
+// HOLD. Productionizes flight/spikes/planetScale.ts (deleted this stage).
+initApproach(universeRig, camera);
+setApproachProvider(getApproachSnapshot);
 
 // Wire the live scan source into the PLANET SCAN console mode now that the
 // director (ship.planet) exists. Returns the nearest visible hero, or null.
@@ -244,7 +245,6 @@ function animate(now: number): void {
   tickBob(camera, elapsed, isMoving());
 
   tickState(dtSeconds);
-  tickPlanetScaleSpike(dtSeconds); // Stage 0 SPIKE — no-op unless ?spike=planet
   tickInteract();
   tickSway(camera, elapsed);
 
@@ -262,6 +262,7 @@ function animate(now: number): void {
     // flight state, so the writer must run before its consumers or every
     // frame renders last frame's attitude/flow.
     tickFlight(dtSeconds); // no-op under ?flight=0 (flightState.ts)
+    tickApproach(dtSeconds); // v1.1 SOVEREIGN Stage 4 (Lane E) — no-op under ?approach=0
     tickFlightHud(); // Lane B — helm overlay + flight-strip text
     universeRig.tick(dtSeconds);
     ship.planet.tick(elapsed);
