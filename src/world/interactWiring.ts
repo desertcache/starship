@@ -4,7 +4,8 @@
  *
  * Covers:
  *   - 6 sliding doors (dynamic Open/Close prompt)
- *   - 4 seats (seat-port, seat-starboard, bench-fore, bench-aft)
+ *   - 3 plain seats (seat-starboard, bench-fore, bench-aft) — seat-port is
+ *     now the HELM (v1.1 SOVEREIGN D2): see src/flight/helm.ts
  *   - console-bank (NAV/SYSTEMS/PLANET SCAN overlay, consoleMode 0→1→2→0)
  *
  * Items / lore / panels → interactItems.ts (split for 300-line limit).
@@ -16,6 +17,7 @@ import * as THREE from 'three';
 import type { Interactable, InteractContext } from './types.js';
 import { doorRecords, setDoorOpen, isDoorOpen, armDoorAutoClose } from './doors.js';
 import { enterAnchor } from '../player/controller.js';
+import { buildHelmInteractable } from '../flight/helm.js';
 import { getState, setConsoleMode, getQuestStep, advanceQuest, setQuestFlag } from '../core/state.js';
 import { showOverlay, hideOverlay, showRoomToast } from '../ui/hud.js';
 import { playOneShot } from '../fx/audio.js';
@@ -95,13 +97,6 @@ function buildSeatInteractables(): Interactable[] {
     lookAt: THREE.Vector3;
     eyeH: number;
   }> = [
-    {
-      id: 'seat-port',
-      interactPos: v3(-0.90, 1.0, -22.2),
-      anchorPos:   v3(-0.90, 0.53, -22.2),
-      lookAt:      v3(0, 1.55, -25.0),
-      eyeH: 1.15,
-    },
     {
       id: 'seat-starboard',
       interactPos: v3(0.90, 1.0, -22.2),
@@ -288,6 +283,7 @@ function buildCrateBInteractables(): Interactable[] {
 export function buildAllInteractables(): Interactable[] {
   return [
     ...buildDoorInteractables(),
+    buildHelmInteractable(),
     ...buildSeatInteractables(),
     buildConsoleBankInteractable(),
     ...buildLoreInteractables(),

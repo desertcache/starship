@@ -88,3 +88,16 @@ export const HOLD_RELEASE_FRAC = 0.5;
 /** design doc §5 — signature destination planet: deterministic seed, scaled per D5. */
 export const DEST_TRUE_RADIUS = 4000; // units
 export const DEST_TRUE_DIST = 90000; // units
+
+/** design doc D2 (Lane B helmInput.ts) — mouse-to-virtual-stick sensitivity:
+ *  stick fraction (-1..1) accumulated per pixel of raw mousemove delta. */
+export const HELM_MOUSE_SENS = 0.0015;
+
+/** design doc D2 — spring-decay rate the virtual mouse stick self-centers at
+ *  (via damp()) once mousemove deltas stop arriving; higher = snappier return. */
+export const HELM_STICK_DECAY_LAMBDA = 4;
+
+/** design doc D2 — steering-lean polish (helm.ts), max degrees the seated
+ *  camera would lean with the smoothed stick after the anchor settles.
+ *  Reserved for a future pass; this lane shipped without it (see helm.ts). */
+export const HELM_LEAN_DEG = 2;

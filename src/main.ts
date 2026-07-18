@@ -6,6 +6,7 @@ import { installCameraGlobal, setActiveCamera } from './core/cameras.js';
 import { tickState, getState, loadState } from './core/state.js';
 import { initDebug, tickDebug } from './ui/debug.js';
 import { initHud, tickHud, showRoomToast } from './ui/hud.js';
+import { initFlightHud, tickFlightHud } from './ui/flightHud.js';
 import { initStartOverlay } from './ui/startOverlay.js';
 import { assembleShip } from './world/assembly.js';
 import { initController, tickController, isMoving, tickBob } from './player/controller.js';
@@ -29,6 +30,7 @@ import { tickFlight } from './flight/flightState.js';
 import { createUniverseRig } from './flight/universeRig.js';
 import { createExteriorHull } from './fx/hull/exterior.js';
 import { initChaseCam, tickChaseCam } from './flight/chaseCam.js';
+import { tickHelm } from './flight/helm.js'; // v1.1 SOVEREIGN Stage 2 (Lane B)
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -97,6 +99,7 @@ setActiveCamera(camera);
 initPerf(renderer);
 initDebug(renderer, camera);
 initHud();
+initFlightHud(); // v1.1 SOVEREIGN Stage 2 (Lane B) — hidden until helmActive
 // First-boot "click to start" overlay for public visitors (portfolio embeds,
 // cold GitHub Pages links). No-ops under Playwright (navigator.webdriver).
 initStartOverlay();
@@ -249,10 +252,12 @@ function animate(now: number): void {
   const activeId = getActiveWorldId();
   const activeWorld = getActiveWorld();
   if (activeId === 'ship') {
+    tickHelm(dtSeconds); // Lane B — feeds THIS frame's steering into tickFlight below
     // tickFlight FIRST (Stage 2): the rig/starfield/director now read LIVE
     // flight state, so the writer must run before its consumers or every
     // frame renders last frame's attitude/flow.
     tickFlight(dtSeconds); // no-op under ?flight=0 (flightState.ts)
+    tickFlightHud(); // Lane B — helm overlay + flight-strip text
     universeRig.tick(dtSeconds);
     ship.planet.tick(elapsed);
     tickStarfield(ship.starfield, elapsed);

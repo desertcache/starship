@@ -32,6 +32,16 @@ let crosshairEl: HTMLDivElement | null = null;
 let fadeEl: HTMLDivElement | null = null;
 let flightStripEl: HTMLDivElement | null = null;
 
+// v1.1 SOVEREIGN D2 (Lane B): non-null while the helm overlay owns the strip
+// text (ui/flightHud.ts drives it); tickHud() falls back to the stock text
+// whenever this is null.
+let flightStripOverride: string | null = null;
+
+/** Override (or, passed null, release) the flight-strip text. */
+export function setFlightStripText(text: string | null): void {
+  flightStripOverride = text;
+}
+
 // v0.6 P6: HUD teal slightly desaturated (80% brightness of #46E0D8 → #38B3AD)
 // so the HUD recedes behind the world rather than competing with it.
 const TEAL   = '#38B3AD';
@@ -202,9 +212,9 @@ export function tickHud(shipMinutes: number, energy: number, hunger: number, act
   if (energyFill) energyFill.style.width = `${Math.round(energy)}%`;
   if (hungerFill)  hungerFill.style.width  = `${Math.round(hunger)}%`;
   if (flightStripEl) {
-    flightStripEl.textContent = activeWorldId === 'ship'
+    flightStripEl.textContent = flightStripOverride ?? (activeWorldId === 'ship'
       ? `STREL-7 · T+${formatShipClock(shipMinutes)} · CRUISE`
-      : `STREL-7 ⟶ ${activeWorldId.toUpperCase()}`;
+      : `STREL-7 ⟶ ${activeWorldId.toUpperCase()}`);
   }
 }
 
