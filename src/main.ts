@@ -24,6 +24,7 @@ import { getActiveWorld, getActiveWorldId } from './core/worlds.js';
 import { bootWorlds } from './core/worldBoot.js';
 import { tickPortals } from './fx/portalSurface.js';
 import { installTestApi } from './core/testApi.js';
+import { initPlanetScaleSpike, tickPlanetScaleSpike } from './flight/spikes/planetScale.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -106,6 +107,10 @@ const audio = initAudio();
 
 // ── Assemble ship ─────────────────────────────────────────────────────────────
 const ship = assembleShip(scene);
+
+// Stage 0 SPIKE (v1.1 SOVEREIGN, design §5): planet-scaling proof. No-op
+// unless ?spike=planet — byte-identical to today otherwise.
+initPlanetScaleSpike(scene, camera);
 
 // Wire the live scan source into the PLANET SCAN console mode now that the
 // director (ship.planet) exists. Returns the nearest visible hero, or null.
@@ -218,6 +223,7 @@ function animate(now: number): void {
   tickBob(camera, elapsed, isMoving());
 
   tickState(dtSeconds);
+  tickPlanetScaleSpike(dtSeconds); // Stage 0 SPIKE — no-op unless ?spike=planet
   tickInteract();
   tickSway(camera, elapsed);
 
