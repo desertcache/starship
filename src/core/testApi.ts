@@ -16,6 +16,7 @@ import type { ScanData } from '../fx/space/types.js';
 import { getFlight, setFlightInput, tickFlight } from '../flight/flightState.js';
 import type { FlightInput, FlightSnapshot } from '../flight/types.js';
 import { getFlowAxis, getFlowW, __shimSet } from '../flight/flightShim.js'; // shim delegates to flightState; __shimSet = test override
+import { setView } from '../flight/flightShimD.js';
 
 interface TestAPI {
   teleport(x: number, y: number, z: number): void;
@@ -52,6 +53,8 @@ interface TestAPI {
   /** T12: __shimSet's identity attitude + an elevated flowW (0,0,z-ish),
    *  for the fast-flight despawn-bound check. */
   shimSetFlow(x: number, y: number, z: number): void;
+  setFlightView(v: 'interior' | 'exterior'): void;
+  getHullInfo(): { present: boolean; layer1: boolean; tris: number };
 }
 
 export interface TestApiDeps {
@@ -179,6 +182,19 @@ export function installTestApi(deps: TestApiDeps): void {
     },
     shimSetFlow(x: number, y: number, z: number): void {
       __shimSet(new THREE.Quaternion(), new THREE.Vector3(x, y, z));
+    },
+    // v1.1 SOVEREIGN Stage 3 (Lane D) — exterior hull / chase-cam view hooks.
+    setFlightView(v: 'interior' | 'exterior'): void {
+      setView(v);
+    },
+    getHullInfo(): { present: boolean; layer1: boolean; tris: number } {
+      const mesh = scene.getObjectByName('exterior-hull') as THREE.Mesh | undefined;
+      const tris = mesh ? (mesh.geometry as THREE.BufferGeometry).attributes.position.count / 3 : 0;
+      return {
+        present: !!mesh,
+        layer1: camera.layers.isEnabled(1),
+        tris,
+      };
     },
   };
 

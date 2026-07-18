@@ -27,6 +27,8 @@ import { installTestApi } from './core/testApi.js';
 import { initPlanetScaleSpike, tickPlanetScaleSpike } from './flight/spikes/planetScale.js';
 import { tickFlight } from './flight/flightState.js';
 import { createUniverseRig } from './flight/universeRig.js';
+import { createExteriorHull } from './fx/hull/exterior.js';
+import { initChaseCam, tickChaseCam } from './flight/chaseCam.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -128,6 +130,12 @@ setScanProvider((): ScanData | null => ship.planet.getScanData?.() ?? null);
 // ── Bloom (Phase 5, optional) ─────────────────────────────────────────────────
 // ?bloom=0 disables it. Falls back to renderer.render() when off.
 const bloom = initBloom(renderer, scene, camera);
+
+// v1.1 SOVEREIGN Stage 3 (Lane D) — exterior hull (layer 1 only, invisible
+// from inside) + chase camera. Must run before bootWorlds() below: it calls
+// teleportToCamera() at boot, which needs initChaseCam()'s camera ref set.
+createExteriorHull(scene);
+initChaseCam(camera);
 
 // ── Player controller ─────────────────────────────────────────────────────────
 initController(camera, renderer, ship.colliders);
@@ -245,6 +253,7 @@ function animate(now: number): void {
     ship.planet.tick(elapsed);
     tickStarfield(ship.starfield, elapsed);
     tickFlight(dtSeconds); // v1.1 SOVEREIGN — no-op under ?flight=0 (flightState.ts)
+    tickChaseCam(dtSeconds); // Lane D — no-op while view is 'interior'; after tickFlight so it reads fresh attitude
   } else {
     activeWorld.update(dtSeconds, camera.position);
   }
