@@ -254,3 +254,9 @@ export function setFlightView(view: 'interior' | 'exterior'): void {
 export function setFlightMode(mode: FlightMode): void {
   state.mode = mode;
 }
+
+/** Zero-alloc mode read (approach.ts's per-frame reassert guard needs it —
+ *  getFlight() clones vectors and is too heavy for a same-frame check). */
+export function getFlightMode(): FlightMode {
+  return state.mode;
+}

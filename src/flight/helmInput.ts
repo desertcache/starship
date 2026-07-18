@@ -23,7 +23,7 @@
 import { damp } from '../core/damp.js';
 import { setFlightInput, setThrottle, setFlightView, getView } from './flightState.js';
 import { HELM_MOUSE_SENS, HELM_STICK_DECAY_LAMBDA } from './flightTuning.js';
-import { toggleApproachAssist, approachNoteManualInput } from './approach.js'; // v1.1 SOVEREIGN Stage 4 (Lane E)
+import { toggleApproachAssist, approachNoteManualInput, isApproachAssistEngaged } from './approach.js'; // v1.1 SOVEREIGN Stage 4 (Lane E)
 
 const STICK_EPS = 1e-3;
 
@@ -136,6 +136,17 @@ export function detachHelmInput(): void {
  *  (roll/throttle/boost) are pushed entirely from the key handlers, not here. */
 export function tickHelmInput(dt: number): void {
   if (!attached) return;
+
+  // While F-assist owns the pitch/yaw channel, the stale decaying stick must
+  // not overwrite its steering (fresh REAL input disengages the assist via
+  // approachNoteManualInput before this ever runs again). Drop our state so
+  // the handoff back is clean.
+  if (isApproachAssistEngaged()) {
+    stickX = 0;
+    stickY = 0;
+    stickChannelActive = false;
+    return;
+  }
 
   stickX = damp(stickX, 0, HELM_STICK_DECAY_LAMBDA, dt);
   stickY = damp(stickY, 0, HELM_STICK_DECAY_LAMBDA, dt);

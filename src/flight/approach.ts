@@ -1,43 +1,25 @@
 /**
- * src/flight/approach.ts — Stage 4 APPROACH (Lane E, design doc D5 / §5 Stage
- * 4 / §6 T14). Productionizes src/flight/spikes/planetScale.ts (deleted by
- * this lane): the ONE seeded destination planet, honest trueDist bookkeeping,
- * the render-scaling illusion (renderDist = min(trueDist, PARK_DIST), angular
- * size preserved EXACTLY), the F approach-assist autopilot, the HOLD
- * proximity state machine + hysteresis, and the haze shell that sells "world"
- * at hold range.
+ * src/flight/approach.ts — Stage 4 APPROACH (design D5 / §5 / §6 T14).
+ * Productionizes the deleted planetScale spike: the ONE seeded destination
+ * planet, honest trueDist bookkeeping, the render-scaling illusion
+ * (renderDist = min(trueDist, PARK_DIST), angular size preserved EXACTLY),
+ * the F approach-assist autopilot, the HOLD state machine + hysteresis, and
+ * the haze shell that sells "world" at hold range.
  *
- * Mode rules (edge-triggered only, never every frame, so HELM/CRUISE is never
- * fought while neither assist nor hold is active): assist ENGAGE → 'APPROACH';
- * angular size crosses HOLD_ANGULAR_FRAC → 'HOLD' + assist force-disengages;
- * assist DISENGAGE (any reason) or HOLD release past hysteresis → 'HELM' if
- * helmActive else 'CRUISE'. helm.ts's E-stand teardown also unconditionally
- * sets 'CRUISE' (existing Lane B code, untouched) — if the pilot stands up
- * mid-approach/hold that can race this module's next tick() (ungated from
- * helm, same as tickHelm — design §5), tick() wins next frame since main.ts
- * calls tickApproach() after tickHelm/tickFlight. Intentional: the autopilot
- * keeps flying while the pilot walks the deck (D2's "stand-up autopilot,"
- * extended here) — worst case a single invisible-at-60fps flicker.
+ * Mode rules: assist ENGAGE → 'APPROACH'; angular ≥ HOLD_ANGULAR_FRAC →
+ * 'HOLD' (assist drops silently — one transition per frame); disengage/HOLD
+ * release → 'HELM' if helmActive else 'CRUISE'. While assist or hold is
+ * live, tick() REASSERTS the mode each frame: helm's E-stand teardown writes
+ * CRUISE while the autopilot keeps flying (intended — D2 stand-up autopilot
+ * extended); without the reassert the HUD reads CRUISE for the whole leg.
  *
- * BEARING = normalize(0.1, 0.95, -0.3), ported VERBATIM from the Stage 0
- * spike, which already vetted it clear of the two signature-hero directions
- * (cast.ts) and the hero-sun bearing (director.ts), with a shared 3-cam
- * vantage confirmed clean of ship structure. Mostly "up" with a slight
- * forward lean keeps it inside the boot canopy cone — discoverable by flying.
- *
- * Own dedicated makeRng(0xE57A) instance (design-mandated seed) — zero shared
- * draw-order risk with the director's seeded sequence (Test 7 / screenshots
- * depend on that sequence staying byte-identical). Cosmetic fixes over the
- * spike (without touching bodies.ts, out of lane scope): its GAS_GIANT reuse
- * baked in createBody's own faceted 28×20-segment addAtmosphere() shell over
- * an equirect-UV texture (pole pinch if a pole faces the viewer). Fixed by
- * (1) core body kind = 'ROCKY'
- * (no built-in atmosphere), so this module owns a SINGLE haze shell at
- * 64×48 segments, steep rim falloff tuned via verify:headed screenshots so
- * it reads as a thin limb glow rather than washing the whole disc at HOLD
- * range; (2) body.group's quaternion set ONCE at init so the texture pole
- * axis points perpendicular to BEARING, not world-up — the seam sits at the
- * limb, never dead-centre in the approach view.
+ * BEARING ported verbatim from the spike (vetted clear of signature heroes,
+ * hero sun, and ship structure); mostly "up" + slight forward lean = inside
+ * the boot canopy cone. Own makeRng(0xE57A) — zero draw-order risk to the
+ * director's seeded sequence (Test 7 byte-identical). Core = 'ROCKY' (no
+ * baked faceted atmosphere) + own 64×48 haze shell, steep rim falloff (a
+ * shallow one washed the disc at HOLD range — headed finding); body tilted
+ * once at init so the texture pole sits at the limb, not the approach view.
  */
 import * as THREE from 'three';
 import { damp } from '../core/damp.js';
@@ -48,6 +30,7 @@ import {
   getAttitudeInverseRef,
   getFlowWRef,
   getFlight,
+  getFlightMode,
   setFlightInput,
   setFlightMode,
 } from './flightState.js';
@@ -205,6 +188,8 @@ export function tickApproach(dt: number): void {
     closingRate = damp(closingRate, targetRate, APPROACH_RATE_LAMBDA, dt);
     trueDist = Math.max(trueDist - closingRate * dt, MIN_TRUE_DIST);
     steerTowardBearing();
+    // Reassert vs helm's E-stand CRUISE write — see header mode rules.
+    if (getFlightMode() !== 'APPROACH') setFlightMode('APPROACH');
   } else {
     // Honest closure: trueDist -= dot(velocityW,bearing)*dt; velocityW=-flowW
     // (flightState.ts convention) → equivalent to += dot(flowW,bearing)*dt.
@@ -217,11 +202,16 @@ export function tickApproach(dt: number): void {
   const angularDeg = THREE.MathUtils.radToDeg(2 * Math.atan(DEST_TRUE_RADIUS / trueDist));
   if (!holdEngaged && angularDeg >= HOLD_ANGULAR_FRAC * ctx.camera.fov) {
     holdEngaged = true;
-    if (assistEngaged) disengageAssist(getFlight().helmActive);
+    // Assist drops WITHOUT its mode write — one transition, APPROACH→HOLD.
+    assistEngaged = false;
+    setFlightInput({ pitch: 0, yaw: 0 });
     setFlightMode('HOLD');
   } else if (holdEngaged && angularDeg < HOLD_RELEASE_FRAC * HOLD_ANGULAR_FRAC * ctx.camera.fov) {
     holdEngaged = false;
     setFlightMode(getFlight().helmActive ? 'HELM' : 'CRUISE');
+  } else if (holdEngaged && getFlightMode() !== 'HOLD') {
+    // Same reassert rule as APPROACH above: E-stand mid-hold wrote CRUISE.
+    setFlightMode('HOLD');
   }
 
   recomputeRender();
@@ -249,8 +239,15 @@ export function toggleApproachAssist(): void {
     disengageAssist(getFlight().helmActive);
   } else {
     assistEngaged = true;
+    closingRate = 0; // fresh λ-ramp — a stale rate would snap to speed instantly
     setFlightMode('APPROACH');
   }
+}
+
+/** helmInput.ts: while the assist owns the pitch/yaw channel, the helm's
+ *  decaying virtual stick must not overwrite it (writer-conflict rule). */
+export function isApproachAssistEngaged(): boolean {
+  return assistEngaged;
 }
 
 /** helmInput.ts: called on REAL mouse/arrow input only — NMS-style manual
