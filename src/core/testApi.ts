@@ -23,6 +23,7 @@ import {
   __testSetFlight,
 } from '../flight/flightState.js'; // Stage 2: shims deleted, all hooks drive live flight state
 import type { FlightInput, FlightSnapshot } from '../flight/types.js';
+import { enterHelm, helmExitForTest } from '../flight/helm.js'; // Stage 2 (Lane B)
 
 interface TestAPI {
   teleport(x: number, y: number, z: number): void;
@@ -67,6 +68,12 @@ interface TestAPI {
    *  bearings/poses (T12, T13b) MUST call this first — T11 deliberately
    *  leaves a yawed attitude and elevated speed behind. */
   resetFlight(): void;
+  /** v1.1 SOVEREIGN Stage 2 (Lane B) — helm enter/exit test hooks. Headless
+   *  has no pointer lock, so these call enterHelm()/helmExitForTest()
+   *  directly rather than raycasting the seat-port interactable or driving a
+   *  real keypress (T13a exercises the real E-stand path separately). */
+  helmEnter(): void;
+  helmExit(): void;
 }
 
 export interface TestApiDeps {
@@ -210,6 +217,12 @@ export function installTestApi(deps: TestApiDeps): void {
         layer1: camera.layers.isEnabled(1),
         tris,
       };
+    },
+    helmEnter(): void {
+      enterHelm();
+    },
+    helmExit(): void {
+      helmExitForTest();
     },
   };
 

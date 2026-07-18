@@ -749,6 +749,7 @@ async function run() {
         bankDeg: f.bankDeg,
         qLen: f.attitude.length(),
         flowW: { x: f.flowW.x, y: f.flowW.y, z: f.flowW.z },
+        helmActive: f.helmActive,
       };
     });
 
@@ -935,6 +936,114 @@ async function run() {
 
     console.log('[verify] All 12 functional tests PASSED ✓\n');
 
+    // ── Test 13a: Helm enter/exit + throttle/steering (v1.1 SOVEREIGN Stage 2, Lane B) ──
+    // helmEnter() drives the seat/anchor pipeline + flight-mode bookkeeping
+    // directly (headless has no pointer lock to raycast the seat with).
+    // throttleDelta/yaw are pushed via the SAME setFlightInput() Test 11
+    // uses — helmInput.ts's own listeners never fire in headless (no real
+    // mouse/key events), so nothing here fights the test's direct control.
+    // The final E-stand IS a real keyboard event, proving interact.ts's own
+    // seated exitAnchor() call + tickHelm()'s watchdog teardown cooperate.
+    console.log('[verify] Test 13a: Helm enter/exit + throttle/steering');
+
+    await page.evaluate(() => window.__test.switchWorld('ship'));
+    await page.evaluate(() => window.__test.resetFlight());
+    await waitFrame();
+
+    await page.evaluate(() => window.__test.helmEnter());
+    const afterEnter = await getFlightPlain();
+    console.log(`  after helmEnter — helmActive=${afterEnter.helmActive} mode=${afterEnter.mode}`);
+    assert(afterEnter.helmActive === true, 'Test 13a: helmActive should be true after helmEnter()');
+    assert(afterEnter.mode === 'HELM', `Test 13a: mode should be HELM after helmEnter(); got ${afterEnter.mode}`);
+
+    // The seat's 350ms anchor-lerp advances on REAL per-frame dt (capped at
+    // 50ms/frame, same clamp tickFlight uses) — headless SwiftShader frame
+    // delivery is irregular enough that a FIXED sleep is not a reliable bound
+    // (verified empirically: even 450ms real time occasionally left the lerp
+    // mid-flight). Poll camera position until it stops moving instead of
+    // guessing a duration.
+    console.log('[verify] Waiting for the seat anchor animation to settle…');
+    let settlePos = await page.evaluate(() => window.__test.getPlayerPos());
+    const settleStart = Date.now();
+    for (;;) {
+      await sleep(100);
+      const nowPos = await page.evaluate(() => window.__test.getPlayerPos());
+      const moved = Math.hypot(nowPos.x - settlePos.x, nowPos.y - settlePos.y, nowPos.z - settlePos.z);
+      settlePos = nowPos;
+      // Require the floor (ANCHOR_ANIM_MS=350 in controller.ts) PLUS a quiet
+      // reading before declaring settled — otherwise two early polls that
+      // both land before the animation's first tick would false-positive as
+      // "already settled" while the lerp hasn't even started moving yet.
+      if (moved < 0.005 && Date.now() - settleStart >= 400) break;
+      assert(Date.now() - settleStart < 5000, 'Test 13a: seat anchor animation never settled within 5s');
+    }
+
+    const helmCruiseShot = resolve(SHOTS_DIR, 'helm-cruise.png');
+    await page.screenshot({ path: helmCruiseShot });
+    console.log(`[verify] Shot saved: ${helmCruiseShot}`);
+
+    // Throttle up: speed should rise above the boot cruise speed (~14 u/s).
+    // Any nonzero simulated dt with throttleDelta=1 moves the target (and
+    // therefore speed) strictly above 14 — poll rather than a fixed sleep so
+    // this isn't at the mercy of headless frame-rate variance either.
+    await page.evaluate(() => window.__test.setFlightInput({ throttleDelta: 1 }));
+    let afterThrottleUp = await getFlightPlain();
+    const throttleStart = Date.now();
+    while (afterThrottleUp.speed <= 14 && Date.now() - throttleStart < 5000) {
+      await sleep(100);
+      afterThrottleUp = await getFlightPlain();
+    }
+    await page.evaluate(() => window.__test.setFlightInput({ throttleDelta: 0 }));
+    console.log(`  after throttle burst — speed=${afterThrottleUp.speed.toFixed(2)}`);
+    assert(afterThrottleUp.speed > 14, `Test 13a: speed should have risen above boot cruise (14); got ${afterThrottleUp.speed.toFixed(2)}`);
+
+    // Steering: sustained yaw should visibly sweep the universe past the
+    // canopy. Poll for a measurable heading delta instead of a fixed sleep.
+    const headingBeforeTurn = afterThrottleUp.headingDeg;
+    await page.evaluate(() => window.__test.setFlightInput({ yaw: 1 }));
+    let afterTurn = await getFlightPlain();
+    let headingDelta = 0;
+    const turnStart = Date.now();
+    while (headingDelta <= 5 && Date.now() - turnStart < 5000) {
+      await sleep(100);
+      afterTurn = await getFlightPlain();
+      headingDelta = Math.abs(afterTurn.headingDeg - headingBeforeTurn) % 360;
+      if (headingDelta > 180) headingDelta = 360 - headingDelta;
+    }
+
+    const helmTurnShot = resolve(SHOTS_DIR, 'helm-turn.png');
+    await page.screenshot({ path: helmTurnShot });
+    console.log(`[verify] Shot saved: ${helmTurnShot}`);
+
+    console.log(`  after yaw burst — heading=${afterTurn.headingDeg.toFixed(2)} (was ${headingBeforeTurn.toFixed(2)}, delta=${headingDelta.toFixed(2)})`);
+    assert(headingDelta > 5, `Test 13a: heading should have changed measurably under sustained yaw; before=${headingBeforeTurn.toFixed(2)} after=${afterTurn.headingDeg.toFixed(2)}`);
+    await page.evaluate(() => window.__test.setFlightInput({ yaw: 0 }));
+
+    // E-stand: a REAL keyboard event (not the helmExit() test-only shortcut) —
+    // exercises interact.ts's seated exitAnchor() path + tickHelm()'s watchdog.
+    const speedBefore = (await getFlightPlain()).speed;
+    await page.keyboard.press('KeyE');
+    await waitFrame();
+    await sleep(150);
+
+    const afterStand = await getFlightPlain();
+    console.log(`  after E-stand — helmActive=${afterStand.helmActive} speed=${afterStand.speed.toFixed(2)} (was ${speedBefore.toFixed(2)})`);
+    assert(afterStand.helmActive === false, `Test 13a: helmActive should be false after E-stand; got ${afterStand.helmActive}`);
+    // Autopilot holds (D2): speed must not collapse. Continued upward drift
+    // while the model converges toward the (still-elevated, unchanged)
+    // throttle target is expected and fine — only a downward slam toward 0
+    // would indicate the autopilot-holds contract broke.
+    assert(afterStand.speed > 14, `Test 13a: speed should stay above boot cruise after E-stand (autopilot holds); got ${afterStand.speed.toFixed(2)}`);
+    assert(afterStand.speed >= speedBefore - 2, `Test 13a: speed dropped more than ~2 u/s on E-stand (autopilot should hold, not brake); before=${speedBefore.toFixed(2)} after=${afterStand.speed.toFixed(2)}`);
+
+    // Cleanup for the next test.
+    await page.evaluate(() => window.__test.resetFlight());
+    await waitFrame();
+
+    console.log('[verify] Test 13a PASSED ✓ (helm enter/exit, throttle rise, steering sweep, E-stand autopilot-holds)');
+
+    console.log('[verify] All 13 functional tests PASSED ✓\n');
+
     // ── Test 13b: Exterior hull + chase camera view toggle (Lane D) ────────────
     // __setCam('chase') flips the flight-view shim to 'exterior' via the camera
     // registry (teleportToCamera → shim setView + snapChaseConverged, see
@@ -972,7 +1081,7 @@ async function run() {
 
     console.log('[verify] Test 13b PASSED ✓ (chase view shows hull on layer 1; cockpit view hides it)');
 
-    console.log('[verify] All 13 functional tests PASSED ✓\n');
+    console.log('[verify] All 14 functional tests PASSED ✓\n');
 
     await browser.close();
     console.log('[verify] Done. ✓');

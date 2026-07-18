@@ -61,6 +61,14 @@ export function setActiveColliders(list: AABB[]): void {
   colliders = list;
 }
 
+/** Helm mode (v1.1 SOVEREIGN D2): surrender/return the free-look mouse to
+ *  helmInput.ts by disconnecting/reconnecting PointerLockControls' own
+ *  mousemove listener (the camera stays anchored at the seat either way). */
+export function setPointerLookEnabled(enabled: boolean): void {
+  if (!controls) return;
+  if (enabled) controls.connect(); else controls.disconnect();
+}
+
 // ── Head-bob state ────────────────────────────────────────────────────────────
 
 /** Current vertical bob offset applied on top of FLOOR_Y. */
@@ -105,11 +113,15 @@ export function tickBob(
     bobOffset *= Math.max(0, 1 - 6 * 0.016); // approximate 16ms frame
     if (Math.abs(bobOffset) < 0.0001) bobOffset = 0;
   }
-  // Apply the offset on top of the ground eye height (ship: 0 + EYE_HEIGHT = FLOOR_Y)
-  camera.position.y = activeGround(camera.position.x, camera.position.z) + EYE_HEIGHT + bobOffset;
-
   // ── FOV kick: +2 when walking, back to rest when stopped ─────────────────
   const st = getState();
+  // Apply the offset on top of the ground eye height (ship: 0 + EYE_HEIGHT =
+  // FLOOR_Y). Guarded while seated: the helm/seat anchor owns camera.position.y
+  // then (v1.1 SOVEREIGN D2) — this write would otherwise stomp the seat's eye
+  // height every frame.
+  if (!st.seated) {
+    camera.position.y = activeGround(camera.position.x, camera.position.z) + EYE_HEIGHT + bobOffset;
+  }
   // While seated force FOV to rest immediately (no kick from anchor anim)
   const targetFov = (!moving || st.seated) ? _restFov : _restFov + 2;
   const delta = targetFov - _currentFov;
@@ -163,15 +175,18 @@ export function enterAnchor(
   };
   setSeated(true, returnPose);
 
-  // Build target quaternion: look from (pos + eyeHeight) toward lookAt
+  // Build target quaternion: look from (pos + eyeHeight) toward lookAt.
+  // NOTE: Object3D.lookAt() swaps its eye/target args for anything that
+  // isn't a Camera/Light (orienting +Z at the target instead of -Z) — a
+  // plain dummy Object3D would face AWAY from `lookAt`. Build the matrix
+  // directly with camera-convention eye/target order instead (found via the
+  // v1.1 SOVEREIGN helm seat: T13a's first screenshot showed the pilot
+  // facing the aft corridor door, back to the canopy).
   const seatPos = pos.clone();
   seatPos.y += eyeHeight;
 
-  const targetQuat = new THREE.Quaternion();
-  const dummyCam = new THREE.Object3D();
-  dummyCam.position.copy(seatPos);
-  dummyCam.lookAt(lookAt);
-  targetQuat.copy(dummyCam.quaternion);
+  const lookMatrix = new THREE.Matrix4().lookAt(seatPos, lookAt, new THREE.Vector3(0, 1, 0));
+  const targetQuat = new THREE.Quaternion().setFromRotationMatrix(lookMatrix);
 
   anchorTargetPos = seatPos;
   anchorTargetQuat = targetQuat;
