@@ -24,6 +24,7 @@ import { getActiveWorld, getActiveWorldId } from './core/worlds.js';
 import { bootWorlds } from './core/worldBoot.js';
 import { tickPortals } from './fx/portalSurface.js';
 import { installTestApi } from './core/testApi.js';
+import { tickFlight } from './flight/flightState.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -227,6 +228,7 @@ function animate(now: number): void {
   if (activeId === 'ship') {
     ship.planet.tick(elapsed);
     tickStarfield(ship.starfield, elapsed);
+    tickFlight(dtSeconds); // v1.1 SOVEREIGN — no-op under ?flight=0 (flightState.ts)
   } else {
     activeWorld.update(dtSeconds, camera.position);
   }

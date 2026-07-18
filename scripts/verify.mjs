@@ -718,6 +718,135 @@ async function run() {
 
     console.log('[verify] All 10 functional tests PASSED ✓\n');
 
+    // ── Test 11: Flight model (v1.1 SOVEREIGN Stage 1 Lane A) ────────────────
+    // Headless has no pointer lock, so the model is driven directly via
+    // setFlightInput + flightTickN (fixed dt, synchronous — deterministic,
+    // no real-RAF waits needed). tickFlight only runs while 'ship' is active
+    // (main.ts gates it on activeId === 'ship', same as the director), so
+    // pin the world first.
+    console.log('[verify] Test 11: Flight model');
+    await page.evaluate(() => window.__test.switchWorld('ship'));
+    await waitFrame();
+
+    const getFlightPlain = () => page.evaluate(() => {
+      const f = window.__test.getFlight();
+      return {
+        mode: f.mode,
+        speed: f.speed,
+        throttle: f.throttle,
+        headingDeg: f.headingDeg,
+        pitchDeg: f.pitchDeg,
+        bankDeg: f.bankDeg,
+        qLen: f.attitude.length(),
+        flowW: { x: f.flowW.x, y: f.flowW.y, z: f.flowW.z },
+      };
+    });
+
+    // Boot state — no input has touched flight state yet (Tests 1-10 never
+    // call setFlightInput; tickFlight ran with all-zero input the whole time,
+    // which is a fixed point of the model: speed/attitude never drift).
+    const boot = await getFlightPlain();
+    console.log(`  boot — mode=${boot.mode} speed=${boot.speed.toFixed(3)} flowW=(${boot.flowW.x.toFixed(2)},${boot.flowW.y.toFixed(2)},${boot.flowW.z.toFixed(2)}) |q|=${boot.qLen.toFixed(6)}`);
+    assert(boot.mode === 'CRUISE', `Test 11: boot mode should be CRUISE; got ${boot.mode}`);
+    assert(Math.abs(boot.speed - 14) < 0.05, `Test 11: boot speed should be ~14 (throttle 0.35 × MAX_SPEED_CRUISE 40); got ${boot.speed}`);
+    assert(
+      Math.abs(boot.flowW.x) < 0.01 && Math.abs(boot.flowW.y) < 0.01 && Math.abs(boot.flowW.z - 14) < 0.1,
+      `Test 11: boot flowW should be ~(0,0,14); got (${boot.flowW.x},${boot.flowW.y},${boot.flowW.z})`,
+    );
+    assert(Math.abs(boot.qLen - 1) < 1e-6, `Test 11: boot attitude should be unit-length; got |q|=${boot.qLen}`);
+
+    // Switch OFF 'ship' for the rest of this test. flightTickN() bypasses the
+    // world gate entirely (it calls tickFlight() directly, testApi.ts), but
+    // the REAL animate() loop in main.ts does NOT — it only calls tickFlight()
+    // while activeId === 'ship'. Leaving 'ship' active here would let that
+    // live rAF loop tick the model with uncontrolled wall-clock dt IN
+    // ADDITION to every flightTickN() call below (headless SwiftShader frames
+    // arrive every ~400-500ms per the perf probe above, and several land
+    // during the page.evaluate() round trips this test makes) — silently
+    // breaking the "deterministic, no real-RAF" guarantee flightTickN exists
+    // to provide. Parking on 'verdant' freezes that live path completely.
+    await page.evaluate(() => window.__test.switchWorld('verdant'));
+    await waitFrame();
+
+    // Auto-bank: yaw=1, short burst (~0.5s). Checked EARLY and separately from
+    // the heading assertion below on purpose — verified empirically against
+    // this exact tuning that sustained yaw while significantly auto-banked
+    // couples into real 3-axis attitude drift (the nose comes off the
+    // horizontal plane, which eventually swings bankDeg back through zero;
+    // this is genuine rotation coupling from local-axis quaternion
+    // integration, not a bug — see flightModel.ts step 3). A 30-tick window
+    // sits comfortably before that drift, while still being well past
+    // INPUT_SMOOTH_LAMBDA/AUTO_BANK_LAMBDA's ~0.15-0.2s settle time.
+    await page.evaluate(() => window.__test.setFlightInput({ yaw: 1 }));
+    await page.evaluate(() => window.__test.flightTickN(30, 16.6));
+    const afterBankBurst = await getFlightPlain();
+    console.log(`  after 30 ticks yaw=1 — heading=${afterBankBurst.headingDeg.toFixed(2)} bank=${afterBankBurst.bankDeg.toFixed(2)}`);
+    assert(afterBankBurst.bankDeg < -15, `Test 11: auto-bank should read clearly negative for yaw=1; got bank=${afterBankBurst.bankDeg}`);
+
+    // Continue yaw=1 to 120 ticks total (~2s) — heading swings substantially.
+    // Sign convention (flightState.ts header): positive yaw input sweeps the
+    // nose toward -X, i.e. headingDeg trends negative and wraps into the
+    // 150-280° band well before 120 ticks at MAX_YAW_RATE.
+    await page.evaluate(() => window.__test.flightTickN(90, 16.6));
+    const afterYawFull = await getFlightPlain();
+    console.log(`  after 120 ticks yaw=1 — heading=${afterYawFull.headingDeg.toFixed(2)} bank=${afterYawFull.bankDeg.toFixed(2)} |q|=${afterYawFull.qLen.toFixed(6)}`);
+    assert(
+      afterYawFull.headingDeg > 150 && afterYawFull.headingDeg < 280,
+      `Test 11: heading should have swung substantially in the documented (yaw=1) direction; got ${afterYawFull.headingDeg}`,
+    );
+    assert(Math.abs(afterYawFull.qLen - 1) < 1e-6, `Test 11: attitude should stay unit-length under sustained rotation; got |q|=${afterYawFull.qLen}`);
+
+    // Zero input → angularVel damps toward 0. FlightSnapshot has no angularVel
+    // field (frozen §4 interface) — use heading/bank STABILITY as the
+    // observable proxy: once truly damped to ~0, further ticks barely move them.
+    await page.evaluate(() => window.__test.setFlightInput({ yaw: 0 }));
+    await page.evaluate(() => window.__test.flightTickN(120, 16.6));
+    const settled = await getFlightPlain();
+    await page.evaluate(() => window.__test.flightTickN(10, 16.6));
+    const settledMore = await getFlightPlain();
+    const headingDrift = Math.abs(settledMore.headingDeg - settled.headingDeg);
+    const bankDrift = Math.abs(settledMore.bankDeg - settled.bankDeg);
+    console.log(`  post-zero settle — heading drift/10 ticks=${headingDrift.toFixed(4)}° bank drift=${bankDrift.toFixed(4)}°`);
+    assert(
+      headingDrift < 0.05 && bankDrift < 0.05,
+      `Test 11: angularVel should have damped to ~0 (heading/bank should have stopped moving); drift=${headingDrift}/${bankDrift}`,
+    );
+
+    // Throttle: bump throttleDelta, tick, confirm speed rises monotonically
+    // toward the (now higher) target with no overshoot > 1%. An exponential
+    // damp toward a non-decreasing target is monotonic and bounded by
+    // construction — this asserts it holds through the real tick sequence.
+    await page.evaluate(() => window.__test.setFlightInput({ throttleDelta: 1 }));
+    let prevSpeed = (await getFlightPlain()).speed;
+    let monotonic = true;
+    for (let i = 0; i < 4; i++) {
+      await page.evaluate(() => window.__test.flightTickN(10, 16.6));
+      const s = (await getFlightPlain()).speed;
+      if (s < prevSpeed - 1e-6) monotonic = false;
+      prevSpeed = s;
+    }
+    await page.evaluate(() => window.__test.setFlightInput({ throttleDelta: 0 }));
+    for (let i = 0; i < 8; i++) {
+      await page.evaluate(() => window.__test.flightTickN(15, 16.6));
+      const s = (await getFlightPlain()).speed;
+      if (s < prevSpeed - 1e-6) monotonic = false;
+      prevSpeed = s;
+    }
+    const afterThrottle = await getFlightPlain();
+    const speedTarget = afterThrottle.throttle * 40; // MAX_SPEED_CRUISE (flightTuning.ts)
+    console.log(`  throttle after ramp+hold=${afterThrottle.throttle.toFixed(4)} speed=${afterThrottle.speed.toFixed(3)} target=${speedTarget.toFixed(3)} monotonic=${monotonic}`);
+    assert(monotonic, 'Test 11: speed should rise monotonically toward the throttle target with no dips');
+    assert(afterThrottle.speed <= speedTarget * 1.01, `Test 11: speed should not overshoot target by >1%; speed=${afterThrottle.speed} target=${speedTarget}`);
+    assert(afterThrottle.speed > 14, `Test 11: speed should have risen above the boot cruise speed; got ${afterThrottle.speed}`);
+
+    // Restore 'ship' so the run ends on the world every prior test expects.
+    await page.evaluate(() => window.__test.switchWorld('ship'));
+    await waitFrame();
+
+    console.log('[verify] Test 11 PASSED ✓ (boot state, auto-bank, heading sweep, angularVel damp, monotonic speed, unit attitude)\n');
+
+    console.log('[verify] All 11 functional tests PASSED ✓\n');
+
     await browser.close();
     console.log('[verify] Done. ✓');
   } finally {
