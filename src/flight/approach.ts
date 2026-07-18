@@ -14,10 +14,10 @@
  * helmActive else 'CRUISE'. helm.ts's E-stand teardown also unconditionally
  * sets 'CRUISE' (existing Lane B code, untouched) — if the pilot stands up
  * mid-approach/hold that can race this module's next tick() (ungated from
- * helm, same as tickHelm — design §5), which wins the next frame since
- * main.ts calls tickApproach() after tickHelm/tickFlight. Intentional: the
- * autopilot keeps flying while the pilot walks the deck (D2's "stand-up
- * autopilot," extended here) — worst case a single invisible-at-60fps flicker.
+ * helm, same as tickHelm — design §5), tick() wins next frame since main.ts
+ * calls tickApproach() after tickHelm/tickFlight. Intentional: the autopilot
+ * keeps flying while the pilot walks the deck (D2's "stand-up autopilot,"
+ * extended here) — worst case a single invisible-at-60fps flicker.
  *
  * BEARING = normalize(0.1, 0.95, -0.3), ported VERBATIM from the Stage 0
  * spike, which already vetted it clear of the two signature-hero directions
@@ -26,18 +26,18 @@
  * forward lean keeps it inside the boot canopy cone — discoverable by flying.
  *
  * Own dedicated makeRng(0xE57A) instance (design-mandated seed) — zero shared
- * draw-order risk with the director's seeded sequence (Test 7 / screenshot
- * baselines depend on that sequence staying byte-identical).
- *
- * Cosmetic fixes over the spike (without touching bodies.ts, out of lane
- * scope): the spike's GAS_GIANT reuse baked in createBody's own 28×20-segment
- * addAtmosphere() shell (visibly faceted at HOLD range) over an equirect-UV
- * texture (pole pinch if a pole faces the viewer). Fixed by (1) core body
- * kind = 'ROCKY' (no built-in atmosphere), so this module owns a SINGLE haze
- * shell at 64×48 segments — smooth even filling the canopy at HOLD; (2)
- * body.group's quaternion set ONCE at init so the texture pole axis points
- * perpendicular to BEARING instead of world-up — the seam sits at the limb,
- * never dead-centre in the approach view.
+ * draw-order risk with the director's seeded sequence (Test 7 / screenshots
+ * depend on that sequence staying byte-identical). Cosmetic fixes over the
+ * spike (without touching bodies.ts, out of lane scope): its GAS_GIANT reuse
+ * baked in createBody's own faceted 28×20-segment addAtmosphere() shell over
+ * an equirect-UV texture (pole pinch if a pole faces the viewer). Fixed by
+ * (1) core body kind = 'ROCKY'
+ * (no built-in atmosphere), so this module owns a SINGLE haze shell at
+ * 64×48 segments, steep rim falloff tuned via verify:headed screenshots so
+ * it reads as a thin limb glow rather than washing the whole disc at HOLD
+ * range; (2) body.group's quaternion set ONCE at init so the texture pole
+ * axis points perpendicular to BEARING, not world-up — the seam sits at the
+ * limb, never dead-centre in the approach view.
  */
 import * as THREE from 'three';
 import { damp } from '../core/damp.js';
@@ -94,10 +94,8 @@ const HAZE_FRAG = /* glsl */ `
   void main() {
     float ndotv = dot(normalize(vNormal), normalize(vViewDir));
     float rim = clamp(1.0 - abs(ndotv), 0.0, 1.0);
-    // Steeper falloff than bodies.ts's own addAtmosphere (2.4) — at HOLD
-    // range the disc fills ~65% of vertical FOV, and a shallower power washes
-    // teal across most of the visible disc instead of reading as a thin limb
-    // glow (found via verify:headed screenshot review).
+    // Steeper than bodies.ts's addAtmosphere (2.4) — a shallower power washed
+    // teal across the whole disc at HOLD's ~65%-of-FOV size (verify:headed finding).
     float alpha = pow(rim, 4.0) * uIntensity;
     gl_FragColor = vec4(mix(uColor, vec3(1.0), rim * 0.5), alpha);
   }
