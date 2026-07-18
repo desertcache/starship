@@ -15,6 +15,7 @@ import { getActiveWorldId, switchWorld } from './worlds.js';
 import type { ScanData } from '../fx/space/types.js';
 import { getFlight, setFlightInput, tickFlight } from '../flight/flightState.js';
 import type { FlightInput, FlightSnapshot } from '../flight/types.js';
+import { getFlowAxis, getFlowW, __shimSet } from '../flight/flightShim.js'; // shim delegates to flightState; __shimSet = test override
 
 interface TestAPI {
   teleport(x: number, y: number, z: number): void;
@@ -39,6 +40,18 @@ interface TestAPI {
   getFlight(): FlightSnapshot;
   setFlightInput(partial: Partial<FlightInput>): void;
   flightTickN(n: number, dtMs: number): void;
+  /** v1.1 SOVEREIGN Lane C (T12): live body count + flow axis + hero-sun
+   *  bearing, for the universe-coherence rig-rotation test. */
+  getUniverseInfo(): {
+    bodyCount: number;
+    flowDir: [number, number, number];
+    sunBearing: [number, number, number];
+  };
+  /** T12: __shimSet's a 180° yaw quaternion, preserving current flowW. */
+  shimYaw180(): void;
+  /** T12: __shimSet's identity attitude + an elevated flowW (0,0,z-ish),
+   *  for the fast-flight despawn-bound check. */
+  shimSetFlow(x: number, y: number, z: number): void;
 }
 
 export interface TestApiDeps {
@@ -46,6 +59,8 @@ export interface TestApiDeps {
   /** The SHIP scene (relic sockets live in the annex room group). */
   scene: THREE.Scene;
   getScanData(): ScanData | null;
+  /** v1.1 SOVEREIGN Lane C: live body count (heroes+ambients). */
+  getBodyCount(): number;
 }
 
 const EYE_HEIGHT_MAIN = 1.7;
@@ -139,6 +154,31 @@ export function installTestApi(deps: TestApiDeps): void {
     flightTickN(n: number, dtMs: number): void {
       const dt = dtMs / 1000;
       for (let i = 0; i < n; i++) tickFlight(dt);
+    },
+    getUniverseInfo(): {
+      bodyCount: number;
+      flowDir: [number, number, number];
+      sunBearing: [number, number, number];
+    } {
+      const axis = getFlowAxis();
+      const sunObj = scene.getObjectByName('hero-sun');
+      const bearing = new THREE.Vector3();
+      if (sunObj) {
+        sunObj.getWorldPosition(bearing);
+        if (bearing.lengthSq() > 1e-8) bearing.normalize();
+      }
+      return {
+        bodyCount: deps.getBodyCount(),
+        flowDir: [axis.x, axis.y, axis.z],
+        sunBearing: [bearing.x, bearing.y, bearing.z],
+      };
+    },
+    shimYaw180(): void {
+      const yaw180 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+      __shimSet(yaw180, getFlowW());
+    },
+    shimSetFlow(x: number, y: number, z: number): void {
+      __shimSet(new THREE.Quaternion(), new THREE.Vector3(x, y, z));
     },
   };
 

@@ -3,9 +3,12 @@
  *
  * Shared by the NEAR layer (built in starfield.ts, returned to main) and the
  * FAR layer (built + ticked by the director). Streaming is done in the vertex
- * shader via a single uScroll uniform (metres travelled +Z): each star wraps
- * its z into [Z_MIN, Z_MIN+SPAN) so the field flows toward +Z (aft) forever
- * without any per-star CPU work.
+ * shader via a uScrollVec vec3 uniform (metres travelled along the current
+ * universe-flow vector — v1.1 SOVEREIGN, was a single +Z-only float): each
+ * star wraps ALL THREE axes into [uMin, uMin+uSpan) component-wise, so the
+ * field flows along whatever direction the universe is streaming forever
+ * without any per-star CPU work. At zero scroll (boot) this is a no-op on
+ * every axis, so v1.0 t=0 rendering is unchanged.
  *
  * Twinkle keeps the v0.3 per-star phase + per-star colour CDF.
  */
@@ -53,17 +56,19 @@ const VERT_SHADER = /* glsl */ `
   varying vec3 vColor;
   varying float vAlpha;
   uniform float uTime;
-  uniform float uScroll;
-  uniform float uSpan;
-  uniform float uZMin;
+  uniform vec3 uScrollVec;
+  uniform vec3 uMin;
+  uniform vec3 uSpan;
   void main() {
     vColor = color;
     float twinkle = 1.0 + sin(uTime + phase) * 0.15;
     vAlpha = clamp(twinkle * brightness, 0.0, 1.0);
 
-    // Wrap z into [uZMin, uZMin + uSpan) so the field streams toward +Z.
-    vec3 p = position;
-    p.z = mod(position.z - uScroll - uZMin, uSpan) + uZMin;
+    // Wrap each axis into [uMin, uMin + uSpan) so the field streams along the
+    // current universe-flow direction (component-wise vec3 mod — GLSL's mod()
+    // is defined component-wise for vecN). At zero scroll this reduces to the
+    // identity (position already lies in-range), so boot rendering is exact.
+    vec3 p = mod(position - uScrollVec - uMin, uSpan) + uMin;
 
     vec4 mvPos = modelViewMatrix * vec4(p, 1.0);
     gl_PointSize = size * twinkle * (300.0 / -mvPos.z);
@@ -149,9 +154,9 @@ export function buildStarLayer(opts: StarLayerOpts): THREE.Points {
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
-      uScroll: { value: 0 },
-      uSpan: { value: opts.span },
-      uZMin: { value: opts.zMin },
+      uScrollVec: { value: new THREE.Vector3(0, 0, 0) },
+      uMin: { value: new THREE.Vector3(-opts.xHalf, -opts.yHalf, opts.zMin) },
+      uSpan: { value: new THREE.Vector3(opts.xHalf * 2, opts.yHalf * 2, opts.span) },
     },
     vertexShader: VERT_SHADER,
     fragmentShader: FRAG_SHADER,
@@ -165,12 +170,29 @@ export function buildStarLayer(opts: StarLayerOpts): THREE.Points {
   return points;
 }
 
-/** Set the streaming/twinkle uniforms on a star layer. */
-export function setStarUniforms(points: THREE.Points, time: number, scroll: number): void {
+/**
+ * Set the streaming/twinkle uniforms on a star layer.
+ *
+ * `scrollVec` is normally a THREE.Vector3 (the accumulated ∫flowW·dt from
+ * starfield.ts/director.ts). A plain `number` is also accepted — legacy +Z-
+ * only scroll, kept for the pocket-world callers under src/world/worlds/
+ * (e.g. riftSky.ts's `setStarUniforms(stars, t, 0)`, twinkle-only, no forward
+ * travel) that this lane does not touch.
+ */
+export function setStarUniforms(
+  points: THREE.Points,
+  time: number,
+  scrollVec: THREE.Vector3 | number,
+): void {
   const mat = points.material;
   if (mat instanceof THREE.ShaderMaterial) {
     (mat.uniforms['uTime'] as THREE.IUniform<number>).value = time;
-    (mat.uniforms['uScroll'] as THREE.IUniform<number>).value = scroll;
+    const scrollUniform = mat.uniforms['uScrollVec'] as THREE.IUniform<THREE.Vector3>;
+    if (typeof scrollVec === 'number') {
+      scrollUniform.value.set(0, 0, scrollVec);
+    } else {
+      scrollUniform.value.copy(scrollVec);
+    }
   }
 }
 

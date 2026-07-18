@@ -26,6 +26,7 @@ import { tickPortals } from './fx/portalSurface.js';
 import { installTestApi } from './core/testApi.js';
 import { initPlanetScaleSpike, tickPlanetScaleSpike } from './flight/spikes/planetScale.js';
 import { tickFlight } from './flight/flightState.js';
+import { createUniverseRig } from './flight/universeRig.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -113,6 +114,13 @@ const ship = assembleShip(scene);
 // unless ?spike=planet — byte-identical to today otherwise.
 initPlanetScaleSpike(scene, camera);
 
+// ── Universe rig (v1.1 Lane C) — reparents all space content under one
+// group whose quaternion = ship attitude⁻¹ each frame (design §2). No-op at
+// boot (identity attitude), so v1.0 t=0 rendering is unchanged.
+const universeRig = createUniverseRig(scene);
+universeRig.attach(ship.starfield);
+universeRig.attach(ship.planet.mesh);
+
 // Wire the live scan source into the PLANET SCAN console mode now that the
 // director (ship.planet) exists. Returns the nearest visible hero, or null.
 setScanProvider((): ScanData | null => ship.planet.getScanData?.() ?? null);
@@ -185,6 +193,7 @@ installTestApi({
   camera,
   scene,
   getScanData: (): ScanData | null => ship.planet.getScanData?.() ?? null,
+  getBodyCount: (): number => ship.planet.getBodyCount?.() ?? 0,
 });
 
 // ── Room tracking for ambient crossfade + toast ───────────────────────────────
@@ -232,6 +241,7 @@ function animate(now: number): void {
   const activeId = getActiveWorldId();
   const activeWorld = getActiveWorld();
   if (activeId === 'ship') {
+    universeRig.tick(dtSeconds);
     ship.planet.tick(elapsed);
     tickStarfield(ship.starfield, elapsed);
     tickFlight(dtSeconds); // v1.1 SOVEREIGN — no-op under ?flight=0 (flightState.ts)

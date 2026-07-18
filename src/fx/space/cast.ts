@@ -1,9 +1,15 @@
 /**
  * Cast entries — the rolling streaming cast of bodies/asteroids/events.
  *
- * Each entry wraps a spawned thing with its own +Z world velocity (independent
- * of the star uScroll, for simpler per-body parallax and disposal) plus slow
- * lateral/vertical drift so its bearing changes as it crosses the windows.
+ * Each body entry owns a small independent world-space drift (driftW,
+ * v1.1 SOVEREIGN: was separate vx/vy/+Z-driftSpeed scalars) added on top of
+ * the shared universe flow (getFlowW()) so its bearing changes as it crosses
+ * the windows, on top of the collective streaming motion everything shares.
+ *
+ * Spawn/despawn generalize from a fixed +Z band to the current flow axis
+ * (getFlowAxis()): at boot flowAxis=(0,0,1), so placement/despawn are
+ * byte-identical to the old fixed-+Z runway; off-axis, the same numbers
+ * apply in the rotated frame (docs/design-v1.1-sovereign.md §3 D1).
  *
  * The director owns scheduling and invariants; this module owns spawn geometry,
  * per-tick motion, despawn test, and disposal of one entry.
@@ -17,12 +23,15 @@ import { createAsteroidField } from './asteroids.js';
 import type { AsteroidField } from './asteroids.js';
 import { createRareEvent } from './events.js';
 import type { RareEvent, EventKind } from './events.js';
+import { getFlowW, getFlowAxis } from '../../flight/flightShim.js'; // shim static until Stage 2 repoints it to flightState
+import { CRUISE_SPEED_NEAR } from '../starfield.js';
 
 export type CastRole = 'HERO' | 'AMBIENT';
 
-/** Despawn aft boundary — once an entry's anchor passes this, dispose it. */
+/** Despawn boundary along the flow axis — once an entry's anchor passes this
+ *  (dot(pos, flowAxis) > DESPAWN_Z), dispose it. */
 export const DESPAWN_Z = 500;
-/** Scan range (a hero counts as "visible" inside this z band). */
+/** Scan range (a hero counts as "visible" inside this flow-axis band). */
 export const SCAN_Z_NEAR = -1500;
 export const SCAN_Z_FAR = 200;
 
@@ -30,11 +39,12 @@ export interface BodyEntry {
   kind: 'body';
   role: CastRole;
   body: Body;
-  /** Local-space lateral/vertical drift velocity (m/s). */
-  vx: number;
-  vy: number;
-  /** +Z world drift speed (m/s). */
-  driftSpeed: number;
+  /** Own small motion in world/rig-local space, added on top of getFlowW().
+   *  Z is stored RELATIVE to the boot cruise flow (old driftSpeed − 14) so
+   *  apparent boot motion = flowW + driftW = the v1.0-tuned (vx, vy,
+   *  driftSpeed) — parallax preserved, and bodies respond correctly when
+   *  flight changes the flow. */
+  driftW: THREE.Vector3;
   radius: number;
 }
 
@@ -66,13 +76,43 @@ function heroDriftFor(radius: number, rng: Rng): number {
   return Math.max(9, Math.min(24, base + rng.signed(2)));
 }
 
-/** Common spawn placement: far fore, biased off the canopy centreline. */
+// ── Flow-axis spawn placement ─────────────────────────────────────────────────
+// Spawn/despawn generalize from a fixed +Z band to the current flow axis: an
+// orthonormal (u, v) pair perpendicular to flowAxis takes the place of the
+// old (X, Y) lateral axes, and `along` (dot along flowAxis) takes the place
+// of the old Z. At boot flowAxis=(0,0,1), so u=X̂, v=Ŷ exactly and every
+// placement below is byte-identical to the pre-v1.1 fixed-+Z runway.
+const _u = new THREE.Vector3();
+const _v = new THREE.Vector3();
+const _refY = new THREE.Vector3(0, 1, 0);
+const _refX = new THREE.Vector3(1, 0, 0);
+const _spawnPos = new THREE.Vector3();
+
+/** Rebuild the (_u, _v) basis perpendicular to `axis`. */
+function flowBasis(axis: THREE.Vector3): void {
+  const ref = Math.abs(axis.y) < 0.99 ? _refY : _refX;
+  _u.crossVectors(ref, axis).normalize();
+  _v.crossVectors(axis, _u).normalize();
+}
+
+/** Compose a spawn position from (lateralU, lateralV, along-flowAxis). At
+ *  boot this reduces exactly to (lateralU, lateralV, along). */
+function flowPosition(lateralU: number, lateralV: number, along: number): THREE.Vector3 {
+  const axis = getFlowAxis();
+  flowBasis(axis);
+  return _spawnPos
+    .copy(_u).multiplyScalar(lateralU)
+    .addScaledVector(_v, lateralV)
+    .addScaledVector(axis, along);
+}
+
+/** Common spawn placement: far fore (along the flow axis), biased off the
+ *  canopy centreline in the perpendicular plane. */
 function placeSpawn(group: THREE.Group, rng: Rng): void {
-  group.position.set(
-    rng.range(-700, 700),
-    rng.range(-260, 320),
-    rng.range(-1900, -1600),
-  );
+  const lateralU = rng.range(-700, 700);
+  const lateralV = rng.range(-260, 320);
+  const along = rng.range(-1900, -1600);
+  group.position.copy(flowPosition(lateralU, lateralV, along));
 }
 
 export interface HeroOpts {
@@ -106,9 +146,11 @@ export function spawnHero(rng: Rng, o: HeroOpts = {}): BodyEntry {
     kind: 'body',
     role: 'HERO',
     body,
-    vx: o.vx ?? rng.signed(1.4),
-    vy: o.vy ?? rng.signed(1.0),
-    driftSpeed: o.driftSpeed ?? heroDriftFor(r, rng),
+    driftW: new THREE.Vector3(
+      o.vx ?? rng.signed(1.4),
+      o.vy ?? rng.signed(1.0),
+      (o.driftSpeed ?? heroDriftFor(r, rng)) - CRUISE_SPEED_NEAR,
+    ),
     radius: r,
   };
 }
@@ -150,17 +192,16 @@ export function spawnAmbient(rng: Rng): BodyEntry {
   const k = AMBIENT_KINDS[rng.pick(AMBIENT_WEIGHTS)];
   const r = k === 'MOON' ? rng.range(8, 18) : rng.range(10, 40);
   const body = createBody(rng, k, r);
-  // Edge bias: push to large |X|/|Y| so ambients sit at window edges.
-  const xEdge = (rng() < 0.5 ? -1 : 1) * rng.range(380, 700);
-  const yEdge = rng.range(-260, 320) + (rng() < 0.5 ? -1 : 1) * 120;
-  body.group.position.set(xEdge, yEdge, rng.range(-1900, -1600));
+  // Edge bias: push to large |lateral| so ambients sit at window edges.
+  const uEdge = (rng() < 0.5 ? -1 : 1) * rng.range(380, 700);
+  const vEdge = rng.range(-260, 320) + (rng() < 0.5 ? -1 : 1) * 120;
+  const along = rng.range(-1900, -1600);
+  body.group.position.copy(flowPosition(uEdge, vEdge, along));
   return {
     kind: 'body',
     role: 'AMBIENT',
     body,
-    vx: rng.signed(2.0),
-    vy: rng.signed(1.6),
-    driftSpeed: rng.range(14, 24),
+    driftW: new THREE.Vector3(rng.signed(2.0), rng.signed(1.6), rng.range(14, 24) - CRUISE_SPEED_NEAR),
     radius: r,
   };
 }
@@ -170,29 +211,36 @@ export function spawnField(rng: Rng): FieldEntry {
   return { kind: 'field', field: createAsteroidField(rng) };
 }
 
-/** Spawn a rare event of a seeded kind. Places the group far fore. */
+/** Spawn a rare event of a seeded kind. Places the group far fore (along the
+ *  flow axis). */
 export function spawnEvent(rng: Rng, kind: EventKind): EventEntry {
   const event = createRareEvent(rng, kind);
-  const z = kind === 'NEBULA' ? rng.range(-1900, -1700)
+  const along = kind === 'NEBULA' ? rng.range(-1900, -1700)
     : kind === 'DERELICT' ? -1200
       : rng.range(-1700, -1500);
-  event.group.position.set(rng.range(-500, 500), rng.range(-200, 300), z);
+  const lateralU = rng.range(-500, 500);
+  const lateralV = rng.range(-200, 300);
+  event.group.position.copy(flowPosition(lateralU, lateralV, along));
   return { kind: 'event', event };
 }
 
 // ── Per-tick motion + despawn ─────────────────────────────────────────────────────
 
 const _center = new THREE.Vector3();
+const _drift = new THREE.Vector3();
 
-/** Advance one entry; returns true when it has passed the despawn boundary. */
+/** Advance one entry; returns true when it has passed the despawn boundary
+ *  (dot(pos, flowAxis) > bound — was a raw z comparison). */
 export function tickEntry(entry: CastEntry, dt: number): boolean {
+  const flowAxis = getFlowAxis();
   if (entry.kind === 'body') {
     const g = entry.body.group;
-    g.position.z += entry.driftSpeed * dt;
-    g.position.x += entry.vx * dt;
-    g.position.y += entry.vy * dt;
+    // pos += (flowW + driftW) * dt — the shared universe flow plus this
+    // body's own small motion.
+    _drift.copy(getFlowW()).add(entry.driftW).multiplyScalar(dt);
+    g.position.add(_drift);
     entry.body.tick(dt);
-    return g.position.z > DESPAWN_Z;
+    return g.position.dot(flowAxis) > DESPAWN_Z;
   }
   if (entry.kind === 'field') {
     entry.field.tick(dt);
@@ -200,15 +248,16 @@ export function tickEntry(entry: CastEntry, dt: number): boolean {
     entry.field.mesh.computeBoundingBox();
     if (entry.field.mesh.boundingBox) {
       entry.field.mesh.boundingBox.getCenter(_center);
-      return _center.z > DESPAWN_Z;
+      return _center.dot(flowAxis) > DESPAWN_Z;
     }
     return false;
   }
-  // event
+  // event — self-scrolls on its own +Z driftSpeed (events.ts, unchanged);
+  // despawn boundary still generalizes to the flow axis for consistency.
   const g = entry.event.group;
   g.position.z += entry.event.driftSpeed * dt;
   entry.event.tick(dt);
-  return g.position.z > DESPAWN_Z + 200; // nebulae are large; give margin
+  return g.position.dot(flowAxis) > DESPAWN_Z + 200; // nebulae are large; give margin
 }
 
 /** Dispose one entry fully (geometry/material/textures). */
@@ -225,7 +274,8 @@ export function entryObject(entry: CastEntry): THREE.Object3D {
   return entry.event.group;
 }
 
-/** World-space centre of a hero body's group (for scan distance). */
-export function heroWorldZ(entry: BodyEntry): number {
-  return entry.body.group.position.z;
+/** A hero body's position projected onto the current flow axis (was a raw
+ *  world-space z read) — used for the scan band test in director.ts. */
+export function heroFlowPos(entry: BodyEntry): number {
+  return entry.body.group.position.dot(getFlowAxis());
 }

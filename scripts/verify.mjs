@@ -847,6 +847,81 @@ async function run() {
 
     console.log('[verify] All 11 functional tests PASSED ✓\n');
 
+    // ── Test 12: Universe coherence (rig rotation + flow-generalized despawn) ──
+    // v1.1 SOVEREIGN Stage 1 Lane C — universeRig's group.quaternion is set to
+    // the ship attitude's inverse each frame (design §2); a 180° yaw must flip
+    // world-fixed landmarks (the hero sun) to the opposite hemisphere, and the
+    // rolling cast must stay well-formed under fast off-nominal flow. Driven
+    // entirely via the LANE-C flightShim test hooks (shimYaw180 / shimSetFlow)
+    // — Lane A's real flightState replaces the shim at merge; these hooks
+    // move with it. Numbered 12 per the design doc (T11 is Lane A's flight-
+    // model test, appended separately).
+    console.log('[verify] Test 12: Universe coherence (rig rotation + flow)');
+
+    await page.evaluate(() => window.__test.switchWorld('ship'));
+    await sleep(150);
+
+    const info0 = await page.evaluate(() => window.__test.getUniverseInfo());
+    console.log(`  boot — bodyCount=${info0.bodyCount} flowDir=${JSON.stringify(info0.flowDir)} sunBearing=${JSON.stringify(info0.sunBearing)}`);
+    assert(info0.bodyCount > 0, 'Test 12: expected at least one live body (signature cast) before the rotation check');
+    assert(
+      info0.sunBearing.some((v) => Math.abs(v) > 1e-6),
+      'Test 12: sunBearing should be non-zero (hero-sun object not found, or sitting at the origin?)',
+    );
+
+    // (a) 180° yaw must flip the sun's rendered bearing to the opposite
+    // hemisphere — proof the rig rotation actually reaches world-fixed content.
+    await page.evaluate(() => window.__test.shimYaw180());
+    await waitFrame();
+
+    const infoYawed = await page.evaluate(() => window.__test.getUniverseInfo());
+    console.log(`  post-yaw — sunBearing=${JSON.stringify(infoYawed.sunBearing)}`);
+    const bearingDot =
+      info0.sunBearing[0] * infoYawed.sunBearing[0] +
+      info0.sunBearing[1] * infoYawed.sunBearing[1] +
+      info0.sunBearing[2] * infoYawed.sunBearing[2];
+    console.log(`  bearing dot product: ${bearingDot.toFixed(4)} (expect < 0 — opposite hemisphere)`);
+    assert(bearingDot < 0, `Test 12: sun bearing did not flip to the opposite hemisphere after a 180° yaw; dot=${bearingDot.toFixed(4)}`);
+
+    // getScan() must stay well-formed (or null) through the rotation — no throw.
+    const scanAfterYaw = await page.evaluate(() => window.__test.getScan());
+    console.log(`  getScan() after yaw → ${scanAfterYaw ? JSON.stringify(scanAfterYaw) : 'null'}`);
+    assert(
+      scanAfterYaw === null ||
+        (typeof scanAfterYaw.name === 'string' && typeof scanAfterYaw.distanceKm === 'number'),
+      'Test 12: getScan() returned a malformed object after the yaw',
+    );
+
+    // (b) Elevated flow (0,0,60), identity attitude restored: over 10 real
+    // seconds (dt is real-elapsed-time-derived, so "simulated" here means
+    // wall-clock) the HERO_CAP invariant must hold and the scan API must keep
+    // returning well-formed data — proof the flow-generalized despawn axis
+    // doesn't explode the cast under off-nominal speed.
+    await page.evaluate(() => window.__test.shimSetFlow(0, 0, 60));
+    await waitFrame();
+    console.log('[verify]   driving 10s of elevated flow (0,0,60)…');
+    await sleep(10000);
+
+    const infoFast = await page.evaluate(() => window.__test.getUniverseInfo());
+    console.log(`  post-fast-flight — bodyCount=${infoFast.bodyCount}`);
+    assert(infoFast.bodyCount <= 7, `Test 12: bodyCount exceeded the HERO_CAP under fast flow; got ${infoFast.bodyCount}`);
+
+    const scanAfterFast = await page.evaluate(() => window.__test.getScan());
+    console.log(`  getScan() after fast flight → ${scanAfterFast ? JSON.stringify(scanAfterFast) : 'null'}`);
+    assert(
+      scanAfterFast === null ||
+        (typeof scanAfterFast.name === 'string' && typeof scanAfterFast.distanceKm === 'number' && scanAfterFast.distanceKm > 0),
+      'Test 12: getScan() returned a malformed object after fast flight',
+    );
+
+    // Restore boot-equivalent shim state for any downstream consumers.
+    await page.evaluate(() => window.__test.shimSetFlow(0, 0, 14));
+    await waitFrame();
+
+    console.log('[verify] Test 12 PASSED ✓ (rig rotation flips world-fixed bearing; cast stays well-formed under fast flow)');
+
+    console.log('[verify] All 12 functional tests PASSED ✓\n');
+
     await browser.close();
     console.log('[verify] Done. ✓');
   } finally {

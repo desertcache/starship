@@ -5,8 +5,10 @@
  *   - a rolling cast (heroes / ambients / one asteroid field / one rare event)
  *     streaming on the +Z (aft) cruise flow,
  *   - a seeded soft-timeline scheduler (elapsed-second thresholds),
- *   - the FAR streaming star layer (added to the scene directly, ticked here),
- *   - the persistent nebula wash + hero sun (nebula.ts / sun.ts),
+ *   - the FAR streaming star layer + persistent nebula wash + hero sun, all
+ *     children of this director's own `group` (v1.1 SOVEREIGN: was added
+ *     directly to the scene — now they reparent under the universe rig for
+ *     free whenever `group` itself does, see flight/universeRig.ts),
  *   - the scan API (nearest visible hero, distance from the canopy anchor),
  *   - full disposal of everything it spawns.
  *
@@ -21,6 +23,7 @@ import { createNebulaField } from './nebula.js';
 import { createHeroSun } from './sun.js';
 import type { ScanData, SpaceDirector } from './types.js';
 import type { EventKind } from './events.js';
+import { getFlowW } from '../../flight/flightShim.js'; // LANE-C SHIM — replaced by flightState at merge
 import {
   spawnHero,
   spawnAmbient,
@@ -30,7 +33,7 @@ import {
   tickEntry,
   disposeEntry,
   entryObject,
-  heroWorldZ,
+  heroFlowPos,
   SCAN_Z_NEAR,
   SCAN_Z_FAR,
 } from './cast.js';
@@ -40,8 +43,7 @@ import type { CastEntry, BodyEntry } from './cast.js';
 
 const FAR_SPAN = 3000; // r1500 shell → span 3000, zMin -1500
 const FAR_ZMIN = -1500;
-const FAR_SCROLL_FACTOR = 0.25; // 25% of near speed for parallax
-const CRUISE_SPEED_NEAR = 14;
+const FAR_SCROLL_FACTOR = 0.25; // 25% of universe-flow speed for parallax
 
 const HERO_CAP = 7; // hard cap heroes + ambients live
 const HERO_FLOOR = 1;
@@ -75,9 +77,12 @@ export function createSpaceDirector(
   const rng: Rng = makeRng(opts?.seed ?? 0x5747);
   const group = new THREE.Group();
   group.name = 'space-director';
+  // Added directly to `scene` for now; main.ts's universe-rig wiring
+  // reparents `group` under the rig (THREE.Object3D.add() auto-detaches from
+  // the old parent), which brings everything below along with it in one move.
   scene.add(group);
 
-  // ── FAR streaming layer (added directly to scene; never frustum-culls oddly) ──
+  // ── FAR streaming layer (child of `group`; never frustum-culls oddly) ──────
   // v0.9 RADIANCE fix-round M8: sizeMin/sizeMax bumped modestly (0.4/2.0 →
   // 0.48/2.3) — reads as a slightly denser/more prominent starfield through
   // both the canopy and portholes without changing star COUNT (no added rng
@@ -95,12 +100,12 @@ export function createSpaceDirector(
     rand: rng,
   });
   far.name = 'starfield-far';
-  scene.add(far);
+  group.add(far);
 
   // ── Persistent deep-field colour depth ───────────────────────────────────────
-  const nebula = createNebulaField(scene);
+  const nebula = createNebulaField(group);
   const sun = createHeroSun(rng, SUN_POSITION);
-  scene.add(sun.sprite);
+  group.add(sun.sprite);
 
   // ── Rolling cast ─────────────────────────────────────────────────────────────
   const cast: CastEntry[] = [];
@@ -116,7 +121,8 @@ export function createSpaceDirector(
 
   // ── delta tracking ─────────────────────────────────────────────────────────────
   let lastElapsed = -1;
-  let farScroll = 0;
+  const farScrollVec = new THREE.Vector3();
+  const _nebulaDelta = new THREE.Vector3(); // per-frame scratch, avoid alloc/frame
 
   function addEntry(entry: CastEntry): void {
     cast.push(entry);
@@ -201,13 +207,13 @@ export function createSpaceDirector(
     const dt = Math.min(Math.max(elapsed - lastElapsed, 0), 0.1);
     lastElapsed = elapsed;
 
-    // Far layer streams at 25% of near speed for parallax.
-    farScroll += CRUISE_SPEED_NEAR * FAR_SCROLL_FACTOR * dt;
-    setStarUniforms(far, elapsed, farScroll);
+    // Far layer streams at 25% of the universe flow for parallax.
+    farScrollVec.addScaledVector(getFlowW(), FAR_SCROLL_FACTOR * dt);
+    setStarUniforms(far, elapsed, farScrollVec);
 
     // Persistent nebulae drift at the same FAR parallax rate so they feel
     // locked to the deep background.
-    nebula.tick(CRUISE_SPEED_NEAR * FAR_SCROLL_FACTOR * dt);
+    nebula.tick(_nebulaDelta.copy(getFlowW()).multiplyScalar(FAR_SCROLL_FACTOR * dt));
     sun.tick(elapsed);
 
     // Advance + despawn cast (iterate backwards for safe splice).
@@ -228,8 +234,8 @@ export function createSpaceDirector(
     let bestDist = Infinity;
     for (const e of cast) {
       if (e.kind !== 'body' || e.role !== 'HERO') continue;
-      const z = heroWorldZ(e);
-      if (z < SCAN_Z_NEAR || z > SCAN_Z_FAR) continue;
+      const proj = heroFlowPos(e);
+      if (proj < SCAN_Z_NEAR || proj > SCAN_Z_FAR) continue;
       const dist = e.body.group.position.distanceTo(SCAN_ANCHOR);
       if (dist < bestDist) {
         bestDist = dist;
@@ -245,15 +251,22 @@ export function createSpaceDirector(
     };
   }
 
-  function dispose(): void {
-    for (let i = cast.length - 1; i >= 0; i--) removeEntry(i);
-    scene.remove(group);
-    scene.remove(far);
-    disposeStarLayer(far);
-    nebula.dispose();
-    scene.remove(sun.sprite);
-    sun.dispose();
+  function getBodyCount(): number {
+    return totalBodies();
   }
 
-  return { tick, getScanData, dispose, group };
+  function dispose(): void {
+    for (let i = cast.length - 1; i >= 0; i--) removeEntry(i);
+    group.remove(far);
+    disposeStarLayer(far);
+    nebula.dispose();
+    group.remove(sun.sprite);
+    sun.dispose();
+    // group.parent, not `scene` — by the time this runs, main.ts's universe
+    // rig may have reparented `group` under itself, and a stale scene.remove
+    // would silently no-op, leaking group into the rig forever.
+    group.parent?.remove(group);
+  }
+
+  return { tick, getScanData, getBodyCount, dispose, group };
 }
