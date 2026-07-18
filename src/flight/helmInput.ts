@@ -41,14 +41,16 @@ const held = {
   throttleUp: false, throttleDown: false,
   pitchUp: false, pitchDown: false,
   yawLeft: false, yawRight: false,
+  // Left/right Shift tracked separately: a single boolean would cancel boost
+  // when EITHER key is released while the other is still held.
+  boostL: false, boostR: false,
 };
-let boostHeld = false;
 
 function pushHolds(): void {
   setFlightInput({
     roll: (held.rollRight ? 1 : 0) - (held.rollLeft ? 1 : 0),
     throttleDelta: (held.throttleUp ? 1 : 0) - (held.throttleDown ? 1 : 0),
-    boost: boostHeld,
+    boost: held.boostL || held.boostR,
   });
 }
 
@@ -70,9 +72,12 @@ function onKeyDown(e: KeyboardEvent): void {
     case 'KeyD': held.rollRight = true; pushHolds(); break;
     case 'KeyW': held.throttleUp = true; pushHolds(); break;
     case 'KeyS': held.throttleDown = true; pushHolds(); break;
-    case 'ShiftLeft': case 'ShiftRight': boostHeld = true; pushHolds(); break;
+    case 'ShiftLeft': held.boostL = true; pushHolds(); break;
+    case 'ShiftRight': held.boostR = true; pushHolds(); break;
     case 'KeyX': setThrottle(0); break;
-    case 'KeyV': setFlightView(getView() === 'interior' ? 'exterior' : 'interior'); break;
+    // e.repeat guard: OS key-repeat on a held V would thrash the view every
+    // repeat event, corrupting the stored enter/exit camera pose.
+    case 'KeyV': if (!e.repeat) setFlightView(getView() === 'interior' ? 'exterior' : 'interior'); break;
     case 'ArrowUp': held.pitchUp = true; break;
     case 'ArrowDown': held.pitchDown = true; break;
     case 'ArrowLeft': held.yawLeft = true; break;
@@ -86,7 +91,8 @@ function onKeyUp(e: KeyboardEvent): void {
     case 'KeyD': held.rollRight = false; pushHolds(); break;
     case 'KeyW': held.throttleUp = false; pushHolds(); break;
     case 'KeyS': held.throttleDown = false; pushHolds(); break;
-    case 'ShiftLeft': case 'ShiftRight': boostHeld = false; pushHolds(); break;
+    case 'ShiftLeft': held.boostL = false; pushHolds(); break;
+    case 'ShiftRight': held.boostR = false; pushHolds(); break;
     case 'ArrowUp': held.pitchUp = false; break;
     case 'ArrowDown': held.pitchDown = false; break;
     case 'ArrowLeft': held.yawLeft = false; break;
@@ -119,7 +125,7 @@ export function detachHelmInput(): void {
   held.throttleUp = held.throttleDown = false;
   held.pitchUp = held.pitchDown = false;
   held.yawLeft = held.yawRight = false;
-  boostHeld = false;
+  held.boostL = held.boostR = false;
 }
 
 /** Per-frame: decay the mouse stick and push the combined pitch/yaw ONLY

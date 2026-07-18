@@ -251,8 +251,13 @@ function animate(now: number): void {
   // ── World gating: ship director/starfield/room-audio freeze off-ship ──
   const activeId = getActiveWorldId();
   const activeWorld = getActiveWorld();
+  // tickHelm runs UN-gated (unlike the flight sim below): its watchdog must
+  // tear the helm down (detach listeners, reconnect pointer-look) even if
+  // the player leaves the ship world while helm state is live — otherwise
+  // helm key listeners would leak into pocket worlds and silently mutate
+  // the parked ship's throttle/course. Costs one flag check when inactive.
+  tickHelm(dtSeconds); // feeds THIS frame's steering into tickFlight below
   if (activeId === 'ship') {
-    tickHelm(dtSeconds); // Lane B — feeds THIS frame's steering into tickFlight below
     // tickFlight FIRST (Stage 2): the rig/starfield/director now read LIVE
     // flight state, so the writer must run before its consumers or every
     // frame renders last frame's attitude/flow.
