@@ -21,6 +21,7 @@ import { buildDevVoid } from '../world/worlds/devVoid.js';
 import { buildVerdant } from '../world/worlds/verdant.js';
 import { buildAshfall } from '../world/worlds/ashfall.js';
 import { buildRift } from '../world/worlds/rift.js';
+import { buildLandfall } from '../world/worlds/landfall.js';
 import { getAnnexArrivalSpawn } from '../world/portalRoom.js';
 
 export interface WorldBootDeps {
@@ -81,6 +82,7 @@ export function bootWorlds(d: WorldBootDeps): void {
   registerWorld(buildVerdant());
   registerWorld(buildAshfall());
   registerWorld(buildRift());
+  registerWorld(buildLandfall());
 
   const camNames = getRegisteredCamNames();
   (window as unknown as Record<string, unknown>)['__camNames'] = camNames;

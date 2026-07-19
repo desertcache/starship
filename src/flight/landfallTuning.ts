@@ -47,3 +47,16 @@ export const LOD_RING2 = 6;
 /** Stage 2/3-tunable — deterministic seed for the landfall surface generator
  *  (screenshot/test determinism, same rationale as approach.ts's own 0xe57a). */
 export const LANDFALL_SEED = 0x1a4d;
+
+/** Stage 2 (chunks.ts/chunkMesh.ts) — per-LOD tessellation, quad segments per
+ *  chunk side. LOD0 is full detail (near ring), LOD2 the coarsest resident
+ *  tier; anything past LOD_RING2 is the static far shell, not a live chunk. */
+export const LOD0_SEGS = 32;
+export const LOD1_SEGS = 16;
+export const LOD2_SEGS = 8;
+
+/** Stage 2 (chunkMesh.ts) — perimeter skirt drop (meters) that hides the
+ *  cross-chunk LOD tessellation crack at chunk borders. Must exceed the
+ *  plausible height delta between a chunk's own border sample and a coarser
+ *  neighbour's linear-interpolated edge at the same world point. */
+export const CHUNK_SKIRT_DEPTH = 6;
