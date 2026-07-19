@@ -74,6 +74,26 @@ const BLOOM_THRESHOLD = 0.84;
 const BLOOM_STRENGTH  = 0.60;
 const BLOOM_RADIUS    = 0.65;
 
+// v1.2 LANDFALL Stage 3: module-level ref to the vignette/grain pass, set the
+// moment it's created below. setEntryAmount()/setFlashAmount() are free
+// functions (not BloomSystem methods) so fx/landfall/descent.ts — which never
+// sees the BloomSystem instance main.ts holds — can drive them directly, the
+// same "reach the module singleton without threading an object through every
+// layer" shape flightState.ts's setApproachProvider() injection uses. No-op
+// safely when the fast-path (no composer) is active, since grainPass is then
+// never created.
+let grainPassRef: ShaderPass | null = null;
+
+/** 0..~1 atmospheric-entry heat mix — see postfx/vignetteGrain.ts's uEntry. */
+export function setEntryAmount(v: number): void {
+  if (grainPassRef) grainPassRef.material.uniforms['uEntry'].value = v;
+}
+
+/** 0..1 full-frame white mix — see postfx/vignetteGrain.ts's uFlash. */
+export function setFlashAmount(v: number): void {
+  if (grainPassRef) grainPassRef.material.uniforms['uFlash'].value = v;
+}
+
 // ── BloomSystem interface ──────────────────────────────────────────────────────
 
 export interface BloomSystem {
@@ -174,6 +194,7 @@ export function initBloom(
     grainPass.material.uniforms.uGrainAmount.value = 0;
   }
   composer.addPass(grainPass);
+  grainPassRef = grainPass;
 
   return {
     render(): void {
@@ -211,6 +232,7 @@ export function initBloom(
         pass.dispose();
       }
       composer.dispose();
+      grainPassRef = null;
     },
 
     enabled: bloomEnabled,

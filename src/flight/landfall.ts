@@ -1,21 +1,33 @@
 /**
- * src/flight/landfall.ts — v1.2 LANDFALL Stage 1 (contracts + seams).
+ * src/flight/landfall.ts — v1.2 LANDFALL Stage 3: the L-key request path,
+ * wired to a real descent + a real return-to-orbit.
  *
- * Ships the L-key request path + descent-phase state machine SKELETON only.
- * The 'landfall' world is registered in Stage 2 (streamed surface world);
- * until then requestLanding() ALWAYS declines — helmInput.ts's KeyL and
- * flightHud.ts's HOLD prompt both exist and are reachable, but nothing
- * observable happens when pressed (v1.2 LANDFALL is shipped inert-but-visible
- * this stage, by design — see the campaign brief).
- *
- * No-op-guard shape modeled on approach.ts's toggleApproachAssist(): a single
- * guarded entry point, no per-frame writer. Stage 3 wires the actual
- * descent/walk/return tick chain (tickLandfall) — see the seam marker below.
+ * Thin orchestrator over fx/landfall/descent.ts, which owns the actual phase
+ * machine/camera drive (module singleton, one-way dependency — this file
+ * never gets imported back by descent.ts, so there's no cycle). requestLanding()
+ * fades, switches worlds (no teleport — the camera keeps whatever pose HOLD
+ * left it at, since armDescent() immediately re-seeds it to the ENTRY start
+ * pose during the SAME fade-black hold), and arms the descent. takeOff()
+ * (fx/landfall/shipSurface.ts's hatch interactable) does the mirror trip back
+ * to the ship's cargo bay. Nothing here writes flight mode on takeoff —
+ * approach.ts's tickApproach() REASSERTS HOLD automatically once ship-frame
+ * ticks resume (holdEngaged never got touched by any of this).
  */
+import * as THREE from 'three';
 import { getFlight, setFlightMode } from './flightState.js';
-import { hasWorld } from '../core/worlds.js';
+import { hasWorld, switchWorld } from '../core/worlds.js';
+import { fadeTransition } from '../ui/hud.js';
+import { registerCam, teleportToCamera } from '../core/cameras.js';
+import {
+  armDescent, resetDescent, getPhase, getAltitude, getPadDist, getChunksResident,
+  type DescentPhase,
+} from '../fx/landfall/descent.js';
 
-export type DescentPhase = 'NONE' | 'ENTRY' | 'BRAKE' | 'TOUCHDOWN' | 'WALK';
+export type { DescentPhase };
+
+const SHIP_REBOARD_CAM = 'ship-reboard';
+const CARGO_BAY_POS = new THREE.Vector3(0, 1.7, 16);
+const CARGO_BAY_LOOK = new THREE.Vector3(0, 1.7, 15); // facing -Z
 
 /** testApi.getLandingInfo() shape — richer than FlightSnapshot needs, same
  *  "debug info" precedent as approach.ts's ApproachDebugInfo. */
@@ -27,42 +39,58 @@ export interface LandingDebugInfo {
   weather: string;
 }
 
-let phase: DescentPhase = 'NONE';
-
 /** L keybind (helmInput.ts) + testApi.engageLanding(): request descent.
  *  Guard: must be at HOLD (getFlight().approach.holdEngaged) AND the
- *  'landfall' world must be registered. Declines (returns false) otherwise —
- *  in Stage 1 that's unconditional, since hasWorld('landfall') is false until
- *  Stage 2 registers it. The acceptance branch below is therefore unreachable
- *  this stage; it exists so Stage 2/3 only have to wire the descent itself,
- *  not this entry point. */
+ *  'landfall' world must be registered — both true since Stage 2. */
 export function requestLanding(): boolean {
   const atHold = getFlight().approach?.holdEngaged === true;
   if (!atHold || !hasWorld('landfall')) return false;
 
-  setFlightMode('LANDED');
-  phase = 'ENTRY';
-  // Stage 3 wires the descent here.
+  // Own fadeTransition (not switchWorld's built-in one, via {instant:true})
+  // so the world-switch AND the descent's start-pose seed both happen inside
+  // the SAME black hold — one fade, no visible pop when it lifts.
+  // setFlightMode('LANDED') is INSIDE the callback, AFTER the switch
+  // (orchestrator loop-gate fix): during the fade-out the ship world still
+  // ticks, and tickApproach's HOLD-reassert (approach.ts:212-214) stomps any
+  // LANDED written before the switch — the same writer-conflict class agy
+  // caught in Stage 4. Off-ship, nothing ticks approach, so LANDED sticks.
+  void fadeTransition(() => {
+    switchWorld('landfall', { instant: true, teleport: false });
+    setFlightMode('LANDED');
+    armDescent();
+  });
   return true;
 }
 
-/** testApi.getLandingInfo() — null while no descent is in progress (phase
+/** shipSurface.ts's 'landfall-ship-hatch' interactable. Fades, switches back
+ *  to the ship world, and teleports the shared camera to the cargo bay. */
+export function takeOff(): void {
+  void fadeTransition(() => {
+    switchWorld('ship', { instant: true, teleport: false });
+    registerCam(SHIP_REBOARD_CAM, CARGO_BAY_POS, CARGO_BAY_LOOK, 'ship');
+    teleportToCamera(SHIP_REBOARD_CAM);
+    resetDescent();
+  });
+}
+
+/** testApi.getLandingInfo() — null while no descent has ever started (phase
  *  'NONE'), matching approach.ts's getApproachDebug() null-when-uninitialized
- *  precedent. Numeric fields are Stage-2/3 placeholders until tickLandfall
- *  exists to compute them for real. */
+ *  precedent. weather is a Stage-4 placeholder — real weather cycling wires
+ *  in then. */
 export function getLandingDebug(): LandingDebugInfo | null {
+  const phase = getPhase();
   if (phase === 'NONE') return null;
   return {
     phase,
-    altitude: 0, // Stage 2 computes real descent altitude
-    padDist: 0, // Stage 2 computes real distance-to-pad
-    chunksResident: 0, // Stage 2 populates from the streamed chunk grid
-    weather: 'none', // Stage 4 wires weather state
+    altitude: getAltitude(),
+    padDist: getPadDist(),
+    chunksResident: getChunksResident(),
+    weather: 'clear',
   };
 }
 
 /** testApi.resetFlight() chain (mirrors approach.ts's resetApproach()) —
- *  boot-state reset so no test/session carries a stuck descent phase over. */
+ *  boot-state reset so no test/session carries a stuck descent over. */
 export function resetLandfall(): void {
-  phase = 'NONE';
+  resetDescent();
 }

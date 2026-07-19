@@ -102,3 +102,32 @@ export const WEATHER_SUN_SCALE: readonly [number, number, number] = [1.0, 0.7, 0
 export const WEATHER_HEMI_SCALE: readonly [number, number, number] = [1.0, 0.85, 0.65];
 export const WEATHER_DOME_SCALE: readonly [number, number, number] = [1.0, 0.8, 0.55];
 export const WEATHER_CLOUD_BUMP: readonly [number, number, number] = [0, 0.35, 0.5];
+
+/** Stage 3 (fx/landfall/descent.ts) — the S-curve entry path's starting
+ *  horizontal offset from the pad (meters, X/Z), and the extra lateral bow
+ *  applied mid-ENTRY so the path curves instead of running dead straight. */
+export const DESCENT_ENTRY_OFFSET_X = 400;
+export const DESCENT_ENTRY_OFFSET_Z = 160;
+export const DESCENT_ENTRY_BOW = 60;
+
+/** Stage 3 — look-target shake amplitude (meters of lookAt-point jitter at
+ *  biome.entry.turbulence == 1 and full ENTRY strength); scaled down by the
+ *  biome's actual turbulence and tapered to 0 across BRAKE. */
+export const DESCENT_SHAKE_BASE = 18;
+
+/** Stage 3 — TOUCHDOWN eases the camera down to this altitude (meters above
+ *  the pad, NOT 0) before the WALK handoff fades and teleports to the real
+ *  ground-level spawn — avoids a visible clip through the terrain right
+ *  before the fade covers the jump. */
+export const DESCENT_TOUCHDOWN_SETTLE_ALT = 2;
+
+/** Stage 3 — dust-burst Points puff (TOUCHDOWN impact): particle count and
+ *  lifetime (seconds) of the seeded outward/upward burst at the pad. */
+export const DUST_BURST_COUNT = 28;
+export const DUST_BURST_LIFE_SECS = 1.1;
+
+/** Stage 3 — larger chunk-build frame budget (ms) while ENTRY/BRAKE/TOUCHDOWN
+ *  is actively driving the camera through altitude fast enough that ordinary
+ *  CHUNK_BUILD_BUDGET_MS would leave visible pop-in; the descent motion itself
+ *  masks the extra one-time cost (see chunks.ts's update() dtBudgetMs param). */
+export const DESCENT_CHUNK_BUDGET_MS = 6;
