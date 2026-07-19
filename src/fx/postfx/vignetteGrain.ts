@@ -15,6 +15,15 @@
  * bloom halo falloff) — grain breaks up 8-bit banding in those gradients.
  * Amplitude ~1.8% (mid of the 1.5–2% brief), time-uniform driven so it reads
  * as filmic dither, not a static overlay. Flag: ?grain=0.
+ *
+ * uEntry / uFlash (v1.2 LANDFALL Stage 3, fx/bloom.ts's setEntryAmount()/
+ * setFlashAmount() setters): two more display-referred mixes, same "last
+ * pass, post-tonemap" placement as grain above. uEntry is atmospheric-entry
+ * heat — an orange tint biased to the screen EDGES (reuses the vignette's own
+ * `dist` term) so it reads as heat haze framing the view, never washing the
+ * center. uFlash is a plain full-frame mix toward white, driven only for a
+ * brief touchdown-impact pulse. Both default to 0 (no-op) whenever the
+ * descent cinematic isn't running.
  */
 import * as THREE from 'three';
 
@@ -35,6 +44,10 @@ export const VignetteGrainShader = {
     uTime: { value: 0 },
     /** Grain amplitude; set to 0 by ?grain=0 (kill switch, no pass removal). */
     uGrainAmount: { value: GRAIN_AMOUNT },
+    /** 0..~1 atmospheric-entry heat mix (orange, screen-edge biased). */
+    uEntry: { value: 0 },
+    /** 0..1 full-frame white mix (touchdown-impact flash). */
+    uFlash: { value: 0 },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -49,6 +62,8 @@ export const VignetteGrainShader = {
     uniform float uStrength;
     uniform float uTime;
     uniform float uGrainAmount;
+    uniform float uEntry;
+    uniform float uFlash;
     varying vec2 vUv;
 
     // Cheap hash-based pseudo-random value — no noise texture needed.
@@ -73,6 +88,15 @@ export const VignetteGrainShader = {
       float shadowWeight = 1.0 - smoothstep(0.0, 0.6, luma);
       float n = grainHash(gl_FragCoord.xy + vec2(uTime * 131.7, uTime * 71.3)) * 2.0 - 1.0;
       shaded += n * uGrainAmount * shadowWeight;
+
+      // Entry heat — orange, biased to the edges via the same dist term
+      // the vignette above already computed (corner/edge = 1.0, center = 0).
+      vec3 entryTint = vec3(1.0, 0.42, 0.12);
+      float edgeBias = smoothstep(0.25, 1.1, dist);
+      shaded = mix(shaded, entryTint, uEntry * edgeBias * 0.65);
+
+      // Touchdown flash — flat full-frame mix toward white.
+      shaded = mix(shaded, vec3(1.0), uFlash);
 
       gl_FragColor = vec4(shaded, color.a);
     }

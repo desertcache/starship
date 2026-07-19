@@ -1,16 +1,19 @@
 /**
- * src/world/worlds/landfall.ts — v1.2 LANDFALL Stage 2: the World orchestrator
- * that turns Stage 1's contracts into a real, walkable, streamed surface.
+ * src/world/worlds/landfall.ts — the World orchestrator that turns Stage 1's
+ * contracts into a real, walkable, streamed surface (Stage 2) with a real
+ * descent cinematic + landed ship prop on top (Stage 3).
  *
  * Owns: the height field + biome preset, the chunk streaming manager, the far
- * shell, the sky/fog/lights, the roam boundary, and a placeholder scorched
- * landing pad (the ship prop itself lands in Stage 3 — see the update() seam
- * comments below). `?world=landfall` spawns straight onto this pad via the
- * existing worldBoot.ts dev-spawn path; no descent cinematic runs yet — you
- * arrive already standing.
+ * shell, the sky/fog/lights, the roam boundary, and the scorched landing pad.
+ * The descent cinematic (fx/landfall/descent.ts), cloud shells
+ * (fx/landfall/clouds.ts), and the landed ship prop + hatch
+ * (fx/landfall/shipSurface.ts) are attached once below and ticked from
+ * update(). `?world=landfall` spawns straight onto the pad via the existing
+ * worldBoot.ts dev-spawn path (no descent runs in that case — phase stays
+ * 'NONE' — you arrive already standing).
  */
 import * as THREE from 'three';
-import type { World } from '../../core/worldTypes.js';
+import type { World, WorldSpawn } from '../../core/worldTypes.js';
 import type { NamedCamera } from '../../core/cameras.js';
 import type { AABB, Interactable } from '../types.js';
 import { makeHeightField } from '../../fx/landfall/heightField.js';
@@ -19,7 +22,10 @@ import { buildFarShell } from '../../fx/landfall/farShell.js';
 import { buildLandfallSky } from '../../fx/landfall/sky.js';
 import { resolveBiome } from '../../fx/landfall/biomes.js';
 import { showRoomToast } from '../../ui/hud.js';
-import { LANDFALL_SEED, ROAM_RADIUS, ROAM_WARN_RADIUS } from '../../flight/landfallTuning.js';
+import { LANDFALL_SEED, ROAM_RADIUS, ROAM_WARN_RADIUS, DESCENT_CHUNK_BUDGET_MS } from '../../flight/landfallTuning.js';
+import { attachDescent, getPhase, getSkidDeployProgress } from '../../fx/landfall/descent.js';
+import { attachClouds } from '../../fx/landfall/clouds.js';
+import { attachShip } from '../../fx/landfall/shipSurface.js';
 
 const BOUNDARY_SEGMENTS = 48;
 const BOUNDARY_MIN_Y = -4;
@@ -109,15 +115,36 @@ export function buildLandfall(): World {
 
   const boundaryColliders = buildBoundaryRing(ROAM_RADIUS);
 
+  const spawn: WorldSpawn = {
+    // SW of the pad, outside the ring, on the hull's sun-lit side (sun azimuth
+    // 210°) — the walk-off reveal and ?world=landfall arrivals both frame the
+    // lit hull instead of standing under its shadowed flank (orchestrator
+    // loop-gate fix; y is clamped to ground+eye next frame).
+    position: new THREE.Vector3(-19, 0, -19),
+    lookAt: new THREE.Vector3(0, groundY + 3, 0),
+  };
+
+  // Stage 3 subsystems — descent cinematic, cloud shells, landed ship prop.
+  const descent = attachDescent({ scene, biome, groundY, spawn, chunksResident: chunks.chunksResident });
+  const clouds = attachClouds(scene, biome);
+  const ship = attachShip(scene, groundY);
+  boundaryColliders.push(...ship.colliders);
+  const interactables: Interactable[] = [ship.hatch];
+
   let roamToastCooldown = 0;
 
   const cameras: NamedCamera[] = [
-    // Hero: near the pad looking across it toward the rolling terrain and
-    // the horizon dissolving into the dome.
+    // Hero: pulled back to a 3/4 angle on the parked ship (Stage 3) — the
+    // original Stage-2 framing (18,*,14) sat only ~9m outside the pad edge,
+    // nearly broadside to the 50m hull at close range (fills the frame with
+    // an unreadable flank close-up once the ship exists). -X/-Z side (not
+    // the mirror +X/+Z) deliberately: the sun (sky.ts sunAzimuthDeg=210)
+    // sits toward -X/-Z, so shooting from that side lights the hull's near
+    // face instead of silhouetting it against the sky.
     {
       name: 'landfall',
-      position: new THREE.Vector3(18, field.height(18, 14) + 2.2, 14),
-      lookAt: new THREE.Vector3(-70, field.height(-70, -50) + 6, -50),
+      position: new THREE.Vector3(-32, field.height(-32, -46) + 6, -46),
+      lookAt: new THREE.Vector3(0, groundY + 2.5, 0),
     },
     // QA: 300m+ from spawn, proving snapStream resolved the far ring before
     // this shot — looking further out, toward the horizon.
@@ -143,20 +170,23 @@ export function buildLandfall(): World {
     id: 'landfall',
     scene,
     colliders: boundaryColliders,
-    interactables: [] as Interactable[], // Stage 3 adds the ship hatch
+    interactables,
     cameras,
-    spawn: {
-      position: new THREE.Vector3(12, 0, 0),
-      lookAt: new THREE.Vector3(0, 2, 0),
-    },
+    spawn,
     groundHeight: field.height,
     update(dt: number, playerPos: THREE.Vector3): void {
-      chunks.update(playerPos);
-      // Dome follows the player's XZ — keeps its far side inside the camera
-      // far plane across the whole roam (see sky.ts DOME_RADIUS note).
-      sky.dome.position.set(playerPos.x, 0, playerPos.z);
-      // Stage 3 seam: attachDescent()/attachShip() hook into this tick once
-      // the descent cinematic + the landed ship prop exist.
+      const phase = getPhase();
+      const descending = phase === 'ENTRY' || phase === 'BRAKE' || phase === 'TOUCHDOWN';
+
+      // Descent owns the shared camera (position+orientation) first — chunks/
+      // sky/clouds below all read the resulting playerPos this same frame.
+      descent.tick(dt, playerPos);
+      chunks.update(playerPos, descending ? DESCENT_CHUNK_BUDGET_MS : undefined);
+      // Dome follows the player's XZ (+Y too while descending — see sky.ts's
+      // DOME_RADIUS note on why altitude needs the same treatment mid-descent).
+      sky.dome.position.set(playerPos.x, descending ? playerPos.y : 0, playerPos.z);
+      clouds.tick(dt, playerPos, !descending);
+      ship.tick(dt, getSkidDeployProgress());
       // Stage 4 seam: attachWeather()/attachLife() hook into this tick once
       // weather cycling + creature spawning exist.
 
@@ -172,6 +202,8 @@ export function buildLandfall(): World {
       shell.dispose();
       pad.dispose();
       sky.dispose();
+      clouds.dispose();
+      ship.dispose();
     },
   };
 }
