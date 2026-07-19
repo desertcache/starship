@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
 import { addCockpitProps, liveScreenTick, dustMoteTick } from './cockpitProps.js';
+import { addCockpitUnderglow } from './cockpitUnderglow.js';
 import { mergeStaticSiblings } from './staticMerge.js';
 import type { RoomModule } from './types.js';
 
@@ -37,6 +38,10 @@ export function buildCockpit(): RoomModule {
   // Add props (console bank, seats, side consoles, pedestal, dust, decals)
   const props = addCockpitProps(group);
   colliders.push(...props.colliders);
+
+  // Lower-half emissive underglow (footwell + console-base washes) — lift
+  // seats/floor/console-base out of near-black without new lights.
+  addCockpitUnderglow(group);
 
   // v0.9 A1 defrag: merge static same-material sibling meshes (walls, seats,
   // consoles, ...) into fewer draw calls. Zero visual/functional change —
