@@ -1,10 +1,13 @@
 /**
  * src/flight/approach.ts — Stage 4 APPROACH (design D5 / §5 / §6 T14).
- * Productionizes the deleted planetScale spike: the ONE seeded destination
- * planet, honest trueDist bookkeeping, the render-scaling illusion
- * (renderDist = min(trueDist, PARK_DIST), angular size preserved EXACTLY),
- * the F approach-assist autopilot, the HOLD state machine + hysteresis, and
- * the haze shell that sells "world" at hold range.
+ * Productionizes the deleted planetScale spike: honest trueDist bookkeeping,
+ * the render-scaling illusion (renderDist = min(trueDist, PARK_DIST), angular
+ * size preserved EXACTLY), the F approach-assist autopilot, and the HOLD
+ * state machine + hysteresis. Destination-planet CONSTRUCTION (mesh, hero
+ * surface, cloud shell, haze) lives in destinationVisual.ts (v1.2 LANDFALL
+ * Stage 0 P2 split) — this file owns state/logic only, calling
+ * buildDestinationVisual() once at init and tickDestinationVisual() once
+ * per tick.
  *
  * Mode rules: assist ENGAGE → 'APPROACH'; angular ≥ HOLD_ANGULAR_FRAC →
  * 'HOLD' (assist drops silently — one transition per frame); disengage/HOLD
@@ -16,15 +19,15 @@
  * BEARING ported verbatim from the spike (vetted clear of signature heroes,
  * hero sun, and ship structure); mostly "up" + slight forward lean = inside
  * the boot canopy cone. Own makeRng(0xE57A) — zero draw-order risk to the
- * director's seeded sequence (Test 7 byte-identical). Core = 'ROCKY' (no
- * baked faceted atmosphere) + own 64×48 haze shell, steep rim falloff (a
- * shallow one washed the disc at HOLD range — headed finding); body tilted
- * once at init so the texture pole sits at the limb, not the approach view.
+ * director's seeded sequence (Test 7 byte-identical); consumed in exactly
+ * one place (destinationVisual.ts's createBody() call), so Test 14's
+ * target=MERIDIAN-319 XII stays the determinism canary.
  */
 import * as THREE from 'three';
 import { damp } from '../core/damp.js';
-import { createBody, type Body } from '../fx/space/bodies.js';
+import type { Body } from '../fx/space/bodies.js';
 import { makeRng } from '../fx/space/rng.js';
+import { buildDestinationVisual, tickDestinationVisual, BAKED_RADIUS } from './destinationVisual.js';
 import type { UniverseRig } from './universeRig.js';
 import {
   getAttitudeInverseRef,
@@ -52,37 +55,10 @@ import {
 const _params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
 const APPROACH_DISABLED: boolean = _params.get('approach') === '0';
 
-const BAKED_RADIUS = 100; // createBody's own baked sphere radius (radius>=50 → hero detail)
 const MIN_TRUE_DIST = 10; // floor so atan() never sees a degenerate 0
-const HAZE_SCALE = 1.16; // haze shell radius as a fraction of BAKED_RADIUS
 
 // Bearing well clear of the signature heroes and the hero sun — see header.
 const BEARING = new THREE.Vector3(0.1, 0.95, -0.3).normalize();
-
-const HAZE_VERT = /* glsl */ `
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  void main() {
-    vNormal = normalize(normalMatrix * normal);
-    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-    vViewDir = normalize(-mvPos.xyz);
-    gl_Position = projectionMatrix * mvPos;
-  }
-`;
-const HAZE_FRAG = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uIntensity;
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  void main() {
-    float ndotv = dot(normalize(vNormal), normalize(vViewDir));
-    float rim = clamp(1.0 - abs(ndotv), 0.0, 1.0);
-    // Steeper than bodies.ts's addAtmosphere (2.4) — a shallower power washed
-    // teal across the whole disc at HOLD's ~65%-of-FOV size (verify:headed finding).
-    float alpha = pow(rim, 4.0) * uIntensity;
-    gl_FragColor = vec4(mix(uColor, vec3(1.0), rim * 0.5), alpha);
-  }
-`;
 
 /** Test/debug hook shape (testApi.ts) — richer than the frozen FlightSnapshot
  *  field; the angular-size invariant needs renderDist alongside renderScale. */
@@ -110,46 +86,20 @@ let lastRenderScale = 0;
 
 const _bLocal = new THREE.Vector3();
 
-/** Build the destination planet + haze shell, parented under the universe
- *  rig (same place director content lives, so its fixed bearing rotates with
- *  attitude for free). No-op under ?approach=0. */
+/** Build the destination planet (destinationVisual.ts) and parent it under
+ *  the universe rig (same place director content lives, so its fixed bearing
+ *  rotates with attitude for free). No-op under ?approach=0. */
 export function initApproach(rig: UniverseRig, camera: THREE.PerspectiveCamera): void {
   if (APPROACH_DISABLED) return;
 
   // Own dedicated rng (design-mandated seed) — never touches the director's
   // seeded sequence, so Test 7 / the screenshot baselines are unaffected.
+  // Consumed by buildDestinationVisual() in exactly one place — see header.
   const rng = makeRng(0xe57a);
-  const body = createBody(rng, 'ROCKY', BAKED_RADIUS);
-  body.group.name = 'destination-planet';
+  const visual = buildDestinationVisual(rng, BEARING);
 
-  // Pole-pinch fix: tilt the body once so its texture pole axis (local +Y)
-  // points perpendicular to the approach bearing instead of world-up.
-  const poleAxis = new THREE.Vector3().crossVectors(BEARING, new THREE.Vector3(0, 1, 0)).normalize();
-  body.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), poleAxis);
-
-  // Facet fix: a dedicated, generously-tessellated haze shell. ROCKY bodies
-  // get no built-in atmosphere from createBody, so this is the only one —
-  // no fighting with (or being hidden by) bodies.ts's own 28×20-segment shell.
-  const hazeGeo = new THREE.SphereGeometry(BAKED_RADIUS * HAZE_SCALE, 64, 48);
-  const hazeMat = new THREE.ShaderMaterial({
-    uniforms: {
-      uColor: { value: new THREE.Color(0x9fd8c8) },
-      uIntensity: { value: 0.55 },
-    },
-    vertexShader: HAZE_VERT,
-    fragmentShader: HAZE_FRAG,
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false,
-  });
-  const haze = new THREE.Mesh(hazeGeo, hazeMat);
-  haze.name = 'destination-haze';
-  body.group.add(haze);
-
-  rig.attach(body.group);
-  ctx = { camera, body };
+  rig.attach(visual.group);
+  ctx = { camera, body: visual.body };
   recomputeRender();
 }
 
@@ -180,6 +130,7 @@ function disengageAssist(toHelm: boolean): void {
 export function tickApproach(dt: number): void {
   if (APPROACH_DISABLED || !ctx) return;
   ctx.body.tick(dt); // self-spin, always
+  tickDestinationVisual(dt); // cloud-shell spin, always — dt-accumulated, never wall-clock
 
   if (assistEngaged) {
     // Virtual closure (the illusion): arrival always ~APPROACH_T_ARRIVE
