@@ -6,7 +6,7 @@ import { installCameraGlobal, setActiveCamera } from './core/cameras.js';
 import { tickState, getState, loadState } from './core/state.js';
 import { initDebug, tickDebug } from './ui/debug.js';
 import { initHud, tickHud, showRoomToast } from './ui/hud.js';
-import { initFlightHud, tickFlightHud } from './ui/flightHud.js';
+import { initFlightHud } from './ui/flightHud.js';
 import { initStartOverlay } from './ui/startOverlay.js';
 import { assembleShip } from './world/assembly.js';
 import { initController, tickController, isMoving, tickBob } from './player/controller.js';
@@ -16,7 +16,6 @@ import { initAudio, getRoomForPosition, playOneShot } from './fx/audio.js';
 import type { RoomName } from './fx/audio.js';
 import { buildAllInteractables } from './world/interactWiring.js';
 import { initBloom } from './fx/bloom.js';
-import { tickStarfield } from './fx/starfield.js';
 import { setScanProvider } from './world/interactConsole.js';
 import { QUALITY_LOW, SHADOWS_OFF } from './core/perf.js';
 import type { ScanData } from './fx/space/types.js';
@@ -25,13 +24,9 @@ import { getActiveWorld, getActiveWorldId } from './core/worlds.js';
 import { bootWorlds } from './core/worldBoot.js';
 import { tickPortals } from './fx/portalSurface.js';
 import { installTestApi } from './core/testApi.js';
-import { initApproach, tickApproach, getApproachSnapshot } from './flight/approach.js'; // v1.1 SOVEREIGN Stage 4 (Lane E)
-import { tickFlight, getView, setApproachProvider } from './flight/flightState.js';
-import { createUniverseRig } from './flight/universeRig.js';
-import { createExteriorHull } from './fx/hull/exterior.js';
-import { createHullLighting } from './fx/hull/hullLighting.js';
-import { initChaseCam, tickChaseCam } from './flight/chaseCam.js';
+import { getView } from './flight/flightState.js';
 import { tickHelm } from './flight/helm.js'; // v1.1 SOVEREIGN Stage 2 (Lane B)
+import { initFlightBoot, tickShipFrame } from './flight/flightBoot.js'; // v1.2 LANDFALL Stage 0 (Lane P1a)
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -116,17 +111,14 @@ const audio = initAudio();
 // ── Assemble ship ─────────────────────────────────────────────────────────────
 const ship = assembleShip(scene);
 
-// ── Universe rig (v1.1 Lane C) — reparents all space content under one
-// group whose quaternion = ship attitude⁻¹ each frame (design §2). No-op at
-// boot (identity attitude), so v1.0 t=0 rendering is unchanged.
-const universeRig = createUniverseRig(scene);
-universeRig.attach(ship.starfield);
-universeRig.attach(ship.planet.mesh);
-
-// v1.1 SOVEREIGN Stage 4 (Lane E) — destination planet + F approach-assist +
-// HOLD. Productionizes flight/spikes/planetScale.ts (deleted this stage).
-initApproach(universeRig, camera);
-setApproachProvider(getApproachSnapshot);
+// v1.1/v1.2 flight system boot — universe rig, destination-planet approach,
+// exterior hull + hull lighting + chase cam, and (Stage 0 Lane P1b)
+// throttle-keyed engine glow. Extracted to flight/flightBoot.ts (v1.2
+// LANDFALL Stage 0, Lane P1a) to keep this file under CLAUDE.md's 300-line
+// cap — see that file for the exact wiring order. Must run before
+// bootWorlds() below: it calls teleportToCamera() at boot, which needs
+// initChaseCam()'s camera ref already set.
+initFlightBoot({ scene, camera, starfield: ship.starfield, planet: ship.planet });
 
 // Wire the live scan source into the PLANET SCAN console mode now that the
 // director (ship.planet) exists. Returns the nearest visible hero, or null.
@@ -135,13 +127,6 @@ setScanProvider((): ScanData | null => ship.planet.getScanData?.() ?? null);
 // ── Bloom (Phase 5, optional) ─────────────────────────────────────────────────
 // ?bloom=0 disables it. Falls back to renderer.render() when off.
 const bloom = initBloom(renderer, scene, camera);
-
-// v1.1 SOVEREIGN Stage 3 (Lane D) — exterior hull (layer 1 only, invisible
-// from inside) + chase camera. Must run before bootWorlds() below: it calls
-// teleportToCamera() at boot, which needs initChaseCam()'s camera ref set.
-createExteriorHull(scene);
-createHullLighting(scene); // layer-1-scoped key/rim/fill — lights the hull only, interior untouched
-initChaseCam(camera);
 
 // ── Player controller ─────────────────────────────────────────────────────────
 initController(camera, renderer, ship.colliders);
@@ -258,18 +243,12 @@ function animate(now: number): void {
   // the player leaves the ship world while helm state is live — otherwise
   // helm key listeners would leak into pocket worlds and silently mutate
   // the parked ship's throttle/course. Costs one flag check when inactive.
-  tickHelm(dtSeconds); // feeds THIS frame's steering into tickFlight below
+  tickHelm(dtSeconds); // feeds THIS frame's steering into tickShipFrame below
   if (activeId === 'ship') {
-    // tickFlight FIRST (Stage 2): the rig/starfield/director now read LIVE
-    // flight state, so the writer must run before its consumers or every
-    // frame renders last frame's attitude/flow.
-    tickFlight(dtSeconds); // no-op under ?flight=0 (flightState.ts)
-    tickApproach(dtSeconds); // v1.1 SOVEREIGN Stage 4 (Lane E) — no-op under ?approach=0
-    tickFlightHud(); // Lane B — helm overlay + flight-strip text
-    universeRig.tick(dtSeconds);
-    ship.planet.tick(elapsed);
-    tickStarfield(ship.starfield, elapsed);
-    tickChaseCam(dtSeconds); // Lane D — no-op while view is 'interior'
+    // Ship-frame flight tick chain — flight/flightBoot.ts's tickShipFrame()
+    // (v1.2 LANDFALL Stage 0, Lane P1a). Internal order is LOAD-BEARING
+    // (tickFlight first, then its consumers) — see that file.
+    tickShipFrame(dtSeconds, elapsed);
   } else {
     activeWorld.update(dtSeconds, camera.position);
   }
