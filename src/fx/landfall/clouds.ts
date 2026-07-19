@@ -35,8 +35,13 @@ interface Shell {
 
 export interface CloudsHandle {
   /** `walkMode` — true once WALK/NONE (roaming); false during ENTRY/BRAKE/
-   *  TOUCHDOWN. Caller derives this from descent.ts's getPhase(). */
-  tick(dt: number, playerPos: THREE.Vector3, walkMode: boolean): void;
+   *  TOUCHDOWN. Caller derives this from descent.ts's getPhase(). `coverage`
+   *  (Stage 5) — optional 0..1 override for how many high shells stay
+   *  resident in walkMode; defaults to the biome's static base so callers
+   *  that never pass it (none left, but kept optional for the same
+   *  precedent as clouds.ts's own walkMode/weather split) see unchanged
+   *  behavior. world/worlds/landfall.ts passes weather.cloudCoverage. */
+  tick(dt: number, playerPos: THREE.Vector3, walkMode: boolean, coverage?: number): void;
   dispose(): void;
 }
 
@@ -77,8 +82,6 @@ export function attachClouds(scene: THREE.Scene, biome: BiomePreset): CloudsHand
   const geo = new THREE.CircleGeometry(SHELL_RADIUS, 40);
   geo.rotateX(-Math.PI / 2);
 
-  const keepCount = THREE.MathUtils.clamp(Math.round(biome.clouds.coverage * 2), 0, 2);
-
   const shells: Shell[] = SHELL_ALTS.map((alt, i) => {
     const material = new THREE.MeshBasicMaterial({
       map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide,
@@ -94,9 +97,13 @@ export function attachClouds(scene: THREE.Scene, biome: BiomePreset): CloudsHand
 
   let driftT = 0;
 
-  function tick(dt: number, playerPos: THREE.Vector3, walkMode: boolean): void {
+  function tick(dt: number, playerPos: THREE.Vector3, walkMode: boolean, coverage?: number): void {
     driftT += dt;
     tex.offset.set(driftT * DRIFT_SPEED_U, driftT * DRIFT_SPEED_V);
+    // Stage 5: recomputed every tick (cheap — 2 ops) rather than baked once
+    // at attach time, so weather's live coverage (storm/overcast bump) can
+    // actually change which high shells stay resident once walking.
+    const keepCount = THREE.MathUtils.clamp(Math.round((coverage ?? biome.clouds.coverage) * 2), 0, 2);
     for (let i = 0; i < shells.length; i++) {
       const s = shells[i];
       s.mesh.position.x = playerPos.x;

@@ -138,8 +138,9 @@ export function buildLandfall(): World {
   // lightning) + creatures (existing engine, called not modified). Resident
   // before the first frame, same belt-and-suspenders rationale as chunks'
   // own snapStream() call above (screenshot determinism — see chunks.ts).
-  // NOTE (merge): weather's computed cloudCoverage is not yet wired into the
-  // Stage-3 cloud shells — S5 polish item (WEATHER_CLOUD_BUMP consumer).
+  // Stage 5: weather's computed cloudCoverage is now wired into the cloud
+  // shells (clouds.tick's `coverage` param, below) — the WEATHER_CLOUD_BUMP
+  // consumer this NOTE used to flag as outstanding.
   const scatter = buildScatter(field, biome);
   scene.add(scatter.group);
   scatter.update(new THREE.Vector3(-19, 0, -19));
@@ -205,7 +206,10 @@ export function buildLandfall(): World {
       // Dome follows the player's XZ (+Y too while descending — see sky.ts's
       // DOME_RADIUS note on why altitude needs the same treatment mid-descent).
       sky.dome.position.set(playerPos.x, descending ? playerPos.y : 0, playerPos.z);
-      clouds.tick(dt, playerPos, !descending);
+      // Stage 5: weather's live cloudCoverage (base + storm/overcast bump,
+      // WEATHER_CLOUD_BUMP) drives how many high shells stay resident once
+      // walking (walkMode) — clouds.ts falls back to the biome base if omitted.
+      clouds.tick(dt, playerPos, !descending, weather.cloudCoverage);
       ship.tick(dt, getSkidDeployProgress());
       // Stage 4: scatter/weather/creatures. Colliders are only re-pushed when
       // scatter.update() reports an actual chunk-crossing (see scatter.ts) —

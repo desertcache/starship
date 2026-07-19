@@ -11,7 +11,7 @@ import { headlessInteract, getActiveInteractablesForTest } from '../player/inter
 import { getFridgeStateForTest, resetFridgeForTest, questAdvanceViaBreaker } from '../world/interactItems.js';
 import { questRevealAndReadPanel } from '../world/interactWiring.js';
 import { isDoorOpen, forceDoorAutoCloseCheck } from '../world/doors.js';
-import { getActiveWorldId, switchWorld } from './worlds.js';
+import { getActiveWorldId, switchWorld, getActiveWorld as getActiveWorldObj } from './worlds.js';
 import type { ScanData } from '../fx/space/types.js';
 import {
   getFlight,
@@ -99,9 +99,30 @@ interface TestAPI {
    *  (returns false) until Stage 2 registers the 'landfall' world. */
   engageLanding(): boolean;
   getLandingInfo(): LandingDebugInfo | null;
-  /** Stage-1 skeleton (mirrors approachTickN's shape): ticks flight model
-   *  only for now — Stage 3 adds the descent tick once it exists. */
+  /** v1.2 LANDFALL Stage 5 (FINAL) — live-wired: mirrors main.ts's own
+   *  per-frame gate (`activeId === 'ship'` ? tickShipFrame : ternary
+   *  activeWorld.update()) rather than the Stage-1 skeleton's ship-only
+   *  loop. While 'landfall' is active this calls the SAME World.update()
+   *  main.ts's animate() calls every real frame — descent.tick()/
+   *  chunks.update()/sky/clouds/ship/scatter/weather/creatures — so a
+   *  headless caller can fast-forward the ENTRY→BRAKE→TOUCHDOWN→WALK
+   *  descent deterministically instead of waiting real wall-clock seconds
+   *  (see scripts/verify.mjs Test 15). The 'ship' branch keeps the
+   *  Stage-1 tickFlight-only behavior — no test drives it (approachTickN
+   *  covers the ship-side of the roundtrip instead), kept only so the hook
+   *  never silently no-ops if a future test calls it pre-landing. */
   landingTickN(n: number, dtMs: number): void;
+  /** v1.2 LANDFALL Stage 5 — analytic ground height at world (x,z) from the
+   *  ACTIVE world's own `groundHeight` (World interface, worldTypes.ts).
+   *  Needed to assert the WALK-phase eye-height clamp against the TRUE
+   *  streamed-terrain height at the player's position — the descent
+   *  module's own altitude/getLandingInfo() reads relative to a flat
+   *  pad-center constant instead (fx/landfall/descent.ts's `groundY`),
+   *  which measurably diverges from the real local height once the
+   *  walk-spawn sits inside the pad's flatten-blend ring (heightField.ts's
+   *  PAD_FLAT_INNER..OUTER) — controller.ts's real per-frame ground clamp
+   *  re-settles the player onto the TRUE value within one frame either way. */
+  getGroundHeightAt(x: number, z: number): number;
 }
 
 export interface TestApiDeps {
@@ -276,9 +297,17 @@ export function installTestApi(deps: TestApiDeps): void {
     landingTickN(n: number, dtMs: number): void {
       const dt = dtMs / 1000;
       for (let i = 0; i < n; i++) {
-        tickFlight(dt);
-        // Stage 3 adds tickLandfall
+        if (getActiveWorldId() === 'ship') {
+          tickFlight(dt);
+        } else {
+          // Stage 5: the landfall world's own per-frame update — same call
+          // main.ts's animate() makes while off-ship (activeWorld.update()).
+          getActiveWorldObj().update(dt, camera.position);
+        }
       }
+    },
+    getGroundHeightAt(x: number, z: number): number {
+      return getActiveWorldObj().groundHeight(x, z);
     },
   };
 

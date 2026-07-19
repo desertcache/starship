@@ -1224,6 +1224,171 @@ async function run() {
 
     console.log('[verify] All 15 functional tests PASSED ✓\n');
 
+    // ── Test 15: Landing roundtrip (v1.2 LANDFALL, Stage 5 FINAL) ───────────
+    // Deterministic mirror of scripts/landfall-loop-capture.mjs's real-time
+    // sanity loop (that harness stays as the headed regression check the
+    // orchestrator gate re-runs — see its own file header — this test never
+    // waits real wall-clock seconds for the descent). landingTickN (testApi.ts)
+    // now live-wires the landfall world's own update() per tick, so the whole
+    // ENTRY→BRAKE→TOUCHDOWN→WALK phase machine (18 simulated seconds) fast-
+    // forwards the exact same way approachTickN fast-forwards the HOLD closure.
+    console.log('[verify] Test 15: Landing roundtrip (v1.2 LANDFALL)');
+
+    await page.evaluate(() => window.__test.switchWorld('ship'));
+    await waitFrame();
+    await page.evaluate((n) => window.__setCam(n), 'cockpit');
+    await waitFrame();
+
+    // (a) Boot: approach hasn't reached HOLD yet (Test 14 left it reset) —
+    // engageLanding() must decline. Unlike Test 14's Stage-1 seam check (which
+    // declined because 'landfall' was UNREGISTERED), this exercises the OTHER
+    // half of requestLanding()'s guard (flight/landfall.ts): atHold === false.
+    const bootDeclined15 = await page.evaluate(() => {
+      window.__test.resetFlight();
+      return window.__test.engageLanding();
+    });
+    assert(bootDeclined15 === false, 'Test 15: engageLanding() should decline before HOLD is reached');
+    console.log('  boot: engageLanding() declined (not at HOLD) ✓');
+
+    // (b) Fast-forward to HOLD — identical recipe to Test 14.
+    await page.evaluate(() => window.__test.engageApproach());
+    let holdInfo15 = null;
+    for (let i = 0; i < 40; i++) {
+      holdInfo15 = await page.evaluate(() => {
+        window.__test.approachTickN(200, 50);
+        return window.__test.getApproachInfo();
+      });
+      if (holdInfo15 && holdInfo15.holdEngaged) break;
+    }
+    assert(holdInfo15 !== null && holdInfo15.holdEngaged === true, `Test 15: HOLD should engage before landing; got ${JSON.stringify(holdInfo15)}`);
+    const trueDist0 = holdInfo15.trueDist;
+    console.log(`  reached HOLD — trueDist0=${trueDist0.toFixed(1)}`);
+
+    // (c) Engage landing — requestLanding()'s own fadeTransition (not
+    // switchWorld's), then the descent's ENTRY start pose (armDescent()
+    // seeds it inside that SAME fade-black hold — flight/landfall.ts).
+    const landAccepted15 = await page.evaluate(() => window.__test.engageLanding());
+    assert(landAccepted15 === true, 'Test 15: engageLanding() should accept once HOLD is engaged');
+    await sleep(900); // past the fade (fadeMs 350 + holdMs 250 + fadeMs 350, house convention)
+
+    const postLand15 = await page.evaluate(() => ({
+      world: window.__test.getActiveWorld(),
+      mode: window.__test.getFlight().mode,
+      landing: window.__test.getLandingInfo(),
+    }));
+    console.log(`  post-land — world=${postLand15.world} mode=${postLand15.mode} phase=${postLand15.landing && postLand15.landing.phase} altitude=${postLand15.landing && postLand15.landing.altitude.toFixed(1)}`);
+    assert(postLand15.world === 'landfall', `Test 15: active world should be 'landfall'; got ${postLand15.world}`);
+    assert(postLand15.mode === 'LANDED', `Test 15: flight mode should be LANDED; got ${postLand15.mode}`);
+    assert(postLand15.landing !== null && postLand15.landing.phase === 'ENTRY', `Test 15: descent phase should be ENTRY; got ${JSON.stringify(postLand15.landing)}`);
+    assert(postLand15.landing.altitude > 600, `Test 15: ENTRY altitude should still be > 600 just after the landing fade; got ${postLand15.landing.altitude}`);
+
+    const landfallEntryShot = resolve(SHOTS_DIR, 'landfall-entry.png');
+    await page.screenshot({ path: landfallEntryShot });
+    console.log(`[verify] Shot saved: ${landfallEntryShot}`);
+
+    // (d) Fast-forward the descent. Bounded chunks of ~2 sim-seconds; the
+    // phase machine's own fixed total (ENTRY 8s + BRAKE 6s + TOUCHDOWN 4s =
+    // 18s, landfallTuning.ts) bounds how many chunks this should ever take —
+    // 20 (~40 sim-s) is a generous ceiling over that.
+    const altitudeSamples15 = [postLand15.landing.altitude];
+    let landInfo15 = postLand15.landing;
+    let descentChunks15 = 0;
+    while (landInfo15.phase !== 'WALK' && descentChunks15 < 20) {
+      landInfo15 = await page.evaluate(() => {
+        window.__test.landingTickN(120, 16.6); // ~2 sim-s/chunk
+        return window.__test.getLandingInfo();
+      });
+      altitudeSamples15.push(landInfo15.altitude);
+      descentChunks15++;
+    }
+    assert(landInfo15.phase === 'WALK', `Test 15: descent should reach WALK within ${descentChunks15} chunks; stuck at phase=${landInfo15.phase}`);
+    console.log(`  reached WALK after ${descentChunks15} chunks — altitude samples=[${altitudeSamples15.map((a) => a.toFixed(0)).join(', ')}]`);
+
+    // Monotonic decrease across the whole descent (ENTRY/BRAKE/TOUCHDOWN's
+    // altitude is a pure lerp of accumulated phase time — see descent.ts's
+    // applyEntryPose/applyBrakePose/applyTouchdownPose — so samples taken at
+    // strictly increasing accumulated time must be non-increasing).
+    for (let i = 1; i < altitudeSamples15.length; i++) {
+      assert(
+        altitudeSamples15[i] <= altitudeSamples15[i - 1] + 1e-6,
+        `Test 15: altitude should decrease monotonically across the descent; sample ${i - 1}=${altitudeSamples15[i - 1]} sample ${i}=${altitudeSamples15[i]}`,
+      );
+    }
+
+    const landfallWalkShot = resolve(SHOTS_DIR, 'landfall-walk.png');
+    await page.screenshot({ path: landfallWalkShot });
+    console.log(`[verify] Shot saved: ${landfallWalkShot}`);
+
+    // The WALK handoff's own teleport sits behind a REAL fadeTransition
+    // (fx/landfall/descent.ts's beginWalkHandoff) — sleep past it, same
+    // convention as (c), before reading the settled player pose.
+    await sleep(900);
+
+    const walkPos15 = await page.evaluate(() => window.__test.getPlayerPos());
+    const walkGround15 = await page.evaluate(
+      (p) => window.__test.getGroundHeightAt(p.x, p.z),
+      { x: walkPos15.x, z: walkPos15.z },
+    );
+    const walkInfo15 = await page.evaluate(() => window.__test.getLandingInfo());
+    console.log(`  WALK settle — playerY=${walkPos15.y.toFixed(2)} groundHeight=${walkGround15.toFixed(2)} chunksResident=${walkInfo15.chunksResident}`);
+    assert(
+      Math.abs(walkPos15.y - (walkGround15 + 1.7)) < 0.3,
+      `Test 15: player should stand at ground+eye height; playerY=${walkPos15.y} groundHeight=${walkGround15}`,
+    );
+    assert(walkInfo15.chunksResident > 100, `Test 15: expected the streamed surface fully resolved (>100 chunks resident); got ${walkInfo15.chunksResident}`);
+    console.log('  descent→WALK: monotonic altitude, ground-clamped eye height, streamed surface resident ✓');
+
+    // (e) Walk to the hatch and re-board. Flattened x/y/z (testApi.ts's
+    // getActiveInteractables contract) — NOT nested under `.position`.
+    const hatch15 = await page.evaluate(() => window.__test.getActiveInteractables().find((ia) => ia.id === 'landfall-ship-hatch'));
+    assert(hatch15, "Test 15: 'landfall-ship-hatch' interactable not found at WALK");
+    await page.evaluate((p) => window.__test.teleport(p.x, p.y, p.z), hatch15);
+    await waitFrame();
+    const boarded15 = await page.evaluate(() => window.__test.interact());
+    assert(boarded15, 'Test 15: interact() returned false at the ship hatch');
+    await sleep(900); // past takeOff()'s fade (flight/landfall.ts)
+
+    // (f) Back on the ship: HOLD re-asserts on its own (tickApproach's
+    // HOLD-reassert — flight/landfall.ts's file header) and trueDist should
+    // be essentially unchanged (only the ship-frame ticks that ran during
+    // the sleeps above could have nudged it).
+    const world15 = await page.evaluate(() => window.__test.getActiveWorld());
+    assert(world15 === 'ship', `Test 15: should be back on 'ship' after re-board; got ${world15}`);
+    await page.evaluate(() => window.__test.approachTickN(5, 16));
+    const finalApproach15 = await page.evaluate(() => window.__test.getApproachInfo());
+    const finalMode15 = (await page.evaluate(() => window.__test.getFlight())).mode;
+    console.log(`  re-boarded — mode=${finalMode15} holdEngaged=${finalApproach15.holdEngaged} trueDist=${finalApproach15.trueDist.toFixed(1)} (was ${trueDist0.toFixed(1)})`);
+    assert(finalMode15 === 'HOLD', `Test 15: flight mode should be HOLD after re-board; got ${finalMode15}`);
+    assert(finalApproach15.holdEngaged === true, 'Test 15: approach should still be in HOLD after re-board');
+    assert(
+      Math.abs(finalApproach15.trueDist - trueDist0) < 1,
+      `Test 15: trueDist should be preserved by the landing roundtrip; before=${trueDist0} after=${finalApproach15.trueDist}`,
+    );
+
+    const shipReboardShot = resolve(SHOTS_DIR, 'landfall-reboard.png');
+    await page.screenshot({ path: shipReboardShot });
+    console.log(`[verify] Shot saved: ${shipReboardShot}`);
+
+    // (g) Repeatability — engage a second landing (still at HOLD from (f)),
+    // then a full reset should tear the descent back down to uninitialized.
+    const landAgain15 = await page.evaluate(() => window.__test.engageLanding());
+    assert(landAgain15 === true, 'Test 15: engageLanding() should accept again (repeatability)');
+    await sleep(900); // let the second armDescent() fade-callback actually fire before resetting
+
+    const afterReset15 = await page.evaluate(() => {
+      window.__test.resetFlight();
+      return window.__test.getLandingInfo();
+    });
+    assert(afterReset15 === null, `Test 15: getLandingInfo() should be null after resetFlight(); got ${JSON.stringify(afterReset15)}`);
+
+    // Restore 'ship' so the run ends on the world every prior test expects.
+    await page.evaluate(() => window.__test.switchWorld('ship'));
+    await waitFrame();
+
+    console.log('[verify] Test 15 PASSED ✓ (boot decline, HOLD, engage, ENTRY→WALK descent, ground clamp, hatch re-board, HOLD re-asserted + trueDist preserved, repeatable engage, reset)');
+
+    console.log('[verify] All 16 functional tests PASSED ✓\n');
+
     await browser.close();
     console.log('[verify] Done. ✓');
   } finally {
