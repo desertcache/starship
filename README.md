@@ -4,6 +4,8 @@ A first-person walkable starship built entirely in Three.js — no external asse
 
 Outside the windows the ship is on a **Living Cruise**: a seeded encounter director streams a two-layer parallax starfield past the hull and schedules a rolling cast of procedurally-painted planets, moons, asteroid fields, and rare events (comets, nebulae, derelicts) — all named, all scannable from the cockpit console. Two persistent deep-field **nebula sprites** (teal and rust-red, additive, opacity 0.07-0.09) give space permanent color depth. Portholes are framed by thick **round bezels** — PBR gunmetal torus rings with bolt heads and cylindrical reveal tubes, matching the reference ship's porthole design.
 
+And the ship **flies** (v1.1 "SOVEREIGN"): take the port cockpit seat, grab the virtual stick, and steer the whole universe — the hull is pinned at the origin while a universe rig counter-rotates space around it. A chase camera reveals the full exterior hull with throttle-keyed engine plumes; an approach assist flies you to a seeded destination planet and parks you at proximity hold. From there (v1.2 "LANDFALL") press **L** and ride a cinematic atmosphere entry — heat glow, turbulence, cloud punch-through — down to a **streamed procedural desert planet**: kilometers of terraced mesas under a fog-matched sky, boulder fields and rock spires, roaming dune-strider herds and ridge gliders (scannable into the codex), an optional storm system with rain and lightning, and your own ship parked on the scorched landing pad. Walk out, explore, board the hatch, and you're back at hold — the whole loop repeatable, and the entire planet costs nothing measurable against the frame budget.
+
 ---
 
 ## Screenshots
@@ -28,7 +30,11 @@ Outside the windows the ship is on a **Living Cruise**: a seeded encounter direc
 |---|---|
 | `W A S D` | Move forward / left / backward / right |
 | Mouse (after click) | Look around (pointer-lock) |
-| `E` | Interact with highlighted object |
+| `E` | Interact with highlighted object (take the helm from the port cockpit seat) |
+| `W/S` + mouse (at helm) | Throttle and steer; `Shift` boost, `X` all-stop, `A/D` roll trim |
+| `V` (at helm) | Toggle the exterior chase camera |
+| `F` (at helm) | Approach assist — autopilot to the destination planet |
+| `L` (at proximity hold) | **Land** — descend to the planet surface and walk |
 | `` ` `` (backquote) | Toggle debug overlay (fps / draw calls / position) |
 
 ---
