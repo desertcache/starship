@@ -4,6 +4,12 @@
  * Stage A authors this file; NOBODY else edits it. Every campaign lane
  * (annex, worlds, creature engine, codex) programs against these contracts.
  * See docs/design-v1.0-threshold.md.
+ *
+ * v1.2 LANDFALL deliberate amendment (Stage 1, contracts + seams): WorldId
+ * gains 'landfall' below. Sanctioned exception to "NOBODY else edits it" —
+ * LANDFALL's design explicitly extends the frozen v1.0 contract; the world
+ * itself is registered in Stage 2, so `hasWorld('landfall')` reads false
+ * until then (see flight/landfall.ts's requestLanding() guard).
  */
 
 import type * as THREE from 'three';
@@ -13,7 +19,7 @@ import type { NamedCamera } from './cameras.js';
 /** Canonical worlds. The throwaway `dev-void` proof world keys itself 'dev'
  *  (a localized cast in src/world/worlds/devVoid.ts) and is deleted in Stage D;
  *  it is intentionally NOT a member here. */
-export type WorldId = 'ship' | 'verdant' | 'ashfall' | 'rift';
+export type WorldId = 'ship' | 'verdant' | 'ashfall' | 'rift' | 'landfall';
 
 export interface WorldSpawn {
   position: THREE.Vector3;

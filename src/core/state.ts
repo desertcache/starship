@@ -228,7 +228,7 @@ export function loadState(): boolean {
       state.codexScans = data.codexScans.filter((s): s is string => typeof s === 'string');
     }
     if (Array.isArray(data.relics)) {
-      const valid: WorldId[] = ['ship', 'verdant', 'ashfall', 'rift'];
+      const valid: WorldId[] = ['ship', 'verdant', 'ashfall', 'rift', 'landfall']; // v1.2 LANDFALL Stage 1
       state.relics = data.relics.filter((w): w is WorldId => valid.includes(w as WorldId));
     }
     return true;

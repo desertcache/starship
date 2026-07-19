@@ -1211,7 +1211,16 @@ async function run() {
       `Test 14: resetFlight() should restore the approach boot state; got ${JSON.stringify(afterReset)}`,
     );
 
-    console.log('[verify] Test 14 PASSED ✓ (boot invariant, monotonic engage, HOLD reached + clamped, release via hysteresis, reset)');
+    // ── Stage-1 seam check (v1.2 LANDFALL) — NOT a new numbered test; piggy-
+    // backed on Test 14's shared reset above. engageLanding() must decline
+    // while the 'landfall' world is unregistered (Stage 2 registers it) —
+    // proves the L-key/HOLD-prompt UX seam this stage ships is genuinely
+    // inert until then.
+    const landDeclined = await page.evaluate(() => window.__test.engageLanding());
+    assert(landDeclined === false, 'Stage-1 seam: engageLanding() declines while landfall world unregistered');
+    console.log('[verify]   Stage-1 seam check: engageLanding() declined (landfall world unregistered) ✓');
+
+    console.log('[verify] Test 14 PASSED ✓ (boot invariant, monotonic engage, HOLD reached + clamped, release via hysteresis, reset, Stage-1 landing seam)');
 
     console.log('[verify] All 15 functional tests PASSED ✓\n');
 

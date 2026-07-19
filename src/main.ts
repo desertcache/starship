@@ -253,8 +253,11 @@ function animate(now: number): void {
     activeWorld.update(dtSeconds, camera.position);
   }
   // v1.0 THRESHOLD — pocket-world ambient bed crossfade (no-op when unchanged).
+  // v1.2 LANDFALL Stage 1 adds 'landfall' to the set (world itself arrives Stage 2).
   audio.setWorldBed(
-    activeId === 'verdant' || activeId === 'ashfall' || activeId === 'rift' ? activeId : null,
+    activeId === 'verdant' || activeId === 'ashfall' || activeId === 'rift' || activeId === 'landfall'
+      ? activeId
+      : null,
   );
 
   // Portal live-preview tier — before bloom.render() (it borrows + restores the

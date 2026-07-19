@@ -24,6 +24,7 @@ import { damp } from '../core/damp.js';
 import { setFlightInput, setThrottle, setFlightView, getView } from './flightState.js';
 import { HELM_MOUSE_SENS, HELM_STICK_DECAY_LAMBDA } from './flightTuning.js';
 import { toggleApproachAssist, approachNoteManualInput, isApproachAssistEngaged } from './approach.js'; // v1.1 SOVEREIGN Stage 4 (Lane E)
+import { requestLanding } from './landfall.js'; // v1.2 LANDFALL Stage 1 (contracts + seams)
 
 const STICK_EPS = 1e-3;
 
@@ -81,6 +82,7 @@ function onKeyDown(e: KeyboardEvent): void {
     // repeat event, corrupting the stored enter/exit camera pose.
     case 'KeyV': if (!e.repeat) setFlightView(getView() === 'interior' ? 'exterior' : 'interior'); break;
     case 'KeyF': if (!e.repeat) toggleApproachAssist(); break;
+    case 'KeyL': if (!e.repeat) requestLanding(); break;
     case 'ArrowUp': held.pitchUp = true; approachNoteManualInput(); break;
     case 'ArrowDown': held.pitchDown = true; approachNoteManualInput(); break;
     case 'ArrowLeft': held.yawLeft = true; approachNoteManualInput(); break;

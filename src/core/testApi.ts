@@ -31,6 +31,12 @@ import {
   tickApproach,
   type ApproachDebugInfo,
 } from '../flight/approach.js'; // v1.1 SOVEREIGN Stage 4 (Lane E)
+import {
+  requestLanding,
+  getLandingDebug,
+  resetLandfall,
+  type LandingDebugInfo,
+} from '../flight/landfall.js'; // v1.2 LANDFALL Stage 1 (contracts + seams)
 
 interface TestAPI {
   teleport(x: number, y: number, z: number): void;
@@ -89,6 +95,13 @@ interface TestAPI {
    *  headless tests don't wait real wall-clock seconds for the assist's
    *  ~12s-normalized closure or the HOLD hysteresis to resolve. */
   approachTickN(n: number, dtMs: number): void;
+  /** v1.2 LANDFALL Stage 1 — L-key landing request test hook. Declines
+   *  (returns false) until Stage 2 registers the 'landfall' world. */
+  engageLanding(): boolean;
+  getLandingInfo(): LandingDebugInfo | null;
+  /** Stage-1 skeleton (mirrors approachTickN's shape): ticks flight model
+   *  only for now — Stage 3 adds the descent tick once it exists. */
+  landingTickN(n: number, dtMs: number): void;
 }
 
 export interface TestApiDeps {
@@ -224,6 +237,7 @@ export function installTestApi(deps: TestApiDeps): void {
     resetFlight(): void {
       resetFlightForLoad();
       resetApproach();
+      resetLandfall(); // v1.2 LANDFALL Stage 1
     },
     getHullInfo(): { present: boolean; layer1: boolean; tris: number } {
       const mesh = scene.getObjectByName('exterior-hull') as THREE.Mesh | undefined;
@@ -251,6 +265,19 @@ export function installTestApi(deps: TestApiDeps): void {
       for (let i = 0; i < n; i++) {
         tickFlight(dt);
         tickApproach(dt);
+      }
+    },
+    engageLanding(): boolean {
+      return requestLanding();
+    },
+    getLandingInfo(): LandingDebugInfo | null {
+      return getLandingDebug();
+    },
+    landingTickN(n: number, dtMs: number): void {
+      const dt = dtMs / 1000;
+      for (let i = 0; i < n; i++) {
+        tickFlight(dt);
+        // Stage 3 adds tickLandfall
       }
     },
   };

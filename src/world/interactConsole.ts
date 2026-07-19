@@ -60,7 +60,7 @@ export function buildConsolePlanetLines(): string[] {
     `Range:       ${formatKm(scan.distanceKm)}`,
     '',
     'Storm bands / surface visible from canopy.',
-    'No landing capability. Maintain safe orbit.',
+    'Landing vector plotted. Take the helm — commit with [L] at proximity hold.',
     '',
     'Press [E] or [ESC] to close.',
   ];

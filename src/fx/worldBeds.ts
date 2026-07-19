@@ -12,7 +12,7 @@
  * screenshot and isn't part of the fps sample, so it isn't subject to the
  * world/creature "seeded rng only" screenshot-determinism rule.
  */
-import type { RoomBranch } from './audioSynth.js';
+import { makeNoiseBuffer, type RoomBranch } from './audioSynth.js';
 
 /** VERDANT — soft lush drone: two detuned sines (root + fifth) through a
  *  gentle lowpass, with a slow tremolo breathing the root's level. */
@@ -90,4 +90,26 @@ export function buildRiftBed(audioCtx: AudioContext, outputGain: GainNode): Room
   scheduleShimmer(audioCtx.currentTime + 0.3);
 
   return { gainNode: branchGain, sources: [branchGain] };
+}
+
+/** LANDFALL — v1.2 Stage 1 wind stub: one filtered-noise source at low gain
+ *  (buildAshfallBed's rumble-through-lowpass shape is the closest existing
+ *  pattern, swapped from oscillator to broadband noise for a wind read).
+ *  Full bed — gust swell, distant surface creak, material variation — is
+ *  Stage 4 (see audio.ts's PocketWorldId comment). */
+export function buildLandfallBed(audioCtx: AudioContext, outputGain: GainNode): RoomBranch {
+  const branchGain = audioCtx.createGain();
+  branchGain.gain.value = 0;
+  branchGain.connect(outputGain);
+
+  const windSrc = audioCtx.createBufferSource();
+  windSrc.buffer = makeNoiseBuffer(audioCtx, 4.0);
+  windSrc.loop = true;
+
+  const lpf = audioCtx.createBiquadFilter();
+  lpf.type = 'lowpass'; lpf.frequency.value = 500; lpf.Q.value = 0.5;
+  const wg = audioCtx.createGain(); wg.gain.value = 0.045;
+  windSrc.connect(lpf); lpf.connect(wg); wg.connect(branchGain); windSrc.start(0);
+
+  return { gainNode: branchGain, sources: [windSrc] };
 }

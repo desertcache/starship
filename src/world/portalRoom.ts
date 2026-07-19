@@ -49,7 +49,10 @@ const DOOR_GAP_W = 1.4;
 const DOOR_GAP_H = 2.2;
 
 const WORLD_LABELS: Record<WorldId, string> = {
-  ship: 'SHIP', verdant: 'VERDANT', ashfall: 'ASHFALL', rift: 'RIFT',
+  // v1.2 LANDFALL Stage 1: 'landfall' added for Record<WorldId,...> exhaustiveness
+  // only — it's reached via HOLD+[L], not this room's survey console/portals
+  // (buildSurveyConsoleInteractable's `worlds` list below is unchanged).
+  ship: 'SHIP', verdant: 'VERDANT', ashfall: 'ASHFALL', rift: 'RIFT', landfall: 'LANDFALL',
 };
 
 /** Each pocket world ships exactly 4 non-creature scannables + 2 creature

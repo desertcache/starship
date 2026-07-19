@@ -11,10 +11,15 @@
  * The universe consumes exactly two things per frame:
  * `rig.quaternion.copy(attitudeInverse)` and `flowW` — nothing in
  * `src/fx/space/` may import helm/input/camera code.
+ *
+ * v1.2 LANDFALL deliberate amendment (Stage 1, contracts + seams): FlightMode
+ * gains 'LANDED' below. This is the one sanctioned exception to "NOBODY else
+ * edits it" — LANDFALL's design explicitly extends the frozen v1.1 contract
+ * rather than routing around it; every other field/shape here is unchanged.
  */
 import type * as THREE from 'three';
 
-export type FlightMode = 'CRUISE' | 'HELM' | 'BOOST' | 'APPROACH' | 'HOLD';
+export type FlightMode = 'CRUISE' | 'HELM' | 'BOOST' | 'APPROACH' | 'HOLD' | 'LANDED';
 
 /** Every writer (mouse/keys/TestAPI) fills this; setFlightInput takes a Partial. */
 export interface FlightInput {

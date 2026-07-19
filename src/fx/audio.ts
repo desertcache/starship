@@ -17,15 +17,16 @@ import {
   buildCockpitBed, buildEngineeringBed, buildGalleyBed, buildCorridorBed,
   scheduleStep, playOneShotInternal, buildQuartersPersonality,
 } from './audioSynth.js';
-import { buildVerdantBed, buildAshfallBed, buildRiftBed } from './worldBeds.js';
+import { buildVerdantBed, buildAshfallBed, buildRiftBed, buildLandfallBed } from './worldBeds.js';
 
 // Re-export types callers need
 export type { RoomName, SurfaceType, OneShotType } from './audioSynth.js';
 
 import type { RoomName, SurfaceType, OneShotType } from './audioSynth.js';
 
-/** v1.0 THRESHOLD pocket worlds that carry their own ambient bed. */
-export type PocketWorldId = 'verdant' | 'ashfall' | 'rift';
+/** v1.0 THRESHOLD pocket worlds that carry their own ambient bed. v1.2
+ *  LANDFALL Stage 1 adds 'landfall' (wind stub — full bed comes Stage 4). */
+export type PocketWorldId = 'verdant' | 'ashfall' | 'rift' | 'landfall';
 
 export interface AudioSystem {
   tick(moving: boolean): void;
@@ -129,9 +130,11 @@ function initAudioContext(): void {
   buildQuartersPersonality(ctx, masterGain);
 
   // v1.0 THRESHOLD — pocket-world ambient beds (silent until a world switch).
-  worldBranches['verdant'] = buildVerdantBed(ctx, masterGain);
-  worldBranches['ashfall'] = buildAshfallBed(ctx, masterGain);
-  worldBranches['rift']    = buildRiftBed(ctx, masterGain);
+  worldBranches['verdant']  = buildVerdantBed(ctx, masterGain);
+  worldBranches['ashfall']  = buildAshfallBed(ctx, masterGain);
+  worldBranches['rift']     = buildRiftBed(ctx, masterGain);
+  // v1.2 LANDFALL Stage 1 — wind stub (silent until Stage 2's world switch).
+  worldBranches['landfall'] = buildLandfallBed(ctx, masterGain);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

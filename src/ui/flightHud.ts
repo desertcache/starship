@@ -7,7 +7,7 @@
  */
 import { getFlight } from '../flight/flightState.js';
 import { MAX_SPEED_CRUISE } from '../flight/flightTuning.js';
-import { setFlightStripText } from './hud.js';
+import { setFlightStripText, showPrompt, clearPrompt } from './hud.js';
 
 const CREAM = '#E8E2D4';
 const TEAL = '#38B3AD';
@@ -22,6 +22,12 @@ let modeEl: HTMLDivElement | null = null;
 let viewEl: HTMLDivElement | null = null;
 let distRow: HTMLDivElement | null = null;
 let distEl: HTMLDivElement | null = null;
+
+// v1.2 LANDFALL Stage 1 — tracks whether WE currently own hud.ts's shared
+// interaction-prompt element, so tickFlightHud only calls showPrompt/
+// clearPrompt on an actual state CHANGE (never every frame) and never stomps
+// a normal proximity-interact prompt while it isn't ours to hold.
+let landPromptShown = false;
 
 function makeDiv(styles: string): HTMLDivElement {
   const d = document.createElement('div');
@@ -96,7 +102,7 @@ export function initFlightHud(): void {
     `color:${TEAL}`, 'font-size:9px', 'letter-spacing:0.08em', 'opacity:0.55',
     'margin-top:3px', 'white-space:nowrap',
   ].join(';'));
-  legend.textContent = 'V VIEW · W/S THR · SHIFT BOOST · X STOP · A/D ROLL · E STAND · F ASSIST';
+  legend.textContent = 'V VIEW · W/S THR · SHIFT BOOST · X STOP · A/D ROLL · E STAND · F ASSIST · L LAND';
   panelEl.appendChild(legend);
 
   document.body.appendChild(panelEl);
@@ -109,6 +115,13 @@ export function tickFlightHud(): void {
   if (!snap.helmActive) {
     if (panelEl) panelEl.style.display = 'none';
     setFlightStripText(null);
+    // v1.2 LANDFALL Stage 1 — helm-gated LAND prompt (see below): the
+    // autopilot can hold HOLD after an E-stand (stand-up autopilot, helm.ts),
+    // so this prompt must not linger over whatever the player walks up to.
+    if (landPromptShown) {
+      clearPrompt();
+      landPromptShown = false;
+    }
     return;
   }
   if (panelEl) panelEl.style.display = 'flex';
@@ -135,6 +148,21 @@ export function tickFlightHud(): void {
     if (distEl) distEl.textContent = `${snap.approach.targetName} · ${Math.round(snap.approach.trueDist).toLocaleString('en-US')} km`;
   } else if (distRow) {
     distRow.style.display = 'none';
+  }
+
+  // v1.2 LANDFALL Stage 1 — LAND prompt, live only at HOLD AND while helm is
+  // active (the guard above already clears it the instant helmActive drops,
+  // covering the stand-up-during-hold case). requestLanding() itself still
+  // declines while the 'landfall' world is unregistered — this prompt is
+  // purely a UX seam, not a promise the press will do anything yet.
+  if (snap.approach?.holdEngaged) {
+    if (!landPromptShown) {
+      showPrompt('LAND  [L]');
+      landPromptShown = true;
+    }
+  } else if (landPromptShown) {
+    clearPrompt();
+    landPromptShown = false;
   }
 
   setFlightStripText(`STREL-7 · HELM · ${snap.speed.toFixed(1)} U/S · HDG ${heading3}°`);
