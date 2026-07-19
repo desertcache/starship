@@ -60,3 +60,45 @@ export const LOD2_SEGS = 8;
  *  plausible height delta between a chunk's own border sample and a coarser
  *  neighbour's linear-interpolated edge at the same world point. */
 export const CHUNK_SKIRT_DEPTH = 6;
+
+/** Stage 4 (scatter.ts) — near-field scatter/collider streaming ring
+ *  (Chebyshev chunks from the player's current chunk — deliberately smaller
+ *  than the terrain's own LOD_RING2, see scatter.ts's file header) and the
+ *  pad-clearing radius (meters, world-space from the origin) inside which
+ *  scatter placement is skipped so the landing site stays open. */
+export const SCATTER_RING = 2;
+export const SCATTER_PAD_CLEAR_RADIUS = 40;
+
+/** Stage 4 (scatter.ts) — boulders at/above this seeded scale roll into the
+ *  "top size tier" that contributes a near-field AABB collider; spires
+ *  always do (only 1/chunk, always tall enough to matter). Base XZ radii
+ *  (meters, at scale=1) feed the collider half-extent. */
+export const SCATTER_BOULDER_COLLIDE_MIN_SCALE = 1.8;
+export const SCATTER_BOULDER_BASE_RADIUS = 1.0;
+export const SCATTER_SPIRE_BASE_RADIUS = 1.0;
+
+/** Stage 4 (weather.ts) — rain layer: particle count, wrap-box size (meters,
+ *  rigidly re-centred on the player every frame) and fall speed (m/s, drives
+ *  the accumulated-dt uFallY uniform — never wall clock). */
+export const RAIN_COUNT = 2000;
+export const RAIN_BOX_SIZE = 40;
+export const RAIN_FALL_SPEED = 14;
+/** Stage 4 (weather.ts/worldBeds.ts) — rain-patter bed gain while storm is active. */
+export const RAIN_PATTER_GAIN = 0.12;
+
+/** Stage 4 (weather.ts) — lightning scheduler: seeded gap between strikes
+ *  (seconds), flash hold duration, and the sun/hemi intensity multiplier
+ *  applied for the duration of a flash. */
+export const LIGHTNING_MIN_GAP = 4;
+export const LIGHTNING_MAX_GAP = 9;
+export const LIGHTNING_FLASH_SECS = 0.12;
+export const LIGHTNING_MULT = 2.5;
+
+/** Stage 4 (weather.ts) — per-state [clear, overcast, storm] scale applied to
+ *  the sky's base sun/hemi intensity and dome tint, plus the cloud-coverage
+ *  bump added to biome.clouds.coverage (consumed by a future cloud subsystem
+ *  — this stage doesn't build cloud meshes, see weather.ts's file header). */
+export const WEATHER_SUN_SCALE: readonly [number, number, number] = [1.0, 0.7, 0.5];
+export const WEATHER_HEMI_SCALE: readonly [number, number, number] = [1.0, 0.85, 0.65];
+export const WEATHER_DOME_SCALE: readonly [number, number, number] = [1.0, 0.8, 0.55];
+export const WEATHER_CLOUD_BUMP: readonly [number, number, number] = [0, 0.35, 0.5];

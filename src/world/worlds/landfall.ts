@@ -18,6 +18,10 @@ import { createChunkManager } from '../../fx/landfall/chunks.js';
 import { buildFarShell } from '../../fx/landfall/farShell.js';
 import { buildLandfallSky } from '../../fx/landfall/sky.js';
 import { resolveBiome } from '../../fx/landfall/biomes.js';
+import { buildScatter } from '../../fx/landfall/scatter.js';
+import { attachWeather } from '../../fx/landfall/weather.js';
+import { spawnCreatures } from '../../fx/creatures/index.js';
+import { setActiveColliders } from '../../player/controller.js';
 import { showRoomToast } from '../../ui/hud.js';
 import { LANDFALL_SEED, ROAM_RADIUS, ROAM_WARN_RADIUS } from '../../flight/landfallTuning.js';
 
@@ -109,6 +113,19 @@ export function buildLandfall(): World {
 
   const boundaryColliders = buildBoundaryRing(ROAM_RADIUS);
 
+  // Stage 4: scatter (boulders/spires/shrubs) + weather (storm/rain/
+  // lightning) + creatures (existing engine, called not modified). Resident
+  // before the first frame, same belt-and-suspenders rationale as chunks'
+  // own snapStream() call above (screenshot determinism — see chunks.ts).
+  const scatter = buildScatter(field, biome);
+  scene.add(scatter.group);
+  scatter.update(new THREE.Vector3(12, 0, 0));
+
+  const weather = attachWeather(scene, sky, biome);
+
+  const creatures = spawnCreatures(biome.creatures, field.height, new THREE.Vector3(0, 0, 0));
+  scene.add(creatures.group);
+
   let roamToastCooldown = 0;
 
   const cameras: NamedCamera[] = [
@@ -142,8 +159,8 @@ export function buildLandfall(): World {
   return {
     id: 'landfall',
     scene,
-    colliders: boundaryColliders,
-    interactables: [] as Interactable[], // Stage 3 adds the ship hatch
+    colliders: [...boundaryColliders, ...scatter.colliders()],
+    interactables: [...creatures.interactables] as Interactable[], // Stage 3 adds the ship hatch
     cameras,
     spawn: {
       position: new THREE.Vector3(12, 0, 0),
@@ -157,8 +174,13 @@ export function buildLandfall(): World {
       sky.dome.position.set(playerPos.x, 0, playerPos.z);
       // Stage 3 seam: attachDescent()/attachShip() hook into this tick once
       // the descent cinematic + the landed ship prop exist.
-      // Stage 4 seam: attachWeather()/attachLife() hook into this tick once
-      // weather cycling + creature spawning exist.
+      // Stage 4: scatter/weather/creatures. Colliders are only re-pushed when
+      // scatter.update() reports an actual chunk-crossing (see scatter.ts).
+      if (scatter.update(playerPos)) {
+        setActiveColliders([...boundaryColliders, ...scatter.colliders()]);
+      }
+      weather.update(dt, playerPos);
+      creatures.update(dt, playerPos);
 
       const distXZ = Math.hypot(playerPos.x, playerPos.z);
       roamToastCooldown = Math.max(0, roamToastCooldown - dt);
@@ -172,6 +194,9 @@ export function buildLandfall(): World {
       shell.dispose();
       pad.dispose();
       sky.dispose();
+      scatter.dispose();
+      weather.dispose();
+      creatures.dispose();
     },
   };
 }

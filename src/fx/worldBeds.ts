@@ -92,24 +92,93 @@ export function buildRiftBed(audioCtx: AudioContext, outputGain: GainNode): Room
   return { gainNode: branchGain, sources: [branchGain] };
 }
 
-/** LANDFALL — v1.2 Stage 1 wind stub: one filtered-noise source at low gain
- *  (buildAshfallBed's rumble-through-lowpass shape is the closest existing
- *  pattern, swapped from oscillator to broadband noise for a wind read).
- *  Full bed — gust swell, distant surface creak, material variation — is
- *  Stage 4 (see audio.ts's PocketWorldId comment). */
+// ── LANDFALL bed handle (weather.ts drives rain gain + thunder) ─────────────
+
+export interface LandfallBedHandle {
+  setRainGain(v: number): void;
+  triggerThunder(delaySecs: number): void;
+}
+let landfallHandle: LandfallBedHandle | null = null;
+
+/** weather.ts's only way to reach the landfall bed's live audio nodes.
+ *  RoomBranch (this file, frozen shape) has no rain-gain/thunder surface, so
+ *  this module-level handle is exposed alongside it instead of widening
+ *  RoomBranch or touching audio.ts's typed worldBranches map — both outside
+ *  this lane's ownership. Null until buildLandfallBed() has run (audio boots
+ *  on the first user gesture, see audio.ts's header); callers already treat
+ *  a null return as a safe no-op, same "safe to omit if ctx is null"
+ *  contract audio.ts documents for the whole module. */
+export function getLandfallBedHandle(): LandfallBedHandle | null {
+  return landfallHandle;
+}
+
+/** LANDFALL — wind (filtered noise + a slow gust LFO so it never reads as a
+ *  flat drone), a rain-patter layer (band-passed noise, gain driven
+ *  externally by weather.ts, silent by default), and a thunder one-shot
+ *  scheduled on the handle above. */
 export function buildLandfallBed(audioCtx: AudioContext, outputGain: GainNode): RoomBranch {
   const branchGain = audioCtx.createGain();
   branchGain.gain.value = 0;
   branchGain.connect(outputGain);
 
+  // Wind: broadband noise through a lowpass (buildAshfallBed's rumble shape,
+  // swapped to noise for a wind read) plus a slow gust LFO on its gain.
   const windSrc = audioCtx.createBufferSource();
   windSrc.buffer = makeNoiseBuffer(audioCtx, 4.0);
   windSrc.loop = true;
-
   const lpf = audioCtx.createBiquadFilter();
   lpf.type = 'lowpass'; lpf.frequency.value = 500; lpf.Q.value = 0.5;
   const wg = audioCtx.createGain(); wg.gain.value = 0.045;
   windSrc.connect(lpf); lpf.connect(wg); wg.connect(branchGain); windSrc.start(0);
 
-  return { gainNode: branchGain, sources: [windSrc] };
+  const gust = audioCtx.createOscillator();
+  gust.type = 'sine'; gust.frequency.value = 0.05; // ~20s gust cycle
+  const gustGain = audioCtx.createGain(); gustGain.gain.value = 0.02;
+  gust.connect(gustGain); gustGain.connect(wg.gain); gust.start(0);
+
+  // Rain patter: higher-frequency band-passed noise, gain starts at 0 —
+  // weather.ts's setRainGain() (via getLandfallBedHandle()) is the only
+  // thing that ever raises it.
+  const rainSrc = audioCtx.createBufferSource();
+  rainSrc.buffer = makeNoiseBuffer(audioCtx, 4.0);
+  rainSrc.loop = true;
+  const rainBpf = audioCtx.createBiquadFilter();
+  rainBpf.type = 'bandpass'; rainBpf.frequency.value = 3200; rainBpf.Q.value = 0.6;
+  const rainGain = audioCtx.createGain(); rainGain.gain.value = 0;
+  rainSrc.connect(rainBpf); rainBpf.connect(rainGain); rainGain.connect(branchGain); rainSrc.start(0);
+
+  // Thunder: low sine boom (pitch-drooping) + a highpassed noise crack,
+  // scheduled `delaySecs` out from now. Math.random() isn't used here (the
+  // delay is caller-seeded), but the envelope shape itself doesn't need to
+  // be — this file's header note applies (audio never appears in a verify
+  // screenshot / perf sample).
+  function triggerThunder(delaySecs: number): void {
+    const when = audioCtx.currentTime + Math.max(0, delaySecs);
+    const boom = audioCtx.createOscillator();
+    boom.type = 'sine';
+    boom.frequency.setValueAtTime(70, when);
+    boom.frequency.exponentialRampToValueAtTime(30, when + 0.8);
+    const boomGain = audioCtx.createGain();
+    boomGain.gain.setValueAtTime(0.22, when);
+    boomGain.gain.exponentialRampToValueAtTime(0.0001, when + 1.6);
+    boom.connect(boomGain); boomGain.connect(branchGain);
+    boom.start(when); boom.stop(when + 1.7);
+
+    const crack = audioCtx.createBufferSource();
+    crack.buffer = makeNoiseBuffer(audioCtx, 0.5);
+    const crackHpf = audioCtx.createBiquadFilter();
+    crackHpf.type = 'highpass'; crackHpf.frequency.value = 800;
+    const crackGain = audioCtx.createGain();
+    crackGain.gain.setValueAtTime(0.14, when);
+    crackGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.45);
+    crack.connect(crackHpf); crackHpf.connect(crackGain); crackGain.connect(branchGain);
+    crack.start(when); crack.stop(when + 0.5);
+  }
+
+  landfallHandle = {
+    setRainGain: (v: number): void => { rainGain.gain.value = v; },
+    triggerThunder,
+  };
+
+  return { gainNode: branchGain, sources: [windSrc, gust, rainSrc] };
 }
