@@ -29,6 +29,7 @@ import { initApproach, tickApproach, getApproachSnapshot } from './flight/approa
 import { tickFlight, getView, setApproachProvider } from './flight/flightState.js';
 import { createUniverseRig } from './flight/universeRig.js';
 import { createExteriorHull } from './fx/hull/exterior.js';
+import { createHullLighting } from './fx/hull/hullLighting.js';
 import { initChaseCam, tickChaseCam } from './flight/chaseCam.js';
 import { tickHelm } from './flight/helm.js'; // v1.1 SOVEREIGN Stage 2 (Lane B)
 
@@ -139,6 +140,7 @@ const bloom = initBloom(renderer, scene, camera);
 // from inside) + chase camera. Must run before bootWorlds() below: it calls
 // teleportToCamera() at boot, which needs initChaseCam()'s camera ref set.
 createExteriorHull(scene);
+createHullLighting(scene); // layer-1-scoped key/rim/fill — lights the hull only, interior untouched
 initChaseCam(camera);
 
 // ── Player controller ─────────────────────────────────────────────────────────
