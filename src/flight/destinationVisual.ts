@@ -26,7 +26,6 @@ import {
   finalize,
   applyTerminator,
   applyLimbDarkening,
-  seedLightU,
 } from '../fx/space/bodyTextures.js';
 import { makeNoiseGrid, fbmWrap, applyGrain } from '../fx/space/noise.js';
 
@@ -39,6 +38,16 @@ const CLOUD_SCALE = 1.03; // cloud shell radius as a fraction of BAKED_RADIUS
 const CLOUD_SPIN_RATE = 0.008; // rad/s — VERY slow, dt-accumulated (never wall-clock)
 const DEST_SURFACE_SIZE = 1024;
 const DERIVED_SEED = 0xe57a ^ 0x5a5a; // independent stream — see header
+
+// Fraction of a turn the sub-solar longitude is offset from dead-center of the
+// approach view. 0 = fully lit disc from the cockpit; 0.12 pulls the painted
+// terminator INSIDE the visible disc — ~3/4 of the face lit, the rest night
+// with ember glints. Merge-gate finding: the pre-merge seeded lightU landed
+// the entire lit hemisphere on the FAR side, so approach-hold/mid shots showed
+// a near-black disc and none of the hero-surface art. lightU is now COMPUTED
+// from the approach geometry (see buildDestinationVisual) — deterministic by
+// construction, no rng draw involved.
+const LIT_OFFSET = 0.12;
 
 // Steeper than bodies.ts's addAtmosphere (2.4) — a shallower power washed
 // teal across the whole disc at HOLD's ~65%-of-FOV size (verify:headed
@@ -127,7 +136,7 @@ function addNightEmbers(ctx: CanvasRenderingContext2D, rng: Rng, size: number, l
     const v = rng();
     const x = u * size;
     const y = v * size;
-    const r = rng.range(0.003, 0.009) * size;
+    const r = rng.range(0.004, 0.012) * size;
     const warm = rng() < 0.6 ? '255,150,60' : '255,90,40';
     const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
     grad.addColorStop(0, `rgba(${warm},0.9)`);
@@ -143,10 +152,9 @@ function addNightEmbers(ctx: CanvasRenderingContext2D, rng: Rng, size: number, l
 /** Destination-only 1024 surface (task 2.1): more mare + a fine/coarse crater
  *  tier pair + a second grain pass than the shared rockyTexture carries, so
  *  it survives being seen at ~65% of the FOV at HOLD, not a distant glimpse. */
-function destinationSurfaceTexture(rng: Rng): THREE.CanvasTexture {
+function destinationSurfaceTexture(rng: Rng, lightU: number): THREE.CanvasTexture {
   const size = DEST_SURFACE_SIZE;
   const { canvas, ctx } = makeCanvas(size);
-  const lightU = seedLightU(rng);
 
   const baseShades = ['#6a5a4a', '#776657', '#8a7a66', '#5e5042'];
   const bg = ctx.createLinearGradient(0, 0, size, size);
@@ -171,12 +179,12 @@ function destinationSurfaceTexture(rng: Rng): THREE.CanvasTexture {
 
 /** Swap the createBody()-baked rockyTexture for the destination-only hero
  *  variant above; disposes the replaced texture (constitution's dispose rule). */
-function applyHeroSurface(body: Body, rng: Rng): void {
+function applyHeroSurface(body: Body, rng: Rng, lightU: number): void {
   const core = body.group.getObjectByName('body-core') as THREE.Mesh | undefined;
   if (!core) return;
   const mat = core.material as THREE.MeshBasicMaterial;
   const oldTex = mat.map;
-  mat.map = destinationSurfaceTexture(rng);
+  mat.map = destinationSurfaceTexture(rng, lightU);
   mat.needsUpdate = true;
   oldTex?.dispose();
 }
@@ -189,15 +197,19 @@ function cloudAlphaTexture(rng: Rng): THREE.CanvasTexture {
   ctx.clearRect(0, 0, size, size);
   const n = 48;
   const grid = makeNoiseGrid(rng, n);
-  const cyclesX = rng.int(3, 5);
+  // Merge-gate retune: the first pass (cycles 3-5, threshold 0.15, gain 1.4)
+  // read as dense white static at HOLD scale. Fewer/bigger structures
+  // (cycles 2), horizontal band-stretch (vScale 0.35), higher threshold and
+  // softer gain → sparse flowing weather bands instead of noise.
+  const cyclesX = 2;
   const img = ctx.createImageData(size, size);
   const data = img.data;
   for (let y = 0; y < size; y++) {
     const v = y / size;
     for (let x = 0; x < size; x++) {
       const u = x / size;
-      const n1 = fbmWrap(grid, n, u, v, cyclesX, cyclesX * 0.6, 4);
-      const wisp = Math.max(0, n1 - 0.15) * 1.4; // threshold → sparse bands, not a solid overcast
+      const n1 = fbmWrap(grid, n, u, v, cyclesX, cyclesX * 0.35, 4);
+      const wisp = Math.max(0, n1 - 0.32) * 1.1; // threshold → sparse bands, not a solid overcast
       const idx = (y * size + x) * 4;
       data[idx] = 255;
       data[idx + 1] = 255;
@@ -220,7 +232,7 @@ function addCloudShell(group: THREE.Group, rng: Rng): THREE.Mesh {
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
-    opacity: 0.55,
+    opacity: 0.4,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'destination-clouds';
@@ -263,10 +275,23 @@ export function buildDestinationVisual(rng: Rng, bearing: THREE.Vector3): Destin
   const poleAxis = new THREE.Vector3().crossVectors(bearing, new THREE.Vector3(0, 1, 0)).normalize();
   body.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), poleAxis);
 
+  // Lit-face orientation (merge fix): compute the sub-solar longitude so the
+  // painted terminator faces the approach camera instead of landing wherever
+  // the seed put it. The camera looks along +bearing (planet sits at
+  // bearing×renderDist), so the planet longitude facing the camera is the
+  // local-frame direction of -bearing. THREE.SphereGeometry maps texture u to
+  // azimuth φ as (x,z) = (-cos φ, sin φ)·sinθ, hence φ = atan2(z, -x).
+  const localCamDir = bearing
+    .clone()
+    .negate()
+    .applyQuaternion(body.group.quaternion.clone().invert());
+  const phi = Math.atan2(localCamDir.z, -localCamDir.x);
+  const lightU = ((phi / (Math.PI * 2)) + LIT_OFFSET + 1) % 1;
+
   // Independent derived stream from here on — zero effect on the primary
   // rng chain consumed by createBody() above.
   const drng = makeRng(DERIVED_SEED);
-  applyHeroSurface(body, drng);
+  applyHeroSurface(body, drng, lightU);
   cloudMesh = addCloudShell(body.group, drng);
   addHaze(body.group);
 
