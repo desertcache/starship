@@ -191,3 +191,27 @@ export function createNebulaField(
 
   return { sprites, tick, dispose };
 }
+
+// ── Test-only registration (core/testHooksWorlds.ts — C3 wrap-bounds sweep) ──
+// There is only ever one live ship director (created once at boot and kept
+// resident), so a simple module ref is sufficient — no instance registry.
+let _testField: NebulaField | null = null;
+
+/** Called once by director.ts right after creating the ship's persistent
+ *  field (and with null on dispose). */
+export function registerNebulaFieldForTest(field: NebulaField | null): void {
+  _testField = field;
+}
+
+/** The registered field's sprites' live world positions. */
+export function getPersistentNebulaPositionsForTest(): Array<{ x: number; y: number; z: number }> {
+  if (!_testField) return [];
+  return _testField.sprites.map((s) => ({ x: s.position.x, y: s.position.y, z: s.position.z }));
+}
+
+/** Advance the registered field's REAL tick() with a caller-supplied delta —
+ *  lets a test drive many synthetic ticks (core/testHooksWorlds.ts loops this
+ *  at the live flowW) without waiting on real animation frames. */
+export function tickRegisteredNebulaForTest(delta: THREE.Vector3): void {
+  _testField?.tick(delta);
+}

@@ -12,9 +12,11 @@ import type { TestApiDeps } from './testApi.js';
 import { lightfallYForTest } from '../world/worlds/riftFeatures.js';
 import {
   getPersistentNebulaPositionsForTest,
-  tickPersistentNebulaForTest,
-} from '../fx/space/director.js';
-import { getNebulaWrapBoundsForTest } from '../fx/space/nebula.js';
+  tickRegisteredNebulaForTest,
+  getNebulaWrapBoundsForTest,
+} from '../fx/space/nebula.js';
+import { NEBULA_PARALLAX_FACTOR } from '../fx/space/director.js';
+import { getFlowWRef } from '../flight/flightState.js';
 import { gasGiantTexture } from '../fx/space/giantTexture.js';
 import { makeRng } from '../fx/space/rng.js';
 import { HUE_FAMILIES } from '../fx/space/palette.js';
@@ -53,7 +55,14 @@ export function buildWorldsTestHooks(deps: TestApiDeps): WorldsTestHooks {
       return getPersistentNebulaPositionsForTest();
     },
     tickPersistentNebula(n: number, dtMs: number): void {
-      tickPersistentNebulaForTest(n, dtMs);
+      // Loop the REAL per-frame tick n times at the live flowW (same pattern
+      // as core/testApiFlight.ts's flightTickN) — no real-time waiting.
+      const dt = dtMs / 1000;
+      const delta = new THREE.Vector3();
+      for (let i = 0; i < n; i++) {
+        delta.copy(getFlowWRef()).multiplyScalar(NEBULA_PARALLAX_FACTOR * dt);
+        tickRegisteredNebulaForTest(delta);
+      }
     },
     getNebulaWrapBounds(): { x: [number, number]; y: [number, number]; z: [number, number] } {
       return getNebulaWrapBoundsForTest();

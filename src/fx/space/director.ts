@@ -19,8 +19,7 @@ import * as THREE from 'three';
 import { makeRng } from './rng.js';
 import type { Rng } from './rng.js';
 import { buildStarLayer, setStarUniforms, disposeStarLayer } from './starLayer.js';
-import { createNebulaField } from './nebula.js';
-import type { NebulaField } from './nebula.js';
+import { createNebulaField, registerNebulaFieldForTest } from './nebula.js';
 import { createHeroSun } from './sun.js';
 import type { ScanData, SpaceDirector } from './types.js';
 import type { EventKind } from './events.js';
@@ -70,32 +69,11 @@ const SUN_POSITION = new THREE.Vector3(280, 150, -1700);
 const EVENT_KINDS: EventKind[] = ['COMET', 'NEBULA', 'DERELICT'];
 const EVENT_WEIGHTS = [40, 30, 30];
 
-// v1.2.1 (core/testHooksWorlds.ts — C3 nebula wrap-bounds sweep): module-level
-// ref to the most-recently-created director's persistent nebula field. There
-// is only ever one live director (created once at ship boot and kept
-// resident), so a simple module ref is sufficient — no instance registry
-// needed.
-let _testNebula: NebulaField | null = null;
-
-/** Test-only: the ship's persistent nebula sprites' live world positions. */
-export function getPersistentNebulaPositionsForTest(): Array<{ x: number; y: number; z: number }> {
-  if (!_testNebula) return [];
-  return _testNebula.sprites.map((s) => ({ x: s.position.x, y: s.position.y, z: s.position.z }));
-}
-
-/** Test-only: advance the SAME production tick() the real animate() loop
- *  drives (FAR_SCROLL_FACTOR of the live flowW), n times, without waiting on
- *  real animation frames — the same "loop the real per-frame function N
- *  times" pattern core/testApiFlight.ts's flightTickN already uses. */
-export function tickPersistentNebulaForTest(n: number, dtMs: number): void {
-  if (!_testNebula) return;
-  const dt = dtMs / 1000;
-  const delta = new THREE.Vector3();
-  for (let i = 0; i < n; i++) {
-    delta.copy(getFlowW()).multiplyScalar(FAR_SCROLL_FACTOR * dt);
-    _testNebula.tick(delta);
-  }
-}
+/** v1.2.1 (core/testHooksWorlds.ts — C3 nebula wrap-bounds sweep): the
+ *  parallax factor a test needs to reproduce this file's own per-frame
+ *  nebula.tick() call exactly. The registration + position/tick test hooks
+ *  themselves live in nebula.ts (this file is at the 300-line cap). */
+export const NEBULA_PARALLAX_FACTOR = FAR_SCROLL_FACTOR;
 
 interface Schedule {
   nextHeroSpawnAt: number;
@@ -139,7 +117,7 @@ export function createSpaceDirector(
 
   // ── Persistent deep-field colour depth ───────────────────────────────────────
   const nebula = createNebulaField(group);
-  _testNebula = nebula;
+  registerNebulaFieldForTest(nebula);
   const sun = createHeroSun(rng, SUN_POSITION);
   group.add(sun.sprite);
 
@@ -297,7 +275,7 @@ export function createSpaceDirector(
     group.remove(far);
     disposeStarLayer(far);
     nebula.dispose();
-    if (_testNebula === nebula) _testNebula = null;
+    registerNebulaFieldForTest(null);
     group.remove(sun.sprite);
     sun.dispose();
     // group.parent, not `scene` — by the time this runs, main.ts's universe
