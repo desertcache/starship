@@ -19,7 +19,7 @@ import * as THREE from 'three';
 import { makeRng } from './rng.js';
 import type { Rng } from './rng.js';
 import { buildStarLayer, setStarUniforms, disposeStarLayer } from './starLayer.js';
-import { createNebulaField } from './nebula.js';
+import { createNebulaField, registerNebulaFieldForTest } from './nebula.js';
 import { createHeroSun } from './sun.js';
 import type { ScanData, SpaceDirector } from './types.js';
 import type { EventKind } from './events.js';
@@ -69,6 +69,12 @@ const SUN_POSITION = new THREE.Vector3(280, 150, -1700);
 const EVENT_KINDS: EventKind[] = ['COMET', 'NEBULA', 'DERELICT'];
 const EVENT_WEIGHTS = [40, 30, 30];
 
+/** v1.2.1 (core/testHooksWorlds.ts — C3 nebula wrap-bounds sweep): the
+ *  parallax factor a test needs to reproduce this file's own per-frame
+ *  nebula.tick() call exactly. The registration + position/tick test hooks
+ *  themselves live in nebula.ts (this file is at the 300-line cap). */
+export const NEBULA_PARALLAX_FACTOR = FAR_SCROLL_FACTOR;
+
 interface Schedule {
   nextHeroSpawnAt: number;
   nextAmbientSpawnAt: number;
@@ -111,6 +117,7 @@ export function createSpaceDirector(
 
   // ── Persistent deep-field colour depth ───────────────────────────────────────
   const nebula = createNebulaField(group);
+  registerNebulaFieldForTest(nebula);
   const sun = createHeroSun(rng, SUN_POSITION);
   group.add(sun.sprite);
 
@@ -268,6 +275,7 @@ export function createSpaceDirector(
     group.remove(far);
     disposeStarLayer(far);
     nebula.dispose();
+    registerNebulaFieldForTest(null);
     group.remove(sun.sprite);
     sun.dispose();
     // group.parent, not `scene` — by the time this runs, main.ts's universe

@@ -19,6 +19,10 @@ import { CRUISE_SPEED_NEAR } from '../starfield.js';
 export interface AsteroidField {
   mesh: THREE.InstancedMesh;
   tick(dt: number): void;
+  /** Live ref to the field's current center (cast.ts's despawn projection) —
+   *  do not mutate. See tick()'s comment for why this is safe to track
+   *  incrementally instead of recomputing a full bounding box every frame. */
+  getCenter(): THREE.Vector3;
   dispose(): void;
 }
 
@@ -111,6 +115,30 @@ export function createAsteroidField(rng: Rng): AsteroidField {
 
   writeMatrices();
 
+  // v1.2.1 (ultrareview r2 nit — cast.ts:260 computeBoundingBox() every
+  // frame): every instance below gets the IDENTICAL _flowDelta each tick (the
+  // whole field translates rigidly; only each rock's own in-place spin
+  // differs, which doesn't move its center of mass) — so the bounding box's
+  // CENTER can be tracked by translating a cached start value by that same
+  // delta instead of recomputing a full box over all `count` instances every
+  // frame. Built once from basePos (ignores each rock's own geometry radius —
+  // a fixed, bounded approximation vs. the true geometry-inclusive box,
+  // unlike a per-frame recompute which would be exact) and translated exactly
+  // thereafter, since translating every point in a set by the same vector
+  // translates its bounding box's center by that same vector, with no
+  // accumulating error.
+  const _fieldCenter = new THREE.Vector3();
+  {
+    const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+    const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+    for (let i = 0; i < count; i++) {
+      const x = basePos[i * 3], y = basePos[i * 3 + 1], z = basePos[i * 3 + 2];
+      min.set(Math.min(min.x, x), Math.min(min.y, y), Math.min(min.z, z));
+      max.set(Math.max(max.x, x), Math.max(max.y, y), Math.max(max.z, z));
+    }
+    _fieldCenter.addVectors(min, max).multiplyScalar(0.5);
+  }
+
   function tick(dt: number): void {
     // (flowW + driftW) * dt — identical to bodies/events; at boot flowW is
     // (0,0,14) so this reduces exactly to the old raw (0,0,driftSpeed*dt).
@@ -123,7 +151,12 @@ export function createAsteroidField(rng: Rng): AsteroidField {
       basePos[i * 3 + 2] += _flowDelta.z;
       rotAngle[i] += rotRate[i] * dt;
     }
+    _fieldCenter.add(_flowDelta);
     writeMatrices();
+  }
+
+  function getCenter(): THREE.Vector3 {
+    return _fieldCenter;
   }
 
   function dispose(): void {
@@ -132,5 +165,5 @@ export function createAsteroidField(rng: Rng): AsteroidField {
     mesh.dispose();
   }
 
-  return { mesh, tick, dispose };
+  return { mesh, tick, getCenter, dispose };
 }

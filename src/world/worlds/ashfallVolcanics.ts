@@ -197,7 +197,14 @@ export function buildFumaroleVents(groundHeight: (x: number, z: number) => numbe
     };
     group.add(throat);
 
+    // v1.2.1 (ultrareview r3 P1): the group is named 'ashfall-fumaroles'
+    // (plural) but the interactable id is singular ('ashfall-fumarole'), and
+    // neither vent mesh was named — the real E key (name-only resolution,
+    // player/interact.ts) could never reach it. Name BOTH the body and the
+    // throat of vent 0 so a hit on either surface resolves.
     if (idx === 0) {
+      body.name = 'ashfall-fumarole';
+      throat.name = 'ashfall-fumarole';
       interactable = {
         id: 'ashfall-fumarole',
         prompt: 'Scan FUMAROLE',
