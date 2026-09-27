@@ -89,13 +89,26 @@ function buildLeg(): THREE.BufferGeometry {
  * world's fixed 1-hemi/1-directional budget — no new THREE.Light.
  */
 function buildHatchVisual(): THREE.Group {
-  const [dx, , dz] = interiorAnchors.cargoDoor.position; // -4.0, _, 13.5 — ON the hull skin (mid-height unused: see frame.position below)
+  const [, , dz] = interiorAnchors.cargoDoor.position; // 13.5 — long-axis Z (x/y unused: see outerX below)
   const [nx] = interiorAnchors.cargoDoor.normal; // -1 (outward, port side)
+
+  // v1.2.1 B2 fix (round 2, orchestrator art-review-driven): cargoDoor's raw
+  // x (-4.0) is the INTERIOR wall position, not the actual rendered hull
+  // skin — buildHull.ts's hullEnvelopeAt() (the loft geometry's own single
+  // authority for its half-extents, already used below in
+  // buildFootprintColliders) adds a MARGIN (0.6) so the exterior hull has
+  // wall thickness beyond the interior room dimensions. A hatch built at the
+  // raw anchor x sat ~0.6m INSIDE the solid hull — invisible from outside in
+  // every headed screenshot (a flat, featureless hull wall), even though the
+  // real E key's raycast still technically reached it through the hull's
+  // own DoubleSide material (why the interaction tests passed regardless).
+  const outerHalfW = hullEnvelopeAt(dz, interiorAnchors).halfW;
+  const outerX = nx * outerHalfW; // the TRUE exterior skin position at this Z
 
   const group = new THREE.Group();
   group.name = 'landfall-ship-hatch';
 
-  const frameCenterX = dx + nx * (HATCH_FRAME_DEPTH / 2);
+  const frameCenterX = outerX + nx * (HATCH_FRAME_DEPTH / 2);
   const frameGeo = new THREE.BoxGeometry(HATCH_FRAME_DEPTH, HATCH_VISUAL_HEIGHT, HATCH_VISUAL_WIDTH);
   const frameMat = new THREE.MeshStandardMaterial({ color: '#C7641E', roughness: 0.5, metalness: 0.3 });
   const frame = new THREE.Mesh(frameGeo, frameMat);
@@ -186,8 +199,12 @@ export function attachShip(scene: THREE.Scene, groundY: number): ShipSurfaceHand
   mesh.updateMatrixWorld(true);
   const colliders = buildFootprintColliders(mesh, groundY);
 
+  // v1.2.1 B2 fix (round 2): measured from the TRUE exterior skin
+  // (hullEnvelopeAt, same authority buildHatchVisual() now uses above) —
+  // 2.5m out from the actual hull surface, not from the interior anchor.
+  const hatchOuterHalfW = hullEnvelopeAt(interiorAnchors.cargoDoor.position[2], interiorAnchors).halfW;
   const hatchWorld = new THREE.Vector3(
-    interiorAnchors.cargoDoor.position[0] + interiorAnchors.cargoDoor.normal[0] * 2.5,
+    interiorAnchors.cargoDoor.normal[0] * (hatchOuterHalfW + 2.5),
     HATCH_INTERACT_Y,
     interiorAnchors.cargoDoor.position[2],
   );

@@ -18,7 +18,6 @@
  * 'landfall-descent' name, drives position+orientation exactly like a direct
  * write (see that file's own comment: "Stage 3's descent driver owns the
  * camera per-frame... it re-seeds this name then" — this is that re-seed).
- *
  * Fast-forward safety: tick() carries dt overflow past a phase boundary into
  * the next phase within the same call (≤3 hops) so a huge dt lands in the
  * correct end state. Timing is accumulated dt only — never wall clock.
@@ -79,10 +78,9 @@ let shakeF1 = 0, shakeP1 = 0, shakeF2 = 0, shakeP2 = 0, shakeF3 = 0, shakeP3 = 0
 const _pos = new THREE.Vector3();
 const _look = new THREE.Vector3();
 
-// v1.2.1 B5 cap split — the dust-burst particle system itself now lives in
-// descentDust.ts; these three thin wrappers keep the same call sites/names
-// below, supplying opts/elapsedTotal explicitly so descentDust.ts never
-// imports this file back (no cycle).
+// v1.2.1 B5 cap split — the dust-burst system lives in descentDust.ts; these
+// thin wrappers keep the call sites below unchanged, passing opts/
+// elapsedTotal explicitly so descentDust.ts never imports this file (no cycle).
 const dust = createDustBurst();
 function disposeDust(): void {
   if (!opts) return;
@@ -111,11 +109,8 @@ function tickFlash(dt: number): void {
 
 /** Overwrite the 'landfall-descent' registry entry and teleport the shared
  *  camera onto it — see file header for why this is the camera-drive path.
- *
- *  v1.2.1 B5 nit ("trivial at p95 7.1ms"): registerCam() allocates 2 new
- *  Vector3s + an entry object every call, in core/cameras.ts (not owned by
- *  this lane — a mutate-in-place accessor there would fix it). Reported, not
- *  changed here; Stage 2 cleanup already touches cameras.ts-adjacent files. */
+ *  v1.2.1 B5 nit: registerCam() allocates 2 Vector3s + an entry object every
+ *  call (core/cameras.ts, not owned by this lane) — reported, not fixed. */
 function applyPoseWithShake(x: number, y: number, z: number, shakeAmp: number): void {
   const jitterYaw = shakeAmp > 0
     ? (Math.sin(elapsedTotal * shakeF1 + shakeP1) * 0.6 + Math.sin(elapsedTotal * shakeF2 + shakeP2) * 0.4) * shakeAmp
@@ -274,6 +269,16 @@ export function armDescent(): void {
 
 /** testApi.resetFlight() chain (flight/landfall.ts's resetLandfall()). */
 export function resetDescent(): void {
+  // v1.2.1 (Lane A debugging finding) — armDescent() disables pointer-look
+  // (disconnect() also drops PointerLockControls' OWN pointerlockchange
+  // listener), and normally only beginWalkHandoff() re-enables it. A reset
+  // that interrupts an ACTIVE descent (resetFlight() mid-phase — Test 15's
+  // repeatability check does this) skipped that re-enable: isLocked would
+  // never update again, so tickController swallows WASD for the rest of the
+  // run. Check the OLD phase before overwriting it below.
+  if (phase === 'ENTRY' || phase === 'BRAKE' || phase === 'TOUCHDOWN') {
+    setPointerLookEnabled(true); // connect() is idempotent if already connected
+  }
   phase = 'NONE';
   phaseT = 0;
   elapsedTotal = 0;

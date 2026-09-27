@@ -108,20 +108,37 @@ export function initFlightHud(): void {
   document.body.appendChild(panelEl);
 }
 
+/**
+ * v1.2.1 B7 fix — hide the panel/strip/LAND-prompt outright. tickFlightHud()
+ * below is the ONLY thing that used to do this, but it runs exclusively from
+ * main.ts's tickShipFrame(), which is gated to activeId==='ship' — so once
+ * the v1.2.1 B1 fix made a real landing-from-helm correctly flip
+ * helmActive false WHILE ALREADY off-ship, tickFlightHud() never ran again
+ * to notice and hide the panel: it stayed on screen showing the STALE
+ * speed/heading/throttle/mode/HOLD-distance from the instant of landing,
+ * for the rest of the walk (found reviewing the B7 headed hatch shot).
+ * flight/helm.ts's teardown() now calls this directly so the panel comes
+ * down immediately regardless of which world is active. Idempotent/safe to
+ * call from anywhere, including before initFlightHud() has ever run.
+ */
+export function hideFlightHud(): void {
+  if (panelEl) panelEl.style.display = 'none';
+  setFlightStripText(null);
+  // v1.2 LANDFALL Stage 1 — helm-gated LAND prompt (see below): the
+  // autopilot can hold HOLD after an E-stand (stand-up autopilot, helm.ts),
+  // so this prompt must not linger over whatever the player walks up to.
+  if (landPromptShown) {
+    clearPrompt();
+    landPromptShown = false;
+  }
+}
+
 /** Per-frame tick (main.ts, right after tickFlight). Hides the panel and
  *  clears the flight-strip override the instant helm goes inactive. */
 export function tickFlightHud(): void {
   const snap = getFlight();
   if (!snap.helmActive) {
-    if (panelEl) panelEl.style.display = 'none';
-    setFlightStripText(null);
-    // v1.2 LANDFALL Stage 1 — helm-gated LAND prompt (see below): the
-    // autopilot can hold HOLD after an E-stand (stand-up autopilot, helm.ts),
-    // so this prompt must not linger over whatever the player walks up to.
-    if (landPromptShown) {
-      clearPrompt();
-      landPromptShown = false;
-    }
+    hideFlightHud();
     return;
   }
   if (panelEl) panelEl.style.display = 'flex';

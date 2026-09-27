@@ -23,7 +23,7 @@ import { playOneShot } from '../fx/audio.js';
 import { setHelmActive, setFlightMode, setFlightInput } from './flightState.js';
 import { attachHelmInput, detachHelmInput, tickHelmInput } from './helmInput.js';
 import { forceInteriorKeepPose } from './chaseCam.js';
-import { setFlightStripText } from '../ui/hud.js';
+import { hideFlightHud } from '../ui/flightHud.js';
 import { setHelmTeardownProvider } from './landfall.js'; // v1.2.1 B1 — see registration at file end
 
 // Seat-port positions — byte-identical to the plain seat this replaces in
@@ -49,7 +49,14 @@ function teardown(): void {
   detachHelmInput();
   setFlightMode('CRUISE');
   setHelmActive(false);
-  setFlightStripText(null);
+  // v1.2.1 B7 fix: hide the panel/strip/LAND-prompt HERE, not just via the
+  // next tickFlightHud() tick — that tick only ever runs from
+  // tickShipFrame(), gated to activeId==='ship' (main.ts). A landing taken
+  // FROM the helm (v1.2.1 B1) reaches this teardown ALREADY off-ship, so
+  // "wait for next tick" never arrives: the panel was stuck showing stale
+  // ship-frame speed/heading/throttle/HOLD-distance for the rest of the walk
+  // (found reviewing the B7 headed hatch shot).
+  hideFlightHud();
   // Standing up while in the chase view: force interior (V is detached now),
   // keeping the standing pose the E-stand just restored — see chaseCam.ts.
   forceInteriorKeepPose();

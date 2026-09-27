@@ -14,6 +14,7 @@
  * real aim onto the hatch to re-board — never __test.interact()'s distance
  * fallback and never engageLanding()'s no-helm shortcut.
  */
+import { resolve } from 'node:path';
 import { aimAndPressE, aimProbe, waitFrames } from './helpers.mjs';
 
 // helm.ts's HELM_INTERACT_POS (seat-port) — world (-0.90, 1.0, -22.2), radius
@@ -40,7 +41,7 @@ const CHUNK_SIZE = 64; // flight/landfallTuning.ts — mirrored here (a .mjs
 // options as the 2nd positional argument silently drops it.
 
 export async function runLandingSuite(ctx) {
-  const { page, assert, waitFrame } = ctx;
+  const { page, assert, waitFrame, SHOTS_DIR } = ctx;
 
   console.log('[verify] Lane B suite: real-path landing (B1-B4, B6)');
 
@@ -201,43 +202,66 @@ export async function runLandingSuite(ctx) {
   // re-board with the real E key ────────────────────────────────────────────
   const hatch = await page.evaluate(() => window.__test.getActiveInteractables().find((ia) => ia.id === 'landfall-ship-hatch'));
   assert(hatch, "B2/B6.7: 'landfall-ship-hatch' interactable not found at WALK");
-  const groundYAtHatch = await page.evaluate((p) => window.__test.getGroundHeightAt(p.x, p.z), hatch);
+
+  // v1.2.1 B2 — geometry, not guessed offsets: the hull is a long, narrow
+  // shape (~50 units by ~8), so "the interactable's registered position,
+  // normalized" (an early attempt at an approach direction) is dominated by
+  // the hatch's position ALONG the hull's length, not by the door's actual
+  // face normal — it pointed roughly 60° off, and every derived aim missed
+  // the hull entirely or landed out of interact range. Ground truth instead:
+  // the hatch visual's own bounding-box center, and the cargo door's anchor
+  // normal transformed by the HULL MESH's real rotation (its seeded
+  // yaw+cant, shipSurface.ts) — getHatchApproachPose() (probe-verified: a
+  // real E press from 1.5m out along this normal resolves
+  // 'landfall-ship-hatch' with prompt "[E]  Board ship").
+  const pose = await page.evaluate(() => window.__test.getHatchApproachPose());
+  assert(pose, 'B2/B6.7: getHatchApproachPose() returned null — hatch geometry not found in the active scene');
+  const groundYAtHatch = await page.evaluate((p) => window.__test.getGroundHeightAt(p.x, p.z), pose.center);
   const eyeY = groundYAtHatch + 1.7;
 
-  // v1.2.1 B2 empirical fix (two rounds): hatch.position is the interactable
-  // sitting 2.5m OUT from the hull (shipSurface.ts's hatchWorld); the actual
-  // named geometry (buildHatchVisual) is flush against the hull skin, ~2.4m
-  // INWARD of that point. Two mistakes, both corrected below:
-  //  1. Aiming AT hatch.y (~ground+1.2) while standing at eyeY (~ground+1.7)
-  //     put the ray on a downward slope that undershot the frame's bottom
-  //     edge by the time it reached the hull. Fixed: aim level, at eyeY.
-  //  2. Standing FURTHER OUT than hatch.position (a naive "+2m outward"
-  //     standoff) put the camera ~4.5m from the hull — over
-  //     MAX_INTERACT_DIST (2.5m, player/interact.ts) before the ray ever
-  //     reaches the frame. A real player interacts by walking UP TO roughly
-  //     the registered spot and looking INWARD at the hull, not by stepping
-  //     even further away from it. Fixed: stand slightly INWARD of
-  //     hatch.position (toward the hull), looking further inward still.
-  const hatchR = Math.hypot(hatch.x, hatch.z) || 1;
-  const outX = hatch.x / hatchR, outZ = hatch.z / hatchR; // ship centre -> hatch (outward)
-  const alongX = -outZ, alongZ = outX; // perpendicular: along the hull's flank
-
-  const INWARD_STANDOFF = 0.3; // stand 0.3m inward of the registered spot
-  const FRAME_APPROACH_INWARD = 2.4; // aim toward the hull skin, ~2.4m further inward still
-  const hatchLookAt = [hatch.x - outX * FRAME_APPROACH_INWARD, eyeY, hatch.z - outZ * FRAME_APPROACH_INWARD];
+  const STANDOFF = 1.5; // well inside MAX_INTERACT_DIST (2.5m, player/interact.ts)
+  const alongX = -pose.normal.z, alongZ = pose.normal.x; // perpendicular to the TRUE normal, in the XZ plane
+  // Look at the frame's OWN center height (pose.center.y), not eyeY: eyeY
+  // (~ground+1.7) sits ~0.9m below the frame's actual vertical midpoint
+  // (HATCH_INTERACT_Y + HATCH_VISUAL_HEIGHT/2, shipSurface.ts) — close-range
+  // interaction still succeeds either way (the frame's own height absorbs a
+  // few tenths of a degree of tilt), but a screenshot pulled back further
+  // magnifies that same angular error until the ship falls out of frame
+  // entirely (found reviewing the B7 hatch shot: sky and ground, no ship).
+  const hatchLookAt = [pose.center.x, pose.center.y, pose.center.z];
   function hatchApproachFrom(lateralOffset) {
     return [
-      hatch.x - outX * INWARD_STANDOFF + alongX * lateralOffset,
+      pose.center.x + pose.normal.x * STANDOFF + alongX * lateralOffset,
       eyeY,
-      hatch.z - outZ * INWARD_STANDOFF + alongZ * lateralOffset,
+      pose.center.z + pose.normal.z * STANDOFF + alongZ * lateralOffset,
     ];
+  }
+
+  // B7 art check: a dedicated hatch shot. None of the world's own 3
+  // registered cameras frame it ('landfall' hero cam frames the BOW end;
+  // the hatch is aft, at the cargo door). Orchestrator-specified framing
+  // (two earlier attempts — 4m dead-on, then 11m+lateral+elevated — both
+  // read as an unreadable close-up plane): stand 5.5m out along the hull's
+  // outward world normal, AT EYE HEIGHT (ground+1.7, not elevated), aiming
+  // dead at the hatch center, so the hatch sits in the middle third with
+  // hull + ground visible around it.
+  const hatchShotFrom = [
+    pose.center.x + pose.normal.x * 5.5,
+    eyeY,
+    pose.center.z + pose.normal.z * 5.5,
+  ];
+  await aimProbe(page, hatchShotFrom, hatchLookAt);
+  if (SHOTS_DIR) {
+    const hatchShotPath = resolve(SHOTS_DIR, 'landfall-hatch.png');
+    await page.screenshot({ path: hatchShotPath });
+    console.log(`  B2/B7: hatch shot saved: ${hatchShotPath}`);
   }
 
   // "aimSweep from the approach side": a full 360° ring (aimSweep's own
   // shape) is the wrong tool for a thin, one-sided, wall-mounted door — most
-  // of a ring points through/behind the hull or off the frame's 2.2m width.
-  // A real player approaches from a range of angles ON THE ACCESSIBLE SIDE
-  // instead: sweep a lateral fan at a fixed, in-range standoff.
+  // of a ring points through/behind the hull. A real player approaches from
+  // a range of angles ON THE ACCESSIBLE SIDE instead: sweep a lateral fan at
+  // a fixed, in-range standoff, always facing the frame's own center.
   const lateralOffsets = [-1.0, -0.5, 0, 0.5, 1.0];
   let approachHits = 0;
   const approachMisses = [];
@@ -266,6 +290,53 @@ export async function runLandingSuite(ctx) {
     `B6.7: trueDist should be preserved by the roundtrip; before=${trueDist0} after=${approachAfter.trueDist}`,
   );
   console.log(`  B6.7 (real hatch, real E): re-boarded — mode=HOLD trueDist=${approachAfter.trueDist.toFixed(1)} (was ${trueDist0.toFixed(1)}) ✓`);
+
+  // ── mid-descent reset must not strand free-look (Lane A debugging finding,
+  // fx/landfall/descent.ts's resetDescent()) — armDescent() disables
+  // pointer-look and only beginWalkHandoff() (full completion) re-enables
+  // it; resetFlight() while still ENTRY/BRAKE/TOUCHDOWN (exactly what Test
+  // 15's own repeatability check does) used to skip that re-enable, leaving
+  // PointerLockControls.isLocked permanently stale so tickController ignored
+  // WASD for the rest of the run. ──────────────────────────────────────────
+  const landAgainMid = await page.evaluate(() => window.__test.engageLanding());
+  assert(landAgainMid === true, 'mid-descent reset check: engageLanding() should accept (still at HOLD)');
+  await page.waitForFunction(() => window.__test.getActiveWorld() === 'landfall', null, { timeout: 30000 });
+  await waitFrame();
+  const midDescentInfo = await page.evaluate(() => window.__test.getLandingInfo());
+  assert(
+    midDescentInfo && midDescentInfo.phase !== 'WALK' && midDescentInfo.phase !== 'NONE',
+    `mid-descent reset check: expected an ACTIVE descent phase before resetting; got ${midDescentInfo && midDescentInfo.phase}`,
+  );
+  await page.evaluate(() => window.__test.resetFlight());
+  await page.evaluate(() => window.__test.switchWorld('ship'));
+  await waitFrame();
+  assert(
+    (await page.evaluate(() => window.__test.getLandingInfo())) === null,
+    'mid-descent reset check: getLandingInfo() should be null after resetFlight()',
+  );
+
+  await page.click('canvas');
+  await waitFrames(page, 2);
+  const lockedMid = await page.evaluate(() => document.pointerLockElement !== null);
+  if (lockedMid) {
+    const posBeforeMid = await page.evaluate(() => window.__test.getPlayerPos());
+    await page.keyboard.down('KeyW');
+    await waitFrames(page, 10);
+    await page.keyboard.up('KeyW');
+    const posAfterMid = await page.evaluate(() => window.__test.getPlayerPos());
+    const movedMid = Math.hypot(posAfterMid.x - posBeforeMid.x, posAfterMid.z - posBeforeMid.z);
+    assert(movedMid > 0.05, `mid-descent reset check: a real W keypress should move the camera; moved ${movedMid.toFixed(3)}m`);
+    console.log(`  mid-descent resetDescent() free-look check: real pointer lock held, W moved the camera ${movedMid.toFixed(3)}m ✓`);
+  } else {
+    await page.keyboard.down('KeyW');
+    await waitFrames(page, 3);
+    const gateMid = await page.evaluate(() => window.__test.getLastTickGate());
+    await page.keyboard.up('KeyW');
+    assert(gateMid !== 'seated', `mid-descent reset check: tickController should not be gated on 'seated'; got '${gateMid}'`);
+    console.log(`  mid-descent resetDescent() free-look check: harness could not hold a real lock (gate='${gateMid}') — not gated on 'seated' at least`);
+  }
+  await page.evaluate(() => { if (document.pointerLockElement) document.exitPointerLock(); });
+  await waitFrames(page, 1);
 
   // ── B6.8 — end on the ship-world contract state ───────────────────────────
   await page.evaluate(() => window.__test.setFlightView('interior'));

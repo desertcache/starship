@@ -113,6 +113,21 @@ export interface FlightTestHooks {
    *  but never refine, so a resident LOD2 chunk under the player's feet
    *  rendered meters off the true terrain height on the mesa terraces). */
   getRenderedGroundHeightAt(x: number, z: number): number | null;
+  /** v1.2.1 B2 diagnostic — replicates tickInteract()'s OWN raycast
+   *  (player/interact.ts: raycaster.setFromCamera(center) + intersectObjects
+   *  on the active scene) and returns the FULL hit list (not just the
+   *  name-resolved winner) with enough detail to diagnose a miss: object
+   *  name, full ancestor path, hit distance, visibility, material side. */
+  debugRaycastHits(): Array<{ name: string; path: string; distance: number; visible: boolean; side: number | null }>;
+  /** v1.2.1 B2 — the hatch visual's own world-space bounding-box center, and
+   *  the cargo door's outward normal transformed by the HULL MESH's actual
+   *  rotation (shipSurface.ts's seeded yaw+cant). The hull is a long,
+   *  narrow shape (~50 units by ~8), so "the hatch's registered position,
+   *  normalized" is NOT a usable approach direction — that vector is
+   *  dominated by the hatch's position ALONG the hull's length, not by the
+   *  door's actual face normal. This is the geometrically-correct basis for
+   *  an approach pose instead. Null if the hatch isn't built yet. */
+  getHatchApproachPose(): { center: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } } | null;
 }
 
 export function buildFlightTestHooks(deps: TestApiDeps): FlightTestHooks {
@@ -229,6 +244,42 @@ export function buildFlightTestHooks(deps: TestApiDeps): FlightTestHooks {
       const hits = ray.intersectObjects(getActiveWorld().scene.children, true);
       const chunkHit = hits.find((h) => h.object.name.startsWith('landfall-chunk-'));
       return chunkHit ? chunkHit.point.y : null;
+    },
+    debugRaycastHits(): Array<{ name: string; path: string; distance: number; visible: boolean; side: number | null }> {
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(0, 0), camera);
+      const hits = ray.intersectObjects(getActiveWorld().scene.children, true);
+      return hits.map((h) => {
+        const parts: string[] = [];
+        let n: THREE.Object3D | null = h.object;
+        while (n) {
+          parts.push(n.name !== '' ? n.name : n.type);
+          n = n.parent;
+        }
+        const mat = (h.object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+        const side = mat ? (Array.isArray(mat) ? mat[0]?.side ?? null : mat.side) : null;
+        return {
+          name: h.object.name,
+          path: parts.reverse().join(' > '),
+          distance: h.distance,
+          visible: h.object.visible,
+          side: side ?? null,
+        };
+      });
+    },
+    getHatchApproachPose(): { center: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } } | null {
+      const activeScene = getActiveWorld().scene;
+      const hull = activeScene.getObjectByName('landfall-ship');
+      const hatchMesh = activeScene.getObjectByName('landfall-ship-hatch');
+      if (!hull || !hatchMesh) return null;
+      const box = new THREE.Box3().setFromObject(hatchMesh);
+      const center = box.getCenter(new THREE.Vector3());
+      const worldQuat = hull.getWorldQuaternion(new THREE.Quaternion());
+      const worldNormal = new THREE.Vector3(-1, 0, 0).applyQuaternion(worldQuat).normalize();
+      return {
+        center: { x: center.x, y: center.y, z: center.z },
+        normal: { x: worldNormal.x, y: worldNormal.y, z: worldNormal.z },
+      };
     },
   };
 }
