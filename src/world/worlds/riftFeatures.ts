@@ -33,7 +33,12 @@ uniform float uTime;
 varying float vAlpha;
 void main() {
   float H = ${WATERFALL_H.toFixed(1)};
-  float y = mod(aY0 - uTime * 1.6, H);
+  // v1.2.1 (ultrareview r3 P2): was aY0 minus uTime*1.6, which made y
+  // DECREASE over time (particles sink toward the bottom, teleporting back
+  // to the top on wrap) — the opposite of the design ('pours upward', rift.ts
+  // header). Plus makes y increase (rise toward H) between wraps; see
+  // lightfallYForTest() below, the CPU-side mirror this is proven against.
+  float y = mod(aY0 + uTime * 1.6, H);
   vec3 pos = position + vec3(aJitter.x, y, aJitter.y);
   vAlpha = smoothstep(0.0, 0.9, y) * smoothstep(H, H - 1.4, y);
   vec4 mv = modelViewMatrix * vec4(pos, 1.0);
@@ -52,6 +57,19 @@ void main() {
   vec3 col = mix(uColorLo, uColorHi, vAlpha);
   gl_FragColor = vec4(col * 1.4, tex.a * vAlpha * 0.9);
 }`;
+
+/**
+ * Test-only (core/testHooksWorlds.ts): mirrors FALLS_VERT's `y` computation in
+ * JS so a test can sample it without a WebGL readback. GLSL's mod(x,y) is
+ * `x - y*floor(x/y)` — always same-sign as y (unlike JS's `%`, which can go
+ * negative) — replicated here via the floor form rather than `((x%y)+y)%y` so
+ * this is a byte-exact mirror of the shader, not just an equivalent wrap.
+ */
+export function lightfallYForTest(aY0: number, uTime: number): number {
+  const H = WATERFALL_H;
+  const x = aY0 + uTime * 1.6;
+  return x - H * Math.floor(x / H);
+}
 
 export interface RiftFeatures {
   group: THREE.Group;
@@ -110,6 +128,10 @@ export function buildRiftFeatures(
   const markMat = new THREE.MeshStandardMaterial({ color: '#2a1840', emissive: '#5ae6ff', emissiveIntensity: 0.6, roughness: 0.4 });
   const marker = new THREE.Mesh(markGeo, markMat);
   marker.position.set(RIFT_LAYOUT.undersideView.x, uvY + 0.55, RIFT_LAYOUT.undersideView.z);
+  // v1.2.1 (ultrareview r3 P1): the real E key resolves only NAMED meshes
+  // (player/interact.ts) — this marker was unnamed, so 'rift-underside' could
+  // never be reached in real play even though it was a registered interactable.
+  marker.name = 'rift-underside';
   group.add(marker);
   disposers.push(() => { markGeo.dispose(); markMat.dispose(); });
   interactables.push({
@@ -181,6 +203,13 @@ export function buildRiftFeatures(
   const shardBaseY = relicY + 1.6;
   shard.position.set(RIFT_LAYOUT.relic.x, shardBaseY, RIFT_LAYOUT.relic.z);
   shard.scale.set(0.9, 1.8, 0.9);
+  // v1.2.1 (ultrareview r3 P1): the shard (and the pedestal below it) were
+  // both unnamed, so the real E key could never resolve 'rift-relic' — the
+  // three-relic holotable hologram could never ignite in real play. Name
+  // ONLY the shard (not the pedestal): once collected it goes invisible
+  // (below) and player/interact.ts skips raycast hits on visible===false, so
+  // an unnamed pedestal left behind correctly yields no prompt / no re-pickup.
+  shard.name = 'rift-relic';
   group.add(shard);
   disposers.push(() => { shardGeo.dispose(); shardMat.dispose(); });
 

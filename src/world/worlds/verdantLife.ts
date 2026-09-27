@@ -122,7 +122,13 @@ export function buildFireflies(centers: THREE.Vector3[]): FireflyHandle {
     },
     dispose(): void {
       geo.dispose();
-      mat.map?.dispose();
+      // v1.2.1 (ultrareview r3 nit): verdantFireflySpriteTexture() is a
+      // cached() app-lifetime singleton (textureHelpers.ts) — disposing it
+      // here would poison every other holder of the same cached texture the
+      // next time a world with fireflies is (re)built. Latent today (worlds
+      // are never disposed — core/worlds.ts never calls dispose()), but
+      // matches the ashfallAtmo.ts precedent: cached textures are never
+      // disposed by their per-world callers.
       mat.dispose();
     },
   };

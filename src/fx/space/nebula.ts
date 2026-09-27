@@ -83,13 +83,56 @@ export interface NebulaField {
   sprites: THREE.Sprite[];
   /**
    * Advance parallax drift by `dz` (same delta the FAR star layer scrolls
-   * by); wraps sprites at +500/-3500 so they stay perpetually in view.
+   * by); wraps every axis so the sprites stay perpetually in view.
    * Accepts a THREE.Vector3 (v1.1 SOVEREIGN: full flowW-scaled delta) or a
    * legacy `number` (+Z-only) — the latter kept for the pocket-world caller
-   * in src/world/worlds/riftSky.ts, which this lane does not touch.
+   * in src/world/worlds/riftSky.ts.
    */
   tick(dz: THREE.Vector3 | number): void;
   dispose(): void;
+}
+
+// ── Wrap bounds (v1.2.1 — ultrareview r2 P2) ─────────────────────────────────
+// ONE shared absolute box across every persistent nebula sprite (ship or
+// pocket-world), independent of each config's own home position — same
+// convention the pre-fix code already used for Z (a single world-space
+// threshold, not per-sprite-relative). Z keeps the ORIGINAL tuned boundary:
+// hi=500 matches cast.ts's DESPAWN_Z ("now behind the camera"), and
+// span=3500 reproduces the old `if (z>500) z-=3500` wrap exactly for the
+// common forward-drift case (lo = hi-span = -3000, so the post-wrap landing
+// spot is unchanged). X and Y are NEW: the bug (r2 P2) was that only Z ever
+// wrapped, so once the ship yawed/pitched off its boot heading — flowW is a
+// world-space vector, and stops being Z-only the moment the ship's forward
+// direction leaves the boot heading — X, Y and (previously unbounded)
+// negative Z drift lost the 3 persistent nebulae for good within a few
+// minutes on a turned heading.
+const WRAP_Z_HI = 500;
+const WRAP_Z_SPAN = 3500;
+const WRAP_X_HI = 2500;
+const WRAP_X_SPAN = 5000;
+const WRAP_Y_HI = 1000;
+const WRAP_Y_SPAN = 2000;
+
+/** Test-only (core/testHooksWorlds.ts): the wrap bounds as [lo, hi) per axis,
+ *  so a test can assert against the SAME numbers the wrap below uses rather
+ *  than a hardcoded copy. */
+export function getNebulaWrapBoundsForTest(): {
+  x: [number, number]; y: [number, number]; z: [number, number];
+} {
+  return {
+    x: [WRAP_X_HI - WRAP_X_SPAN, WRAP_X_HI],
+    y: [WRAP_Y_HI - WRAP_Y_SPAN, WRAP_Y_HI],
+    z: [WRAP_Z_HI - WRAP_Z_SPAN, WRAP_Z_HI],
+  };
+}
+
+/** Wrap `v` into [hi-span, hi) — a no-op while `v` is already in range.
+ *  Modulo-based (not a single `if`) so it's correct in one step no matter how
+ *  far `v` has drifted, positive or negative — robust to a test harness (or a
+ *  slow frame) advancing the delta by more than one span in a single tick. */
+function wrapInto(v: number, hi: number, span: number): number {
+  const lo = hi - span;
+  return lo + (((v - lo) % span) + span) % span;
 }
 
 /** Build the persistent nebula field and add its sprites directly to `parent`
@@ -129,7 +172,14 @@ export function createNebulaField(
     for (const s of sprites) {
       if (typeof dz === 'number') s.position.z += dz;
       else s.position.add(dz);
-      if (s.position.z > 500) s.position.z -= 3500;
+      // v1.2.1 (ultrareview r2 P2): wrap EVERY axis, not just z>500 — see the
+      // wrap-bounds comment above. Same mod-into-range idea as
+      // starLayer.ts's shader-side wrap, done here in JS (these are 3
+      // individually-positioned THREE.Sprites, not one streamed Points
+      // buffer, so a per-frame loop over `sprites` is trivial cost).
+      s.position.x = wrapInto(s.position.x, WRAP_X_HI, WRAP_X_SPAN);
+      s.position.y = wrapInto(s.position.y, WRAP_Y_HI, WRAP_Y_SPAN);
+      s.position.z = wrapInto(s.position.z, WRAP_Z_HI, WRAP_Z_SPAN);
     }
   }
 

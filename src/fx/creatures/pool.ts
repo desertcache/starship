@@ -81,7 +81,10 @@ export class InstancePool {
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 
-  dispose(): void {
-    this.mesh.dispose();
-  }
+  // v1.2.1 (ultrareview r3 nit): no dispose() here by design — it was dead
+  // code (zero callers). The facade (creatures/index.ts's spawnCreatures
+  // .dispose()) already disposes every pool's `mesh` directly via
+  // `group.traverse` + `isInstancedMesh`, since every pool's mesh is added to
+  // the shared creature group. Wiring a second dispose path in here would
+  // just double-dispose the same InstancedMesh.
 }

@@ -139,7 +139,10 @@ export function buildRift(): World {
       crystals.dispose();
       islands.dispose();
       sky.dispose();
-      scene.remove(hemi, pChorus, pSpawn, pRelic, pClusterB);
+      // v1.2.1 (ultrareview r3 nit): pUnder was omitted here, so it would
+      // leak into the scene forever if dispose() ever ran (latent today —
+      // core/worlds.ts never calls a world's dispose()).
+      scene.remove(hemi, pChorus, pSpawn, pRelic, pClusterB, pUnder);
     },
   };
 }

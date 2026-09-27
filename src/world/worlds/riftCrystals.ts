@@ -191,7 +191,18 @@ export function buildRiftCrystals(seed: number, groundHeight: (x: number, z: num
   }
 
   const mesh = new THREE.InstancedMesh(geo, makeCrystalMaterial(), insts.length);
-  mesh.name = 'rift-crystals';
+  // v1.2.1 (ultrareview r3 P1): named for the 'rift-prism-chorus' interactable
+  // (riftFeatures.ts), the only scan registered against this shared flora
+  // mesh — the real E key resolves by walking a raycast hit's ancestor names
+  // (player/interact.ts), and this whole field was unnamed before. Naming the
+  // ONE draw call that carries every cluster (not just CLUSTERS[0], the
+  // "prism chorus" cluster itself) matches this codebase's own convention for
+  // a shared InstancedMesh standing in for one scannable (see
+  // ashfallProps.ts's 'ashfall-obsidian-choir' / 'ashfall-basalt-columns') —
+  // aiming at any OTHER cluster (bridge rail, relic-side, etc.) also resolves
+  // this id, since they share the one mesh; there's no per-cluster geometry to
+  // name separately. Reported to the orchestrator as a brief-vs-reality note.
+  mesh.name = 'rift-prism-chorus';
   const aPhase = new Float32Array(insts.length);
   const aClusterDist = new Float32Array(insts.length);
   const aColor = new Float32Array(insts.length * 3);

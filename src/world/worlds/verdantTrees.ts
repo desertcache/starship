@@ -204,7 +204,10 @@ export function buildVerdantTrees(g: (x: number, z: number) => number): TreesHan
       shellGeo.dispose();
       floorGeo.dispose();
       relicGeo.dispose(); (relicMesh.material as THREE.Material).dispose();
-      bark.dispose();
+      // v1.2.1 (ultrareview r3 nit): verdantBarkTexture() is a cached()
+      // app-lifetime singleton — do NOT dispose it here (same reasoning as
+      // verdantLife.ts's firefly sprite: it's a shared texture, and disposing
+      // it would break every other holder the next time it's rebuilt).
       for (const m of glowMeshes) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
     },
   };

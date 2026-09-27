@@ -256,13 +256,12 @@ export function tickEntry(entry: CastEntry, dt: number): boolean {
   }
   if (entry.kind === 'field') {
     entry.field.tick(dt);
-    // Field anchor tracked via instance Z mean is costly; use bounding sphere.
-    entry.field.mesh.computeBoundingBox();
-    if (entry.field.mesh.boundingBox) {
-      entry.field.mesh.boundingBox.getCenter(_center);
-      return _center.dot(flowAxis) > DESPAWN_Z;
-    }
-    return false;
+    // v1.2.1 (ultrareview r2 nit): was mesh.computeBoundingBox() every frame
+    // (iterates all ≤140 instances just to re-derive a center); the field
+    // now tracks its own center incrementally (asteroids.ts) since the whole
+    // field translates rigidly — see that file's comment.
+    _center.copy(entry.field.getCenter());
+    return _center.dot(flowAxis) > DESPAWN_Z;
   }
   // event — pos += (flowW + driftW) * dt, same frame-correct pattern as
   // bodies (v1.1 SOVEREIGN fix: was a raw `position.z += driftSpeed*dt`,
