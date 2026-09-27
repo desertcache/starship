@@ -1,18 +1,17 @@
 /**
- * src/player/controller.ts — First-person controller + anchor seat API.
+ * src/player/controller.ts — First-person controller: WASD movement,
+ * pointer-lock, ground clamp, and the per-frame tick that ties collision
+ * (./collision.ts), head-bob/FOV-kick (./bob.ts) and the seat/anchor API
+ * (./anchor.ts, re-exported below for callers outside this lane) together.
+ * Split three ways in v1.2.1 (B5 cap fix) — this file owns only movement +
+ * orchestration now; see each module's own header for what it owns.
  *
- * Anchor API (cross-lane enabler for pilot-seat / mess-bench sitting):
+ * Anchor API (./anchor.ts, cross-lane enabler for pilot-seat / mess-bench
+ * sitting): enterAnchor()/exitAnchor() lerp the camera to/from a seated pose;
+ * standUpInPlace() (v1.2.1 B1) clears seated WITHOUT the ship-pose teleport,
+ * for the real-landing route (flight/landfall.ts).
  *
- *   enterAnchor(pos: Vector3, lookAt: Vector3, eyeHeight?: number): void
- *     Smoothly lerps the camera to a seated pose over 350ms.
- *     Disables WASD while anchored.
- *     Stores prior position+quaternion in state for exitAnchor().
- *
- *   exitAnchor(): void
- *     Restores prior position and quaternion, re-enables WASD.
- *     The integration agent calls these after wiring named seat groups.
- *
- * Head-bob (isMoving path):
+ * Head-bob (isMoving path, ./bob.ts):
  *   tickBob(camera, elapsed, moving) — applied AFTER collision/position so the
  *   offset never pushes the camera through geometry.
  *   Sway (tickSway) remains the secondary roll layer.
@@ -21,11 +20,17 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 import type { AABB } from '../world/types.js';
-import { setSeated, getState } from '../core/state.js';
+import { getState } from '../core/state.js';
+import { tickBob as tickBobEffect } from './bob.js';
+import { tryMove } from './collision.js';
+import { initAnchor, tickAnchorAnim } from './anchor.js';
+// Re-exported (unchanged public surface): helm.ts imports these from
+// controller.js, and player/interact.ts (not this lane's file) hardcodes
+// `from './controller.js'` for exitAnchor — both must keep resolving.
+export { enterAnchor, exitAnchor, standUpInPlace } from './anchor.js';
 
 const EYE_HEIGHT = 1.7;
 const WALK_SPEED = 3.5; // m/s
-const CAPSULE_RADIUS = 0.3;
 const FLOOR_Y = EYE_HEIGHT; // camera Y when standing on deck
 
 interface KeyState {
@@ -69,149 +74,18 @@ export function setPointerLookEnabled(enabled: boolean): void {
   if (enabled) controls.connect(); else controls.disconnect();
 }
 
-// ── Head-bob state ────────────────────────────────────────────────────────────
+// ── Head-bob + FOV-kick (v1.2.1 B5 cap split — src/player/bob.ts) ───────────
 
-/** Current vertical bob offset applied on top of FLOOR_Y. */
-let bobOffset = 0;
-
-// ── FOV kick state ────────────────────────────────────────────────────────────
-
-/**
- * Captured rest FOV — set on first tickBob call so we never hardcode 75.
- * -1 means "not yet captured".
- */
-let _restFov = -1;
-/** Current lerped FOV (tracks camera.fov). */
-let _currentFov = -1;
-
-/**
- * Tick the head-bob effect + FOV walk kick.
- * When moving: y += sin(elapsed*5.5)*0.022 (≈4.4 cm peak-to-peak at walk pace).
- * When stopped: lerp offset back to 0 at 6 units/s.
- * FOV lerps to restFov+2 when moving, back to restFov when stopped.
- * Applied AFTER collision resolution so it never pushes camera through geometry.
- *
- * @param camera  - active perspective camera
- * @param elapsed - seconds since scene start
- * @param moving  - true when WASD is held and pointer is locked
- */
+/** Thin wrapper preserving the pre-split call signature (main.ts imports
+ *  this from './player/controller.js' unchanged) — supplies bob.ts with
+ *  controller.ts's own activeGround/EYE_HEIGHT so bob.ts never needs to
+ *  import this file back (no cycle). */
 export function tickBob(
   camera: THREE.PerspectiveCamera,
   elapsed: number,
   moving: boolean,
 ): void {
-  // Capture rest FOV on first call (main.ts sets camera.fov before calling us)
-  if (_restFov < 0) {
-    _restFov = camera.fov;
-    _currentFov = camera.fov;
-  }
-
-  if (moving) {
-    bobOffset = Math.sin(elapsed * 5.5) * 0.022;
-  } else {
-    // Lerp back to 0 at 6 units/s (using last frame dt approximation via lerp factor)
-    bobOffset *= Math.max(0, 1 - 6 * 0.016); // approximate 16ms frame
-    if (Math.abs(bobOffset) < 0.0001) bobOffset = 0;
-  }
-  // ── FOV kick: +2 when walking, back to rest when stopped ─────────────────
-  const st = getState();
-  // Apply the offset on top of the ground eye height (ship: 0 + EYE_HEIGHT =
-  // FLOOR_Y). Guarded while seated: the helm/seat anchor owns camera.position.y
-  // then (v1.1 SOVEREIGN D2) — this write would otherwise stomp the seat's eye
-  // height every frame.
-  if (!st.seated) {
-    camera.position.y = activeGround(camera.position.x, camera.position.z) + EYE_HEIGHT + bobOffset;
-  }
-  // While seated force FOV to rest immediately (no kick from anchor anim)
-  const targetFov = (!moving || st.seated) ? _restFov : _restFov + 2;
-  const delta = targetFov - _currentFov;
-  if (Math.abs(delta) > 0.01) {
-    _currentFov += delta * Math.min(1, 8 * 0.016); // ~8 units/s lerp
-    camera.fov = _currentFov;
-    camera.updateProjectionMatrix();
-  } else if (camera.fov !== _restFov && !moving) {
-    // Snap to exact rest when converged to avoid permanent drift
-    _currentFov = _restFov;
-    camera.fov = _restFov;
-    camera.updateProjectionMatrix();
-  }
-}
-
-// ── Anchor (seat) API ─────────────────────────────────────────────────────────
-
-/** True while a lerp-to-anchor animation is in flight. */
-let anchorAnimating = false;
-
-/** The target pose for the current anchor animation. */
-let anchorTargetPos: THREE.Vector3 | null = null;
-let anchorTargetQuat: THREE.Quaternion | null = null;
-
-/** Elapsed ms into the current anchor animation. */
-let anchorAnimMs = 0;
-const ANCHOR_ANIM_MS = 350;
-
-/**
- * Enter an anchor (seated) pose.
- *
- * Integration signature (called by integration agent after wiring seat groups):
- *   enterAnchor(pos: THREE.Vector3, lookAt: THREE.Vector3, eyeHeight?: number): void
- *
- * @param pos       World-space position of the seated camera eye.
- * @param lookAt    World-space point the camera should face when seated.
- * @param eyeHeight Eye height offset from seat position (default 1.1m).
- */
-export function enterAnchor(
-  pos: THREE.Vector3,
-  lookAt: THREE.Vector3,
-  eyeHeight = 1.1,
-): void {
-  if (!controls) return;
-  const camera = controls.camera as THREE.PerspectiveCamera;
-
-  // Store return pose
-  const returnPose = {
-    position: camera.position.clone(),
-    quaternion: camera.quaternion.clone(),
-  };
-  setSeated(true, returnPose);
-
-  // Build target quaternion: look from (pos + eyeHeight) toward lookAt.
-  // NOTE: Object3D.lookAt() swaps its eye/target args for anything that
-  // isn't a Camera/Light (orienting +Z at the target instead of -Z) — a
-  // plain dummy Object3D would face AWAY from `lookAt`. Build the matrix
-  // directly with camera-convention eye/target order instead (found via the
-  // v1.1 SOVEREIGN helm seat: T13a's first screenshot showed the pilot
-  // facing the aft corridor door, back to the canopy).
-  const seatPos = pos.clone();
-  seatPos.y += eyeHeight;
-
-  const lookMatrix = new THREE.Matrix4().lookAt(seatPos, lookAt, new THREE.Vector3(0, 1, 0));
-  const targetQuat = new THREE.Quaternion().setFromRotationMatrix(lookMatrix);
-
-  anchorTargetPos = seatPos;
-  anchorTargetQuat = targetQuat;
-  anchorAnimating = true;
-  anchorAnimMs = 0;
-}
-
-/**
- * Exit the current anchor (return to prior standing pose).
- * Called by interact.ts when E is pressed while seated, or by integration directly.
- */
-export function exitAnchor(): void {
-  if (!controls) return;
-  const st = getState();
-  if (!st.seated || !st.anchorReturn) return;
-
-  const camera = controls.camera as THREE.PerspectiveCamera;
-  camera.position.copy(st.anchorReturn.position);
-  camera.quaternion.copy(st.anchorReturn.quaternion);
-  bobOffset = 0;
-
-  setSeated(false);
-  anchorAnimating = false;
-  anchorTargetPos = null;
-  anchorTargetQuat = null;
+  tickBobEffect(camera, elapsed, moving, activeGround, EYE_HEIGHT);
 }
 
 // ── Keyboard handlers ─────────────────────────────────────────────────────────
@@ -234,54 +108,6 @@ function onKeyUp(e: KeyboardEvent): void {
   }
 }
 
-// ── Collision ─────────────────────────────────────────────────────────────────
-
-/**
- * Check if a point (treated as a capsule base in XZ) collides with any AABB.
- * We test a cylinder footprint: the camera XZ position ± CAPSULE_RADIUS.
- */
-function collidesAABB(x: number, z: number, aabb: AABB): boolean {
-  // Camera Y is fixed at EYE_HEIGHT; body occupies Y 0..2.0
-  const bodyMinY = 0.1;
-  const bodyMaxY = 1.9;
-  if (bodyMinY > aabb.maxY || bodyMaxY < aabb.minY) return false;
-
-  const closestX = Math.max(aabb.minX, Math.min(x, aabb.maxX));
-  const closestZ = Math.max(aabb.minZ, Math.min(z, aabb.maxZ));
-  const dx = x - closestX;
-  const dz = z - closestZ;
-  return dx * dx + dz * dz < CAPSULE_RADIUS * CAPSULE_RADIUS;
-}
-
-function tryMove(pos: THREE.Vector3, dx: number, dz: number): void {
-  // Try full move
-  const nx = pos.x + dx;
-  const nz = pos.z + dz;
-  let blocked = false;
-  for (const aabb of colliders) {
-    if (collidesAABB(nx, nz, aabb)) { blocked = true; break; }
-  }
-  if (!blocked) {
-    pos.x = nx;
-    pos.z = nz;
-    return;
-  }
-
-  // Try X only
-  let blockedX = false;
-  for (const aabb of colliders) {
-    if (collidesAABB(nx, pos.z, aabb)) { blockedX = true; break; }
-  }
-  if (!blockedX) { pos.x = nx; return; }
-
-  // Try Z only
-  let blockedZ = false;
-  for (const aabb of colliders) {
-    if (collidesAABB(pos.x, nz, aabb)) { blockedZ = true; break; }
-  }
-  if (!blockedZ) { pos.z = nz; }
-}
-
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 export function initController(
@@ -292,6 +118,7 @@ export function initController(
   colliders = shipColliders;
 
   controls = new PointerLockControls(camera, renderer.domElement);
+  initAnchor(controls); // player/anchor.ts — needs the same controls ref for its own seated-camera lerp
   camera.position.set(0, FLOOR_Y, -19); // Start in cockpit
 
   renderer.domElement.addEventListener('click', () => {
@@ -322,32 +149,23 @@ export function tickController(now: number): void {
   const camera = controls.camera as THREE.PerspectiveCamera;
   const st = getState();
 
-  // ── Anchor animation ───────────────────────────────────────────────────────
-  if (anchorAnimating && anchorTargetPos && anchorTargetQuat) {
-    anchorAnimMs += dt * 1000;
-    const t = Math.min(anchorAnimMs / ANCHOR_ANIM_MS, 1);
-    const easedT = t * t * (3 - 2 * t); // smoothstep
-
-    camera.position.lerp(anchorTargetPos, easedT);
-    camera.quaternion.slerp(anchorTargetQuat, easedT);
-
-    if (t >= 1) {
-      anchorAnimating = false;
-      anchorTargetPos = null;
-      anchorTargetQuat = null;
-    }
+  // ── Anchor animation (player/anchor.ts) ───────────────────────────────────
+  if (tickAnchorAnim(dt)) {
     _isMoving = false;
+    _lastTickGate = 'anchor-anim';
     return;
   }
 
   // ── Seated: disable WASD movement ─────────────────────────────────────────
   if (st.seated) {
     _isMoving = false;
+    _lastTickGate = 'seated';
     return;
   }
 
   if (!controls.isLocked) {
     _isMoving = false;
+    _lastTickGate = 'not-locked';
     return;
   }
 
@@ -363,10 +181,27 @@ export function tickController(now: number): void {
   if (_isMoving) {
     move.normalize().multiplyScalar(WALK_SPEED * dt);
     move.applyEuler(new THREE.Euler(0, camera.rotation.y, 0, 'YXZ'));
-    tryMove(camera.position, move.x, move.z);
+    tryMove(camera.position, move.x, move.z, colliders);
   }
+  _lastTickGate = _isMoving ? 'moving' : 'idle';
 
   // Clamp Y to ground eye height (bob is applied separately after this in main.ts).
   // Ship ground is constant 0, so this equals the old flat FLOOR_Y clamp.
   camera.position.y = activeGround(camera.position.x, camera.position.z) + EYE_HEIGHT;
+}
+
+/**
+ * v1.2.1 B6 test hook — which branch tickController() took THIS frame, in
+ * order of precedence. Exists specifically to distinguish "still gated on
+ * `seated`" (the B1 bug) from "gated on missing pointer lock" (a harness
+ * limitation: Playwright's synthetic canvas click cannot always obtain a real
+ * PointerLock, so a headless/headed CI run may never be able to prove REAL
+ * WASD movement end-to-end). Asserting `getLastTickGateForTest() !==
+ * 'seated'` after a real landing proves the seated early-out is gone even
+ * when 'not-locked' is the harness's own ceiling, not a game bug.
+ */
+export type TickControllerGate = 'anchor-anim' | 'seated' | 'not-locked' | 'moving' | 'idle';
+let _lastTickGate: TickControllerGate = 'idle';
+export function getLastTickGateForTest(): TickControllerGate {
+  return _lastTickGate;
 }

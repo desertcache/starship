@@ -34,6 +34,15 @@ const HATCH_RADIUS = 3;
 const LEG_STOWED_SCALE = 0.15;
 const FOOTPRINT_MARGIN = 1.5;
 
+// v1.2.1 B2 (r3 P1) — real hatch geometry. Bottom edge lands exactly at
+// HATCH_INTERACT_Y (the registered interactable's own y, below) so the visual
+// and the interact point read as the same object, not two coincidences.
+const HATCH_INTERACT_Y = 1.2;
+const HATCH_VISUAL_WIDTH = 2.2;  // Z-extent (door opening width)
+const HATCH_VISUAL_HEIGHT = 2.6; // Y-extent, bottom at HATCH_INTERACT_Y
+const HATCH_FRAME_DEPTH = 0.2;   // X-extent, proud of the hull skin
+const HATCH_STRIP_MARGIN = 0.35; // status-strip inset from the frame's edges
+
 // Own module-level singleton (same house pattern as hullMaterial.ts's own
 // export) — cream/worn-freighter tone, no shared CanvasTexture needed for a
 // prop seen from walking distance rather than up close.
@@ -60,6 +69,58 @@ function buildLeg(): THREE.BufferGeometry {
   strut.dispose();
   skid.dispose();
   return merged;
+}
+
+/**
+ * v1.2.1 B2 (r3 P1) — the only NAMED landed-ship object was the hull mesh
+ * itself ('landfall-ship'); the 'landfall-ship-hatch' interactable sat 2.5m
+ * out from the cargo door in open air with nothing there for the real E
+ * key's name-only raycast (player/interact.ts) to hit, so a real landing
+ * stranded the player until reload. This builds an actual hatch: an orange
+ * frame proud of the hull skin along the cargo door's own outward normal,
+ * plus a teal status strip. Returned UNPARENTED — attachShip() adds it as a
+ * CHILD of the hull mesh so it inherits yaw/cant/position automatically, the
+ * same pattern the strut+skid legs already use below.
+ *
+ * Materials: the frame is a normal MeshStandardMaterial (lit like the rest of
+ * the hull, no lighting cost); the status strip is a plain MeshBasicMaterial
+ * (toneMapped:false — the SAME "emissive without a light" trick the landing
+ * pad's accent ring already uses) so it reads as lit regardless of the
+ * world's fixed 1-hemi/1-directional budget — no new THREE.Light.
+ */
+function buildHatchVisual(): THREE.Group {
+  const [dx, , dz] = interiorAnchors.cargoDoor.position; // -4.0, _, 13.5 — ON the hull skin (mid-height unused: see frame.position below)
+  const [nx] = interiorAnchors.cargoDoor.normal; // -1 (outward, port side)
+
+  const group = new THREE.Group();
+  group.name = 'landfall-ship-hatch';
+
+  const frameCenterX = dx + nx * (HATCH_FRAME_DEPTH / 2);
+  const frameGeo = new THREE.BoxGeometry(HATCH_FRAME_DEPTH, HATCH_VISUAL_HEIGHT, HATCH_VISUAL_WIDTH);
+  const frameMat = new THREE.MeshStandardMaterial({ color: '#C7641E', roughness: 0.5, metalness: 0.3 });
+  const frame = new THREE.Mesh(frameGeo, frameMat);
+  // Centered so the box's bottom edge lands exactly on HATCH_INTERACT_Y
+  // (ignores the door anchor's own dy — the visual is sized/placed to match
+  // the registered interactable's height, not the interior door's mid-height).
+  frame.position.set(frameCenterX, HATCH_INTERACT_Y + HATCH_VISUAL_HEIGHT / 2, dz);
+  group.add(frame);
+
+  const stripDepth = 0.03;
+  const stripGeo = new THREE.BoxGeometry(
+    stripDepth,
+    0.18,
+    HATCH_VISUAL_WIDTH - HATCH_STRIP_MARGIN * 2,
+  );
+  const stripMat = new THREE.MeshBasicMaterial({ color: '#46E0D8', toneMapped: false });
+  const strip = new THREE.Mesh(stripGeo, stripMat);
+  strip.position.set(
+    frameCenterX + nx * (HATCH_FRAME_DEPTH / 2 + stripDepth / 2),
+    frame.position.y + HATCH_VISUAL_HEIGHT / 2 - 0.35,
+    dz,
+  );
+  group.add(strip);
+
+  return group;
 }
 
 /** 4-6 axis-aligned hull-footprint colliders, safe against the mesh's own
@@ -116,12 +177,18 @@ export function attachShip(scene: THREE.Scene, groundY: number): ShipSurfaceHand
     return group;
   });
 
+  // v1.2.1 B2 — real, named, hittable hatch geometry (see buildHatchVisual's
+  // own header) — a child of `mesh` so it inherits yaw/cant/position exactly
+  // like the legs above.
+  const hatchVisual = buildHatchVisual();
+  mesh.add(hatchVisual);
+
   mesh.updateMatrixWorld(true);
   const colliders = buildFootprintColliders(mesh, groundY);
 
   const hatchWorld = new THREE.Vector3(
     interiorAnchors.cargoDoor.position[0] + interiorAnchors.cargoDoor.normal[0] * 2.5,
-    1.2,
+    HATCH_INTERACT_Y,
     interiorAnchors.cargoDoor.position[2],
   );
   mesh.localToWorld(hatchWorld);
@@ -143,6 +210,16 @@ export function attachShip(scene: THREE.Scene, groundY: number): ShipSurfaceHand
     scene.remove(mesh);
     build.geometry.dispose();
     legGeo.dispose();
+    // v1.2.1 B2 — hatchVisual's frame/strip each own UNIQUE (non-singleton)
+    // geometry+material, unlike landedShipMaterial below, so a generic
+    // traversal-dispose is the cheapest correct cleanup.
+    hatchVisual.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      m.geometry.dispose();
+      const mat = m.material;
+      if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose()); else mat.dispose();
+    });
     // landedShipMaterial is a module-level singleton (same "not disposed"
     // convention as hullMaterial.ts's own hullSkinMaterial) — not disposed here.
   }

@@ -988,7 +988,7 @@ async function run() {
       // both land before the animation's first tick would false-positive as
       // "already settled" while the lerp hasn't even started moving yet.
       if (moved < 0.005 && Date.now() - settleStart >= 400) break;
-      assert(Date.now() - settleStart < 5000, 'Test 13a: seat anchor animation never settled within 5s');
+      assert(Date.now() - settleStart < 30000, 'Test 13a: seat anchor animation never settled within 30s');
     }
 
     const helmCruiseShot = resolve(SHOTS_DIR, 'helm-cruise.png');
@@ -1282,7 +1282,10 @@ async function run() {
     // seeds it inside that SAME fade-black hold — flight/landfall.ts).
     const landAccepted15 = await page.evaluate(() => window.__test.engageLanding());
     assert(landAccepted15 === true, 'Test 15: engageLanding() should accept once HOLD is engaged');
-    await sleep(900); // past the fade (fadeMs 350 + holdMs 250 + fadeMs 350, house convention)
+    // v1.2.1: state wait, not sleep(900) — fadeTransition runs on setTimeout,
+    // which starves behind multi-second SwiftShader frames under CPU load.
+    await page.waitForFunction(() => window.__test.getActiveWorld() === 'landfall', null, { timeout: 30000 });
+    await waitFrame();
 
     const postLand15 = await page.evaluate(() => ({
       world: window.__test.getActiveWorld(),
@@ -1332,10 +1335,10 @@ async function run() {
     await page.screenshot({ path: landfallWalkShot });
     console.log(`[verify] Shot saved: ${landfallWalkShot}`);
 
-    // The WALK handoff's own teleport sits behind a REAL fadeTransition
-    // (fx/landfall/descent.ts's beginWalkHandoff) — sleep past it, same
-    // convention as (c), before reading the settled player pose.
-    await sleep(900);
+    // v1.2.1: state wait — the handoff teleport moves the eye off the pad
+    // centre (touchdown pose is x=z=0; the walk spawn is ~27 m out).
+    await page.waitForFunction(() => { const p = window.__test.getPlayerPos(); return Math.hypot(p.x, p.z) > 5; }, null, { timeout: 30000 });
+    await waitFrame();
 
     const walkPos15 = await page.evaluate(() => window.__test.getPlayerPos());
     const walkGround15 = await page.evaluate(
@@ -1359,7 +1362,8 @@ async function run() {
     await waitFrame();
     const boarded15 = await page.evaluate(() => window.__test.interact());
     assert(boarded15, 'Test 15: interact() returned false at the ship hatch');
-    await sleep(900); // past takeOff()'s fade (flight/landfall.ts)
+    await page.waitForFunction(() => window.__test.getActiveWorld() === 'ship', null, { timeout: 30000 }); // v1.2.1: state wait past takeOff()'s fade
+    await waitFrame(); // one ship frame so tickApproach can re-assert HOLD
 
     // (f) Back on the ship: HOLD re-asserts on its own (tickApproach's
     // HOLD-reassert — flight/landfall.ts's file header) and trueDist should
@@ -1386,7 +1390,8 @@ async function run() {
     // then a full reset should tear the descent back down to uninitialized.
     const landAgain15 = await page.evaluate(() => window.__test.engageLanding());
     assert(landAgain15 === true, 'Test 15: engageLanding() should accept again (repeatability)');
-    await sleep(900); // let the second armDescent() fade-callback actually fire before resetting
+    await page.waitForFunction(() => window.__test.getActiveWorld() === 'landfall', null, { timeout: 30000 }); // v1.2.1: state wait — second armDescent() fade-callback fired
+    await waitFrame();
 
     const afterReset15 = await page.evaluate(() => {
       window.__test.resetFlight();

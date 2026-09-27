@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import type { TestApiDeps } from './testApi.js';
 import { getActiveWorldId, getActiveWorld } from './worlds.js';
+import { getState } from './state.js'; // v1.2.1 B6 — isSeated()
 import {
   getFlight,
   setFlightInput,
@@ -22,6 +23,7 @@ import {
 } from '../flight/flightState.js'; // Stage 2: shims deleted, all hooks drive live flight state
 import type { FlightInput, FlightSnapshot } from '../flight/types.js';
 import { enterHelm, helmExitForTest } from '../flight/helm.js'; // Stage 2 (Lane B)
+import { getLastTickGateForTest, type TickControllerGate } from '../player/controller.js'; // v1.2.1 B6
 import {
   toggleApproachAssist,
   getApproachDebug,
@@ -35,6 +37,7 @@ import {
   resetLandfall,
   type LandingDebugInfo,
 } from '../flight/landfall.js'; // v1.2 LANDFALL Stage 1 (contracts + seams)
+import { getLandfallChunkLod } from '../world/worlds/landfall.js'; // v1.2.1 B4
 
 export interface FlightTestHooks {
   // v1.1 SOVEREIGN — flight model hooks (Stage 1 Lane A). Headless has no
@@ -90,6 +93,26 @@ export interface FlightTestHooks {
    *  ACTIVE world's own `groundHeight` (the descent's pad-constant groundY
    *  diverges from the true local height inside the pad flatten-blend ring). */
   getGroundHeightAt(x: number, z: number): number;
+  /** v1.2.1 B1/B6 — core/state.ts's seated flag, for the real-landing suite:
+   *  asserting this is false at WALK is direct evidence standUpInPlace()
+   *  actually cleared it (getFlight() has no seated field — that state lives
+   *  in core/state.ts, not flight/flightState.ts). */
+  isSeated(): boolean;
+  /** v1.2.1 B6 — which branch player/controller.ts's tickController() took
+   *  THIS frame; see that file's own doc comment on why this exists (proves
+   *  the `seated` early-out is gone even when the harness's own pointer-lock
+   *  ceiling — 'not-locked' — is all a headless/headed CI run can reach). */
+  getLastTickGate(): TickControllerGate;
+  /** v1.2.1 B4 — resident chunk LOD (0=finest..2=coarsest) at world position
+   *  (x,z), or null if nothing is resident there right now. */
+  getLandfallChunkLodAt(x: number, z: number): number | null;
+  /** v1.2.1 B4 — raycasts straight down through the ACTIVE world's rendered
+   *  meshes at (x,z) and returns the hit Y, or null if nothing is hit.
+   *  Compared against getGroundHeightAt()'s ANALYTIC height to catch the two
+   *  drifting apart (chunks.ts's hysteresisLod() bug: a chunk could coarsen
+   *  but never refine, so a resident LOD2 chunk under the player's feet
+   *  rendered meters off the true terrain height on the mesa terraces). */
+  getRenderedGroundHeightAt(x: number, z: number): number | null;
 }
 
 export function buildFlightTestHooks(deps: TestApiDeps): FlightTestHooks {
@@ -187,6 +210,25 @@ export function buildFlightTestHooks(deps: TestApiDeps): FlightTestHooks {
     },
     getGroundHeightAt(x: number, z: number): number {
       return getActiveWorld().groundHeight(x, z);
+    },
+    isSeated(): boolean {
+      return getState().seated;
+    },
+    getLastTickGate(): TickControllerGate {
+      return getLastTickGateForTest();
+    },
+    getLandfallChunkLodAt(x: number, z: number): number | null {
+      return getLandfallChunkLod(x, z);
+    },
+    getRenderedGroundHeightAt(x: number, z: number): number | null {
+      // Filtered to chunks.ts's own 'landfall-chunk-<cx>-<cz>' mesh names:
+      // an unfiltered intersectObjects() over the whole scene hits whatever
+      // is UPPERMOST along the ray first — the sky dome / cloud shells sit
+      // hundreds of meters up and shadow the actual terrain chunk underneath.
+      const ray = new THREE.Raycaster(new THREE.Vector3(x, 2000, z), new THREE.Vector3(0, -1, 0));
+      const hits = ray.intersectObjects(getActiveWorld().scene.children, true);
+      const chunkHit = hits.find((h) => h.object.name.startsWith('landfall-chunk-'));
+      return chunkHit ? chunkHit.point.y : null;
     },
   };
 }
