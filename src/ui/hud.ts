@@ -231,6 +231,12 @@ export function showPrompt(text: string): void {
   }
 }
 
+/** Test-only (core/testRealPath.ts): the live interaction prompt, '' while hidden. */
+export function getPromptTextForTest(): string {
+  if (!promptEl || promptEl.style.display === 'none') return '';
+  return promptEl.textContent ?? '';
+}
+
 export function clearPrompt(): void {
   if (!promptEl) return;
   promptEl.style.display = 'none';

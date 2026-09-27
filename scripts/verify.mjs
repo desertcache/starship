@@ -18,6 +18,12 @@ import { randomUUID } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+// v1.2.1 real-path suites — one module per owner so parallel lanes never
+// edit this file at the same spot (see docs/plan-v1.2.1-hardening.md).
+import { runSweeps } from './tests/sweeps.mjs';
+import { runShipSuite } from './tests/ship.mjs';
+import { runLandingSuite } from './tests/landing.mjs';
+import { runWorldsSuite } from './tests/worlds.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -271,6 +277,13 @@ async function run() {
     // chaseCam's own next-tick sync to restore fov/up/layers.
     await page.evaluate(() => window.__test.setFlightView('interior'));
     await waitFrame();
+
+    // v1.2.1: shared context for the real-path suites (scripts/tests/*.mjs).
+    const suiteCtx = { page, assert, sleep, waitFrame, headed, SHOTS_DIR };
+
+    // v1.2.1 mechanical contract sweeps: run on the untouched boot state,
+    // before any functional test moves creatures or collects relics.
+    await runSweeps(suiteCtx);
 
     // ── Test 1: Sleep (bunk-a in quarters-a) ───────────────────────────────────
     // quarters-a world offset: (-4, 0, -16).
@@ -1388,6 +1401,14 @@ async function run() {
     console.log('[verify] Test 15 PASSED ✓ (boot decline, HOLD, engage, ENTRY→WALK descent, ground clamp, hatch re-board, HOLD re-asserted + trueDist preserved, repeatable engage, reset)');
 
     console.log('[verify] All 16 functional tests PASSED ✓\n');
+
+    // ── v1.2.1 real-path suites (real camera aim, real keys, real ticks) ────
+    // Each suite starts AND ends on the ship world, interior view, standing,
+    // flight reset, doors open — the next suite inherits its end state.
+    await runShipSuite(suiteCtx);
+    await runLandingSuite(suiteCtx);
+    await runWorldsSuite(suiteCtx);
+    console.log('[verify] All real-path suites PASSED ✓\n');
 
     await browser.close();
     console.log('[verify] Done. ✓');

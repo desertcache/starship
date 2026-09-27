@@ -73,6 +73,11 @@ export function getWorldSpawn(id: string): WorldSpawn | null {
   return worlds.get(id)?.spawn ?? null;
 }
 
+/** Test-only (core/testSweeps.ts): every registered world, registration order. */
+export function getRegisteredWorlds(): World[] {
+  return [...worlds.values()];
+}
+
 /** Synchronous core of a switch: rebind everything, optionally teleport. */
 function applySwitch(id: string, teleport: boolean): void {
   const target = worlds.get(id);

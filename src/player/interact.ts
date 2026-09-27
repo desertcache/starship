@@ -143,8 +143,12 @@ export function tickInteract(): void {
 
 /**
  * Resolve which registered interactable (if any) owns a given mesh.
- * Checks the mesh and all its ancestors by matching world-space proximity
- * to the interactable's registered position.
+ * NAME-ONLY: walks the hit mesh and its ancestors for a node whose `name` is
+ * exactly an interactable's id. Position/radius are never consulted here —
+ * only headlessInteract()'s test fallback uses them — so every interactable
+ * MUST name a hittable mesh (or an ancestor of one) with its id, or the real
+ * E key can never reach it. core/testSweeps.ts enforces this per world
+ * (v1.2 ultrareview: 15 interactables shipped unreachable).
  */
 function findInteractableForObject(obj: THREE.Object3D): Interactable | null {
   // Walk up to find a named group matching a registered id
@@ -194,6 +198,12 @@ export function headlessInteract(): boolean {
     return true;
   }
   return false;
+}
+
+/** Test-only (core/testRealPath.ts): the id the REAL E key would trigger this
+ *  frame — tickInteract()'s name-resolved raycast target — or null. */
+export function getCurrentInteractIdForTest(): string | null {
+  return state.current?.id ?? null;
 }
 
 /**
