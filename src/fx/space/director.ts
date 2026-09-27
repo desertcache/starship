@@ -38,6 +38,7 @@ import {
   SCAN_Z_FAR,
 } from './cast.js';
 import type { CastEntry, BodyEntry } from './cast.js';
+import { tickHeroTextureJobs, HERO_JOB_BUDGET_MS } from './heroTextureJobs.js';
 
 // ── Tuning ────────────────────────────────────────────────────────────────────
 
@@ -188,7 +189,10 @@ export function createSpaceDirector(
     const heroes = countBodies('HERO');
     const due = heroes < HERO_FLOOR || elapsed >= sched.nextHeroSpawnAt;
     if (!due) return;
-    addEntry(spawnHero(rng));
+    // v1.2.1 Lane D (HERO TEXTURE HITCH): deferred=true ONLY here — every
+    // RUNTIME hero spawn, never the boot-time signature cast above, whose
+    // textures must already be on screen at __ready.
+    addEntry(spawnHero(rng, { deferred: true }));
     // Overlap cadence: old hero recedes while new approaches.
     sched.nextHeroSpawnAt = elapsed + rng.range(60, 110);
   }
@@ -235,6 +239,11 @@ export function createSpaceDirector(
       const dead = tickEntry(cast[i], dt);
       if (dead) removeEntry(i);
     }
+
+    // v1.2.1 Lane D (HERO TEXTURE HITCH): finish any in-flight deferred
+    // hero-texture paint, budgeted so a spawn never blocks a frame by more
+    // than HERO_JOB_BUDGET_MS (see heroTextureJobs.ts).
+    tickHeroTextureJobs(HERO_JOB_BUDGET_MS);
 
     // Scheduler.
     trySpawnHero(elapsed);

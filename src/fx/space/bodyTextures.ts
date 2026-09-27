@@ -1,29 +1,34 @@
 /**
- * Procedural CanvasTexture generators for rocky/ice/lava/moon/ring bodies.
- * Gas giants live in giantTexture.ts (split out — its turbulence pass pushed
- * this file past the 300-line cap; it re-imports the canvas/terminator/limb
- * helpers below). All functions return a CanvasTexture; caller owns dispose().
+ * Procedural CanvasTexture generators for rocky/ice/lava/moon bodies. Gas
+ * giants live in giantTexture.ts; the ring annulus + lava crack overlay live
+ * in overlayTextures.ts (both split out — this file re-imports what it needs
+ * from each; see each file's header for why).
+ *
+ * v1.2.1 Lane D (HERO TEXTURE HITCH): every generator below measured
+ * ~35-85ms at hero size (1024px) — applyGrain's own per-pixel loop is the
+ * cost (see grainDeferred.ts's header), not just giantTexture.ts's. Each is
+ * split into an exported `xxxPhase1` (every rng draw + the cheap immediate
+ * painting — gradient/maria/craters/fractures/blobs are bounded native
+ * canvas calls, not per-pixel loops, so they stay synchronous) plus the
+ * original one-shot `xxxTexture` wrapper (unchanged behaviour: phase1 then
+ * applyGrain/limb/terminator/finalize immediately). grainDeferred.ts calls
+ * the SAME `xxxPhase1` to build the deferred path, so there is exactly one
+ * place each generator's rng sequence is defined.
  */
 
 import * as THREE from 'three';
 import type { Rng } from './rng.js';
 import { applyGrain } from './noise.js';
-
-export function makeCanvas(size: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('2d context unavailable');
-  return { canvas, ctx };
-}
-
-export function finalize(canvas: HTMLCanvasElement): THREE.CanvasTexture {
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
+import { makeCanvas, finalize } from './canvasUtil.js';
+// Re-exported for backward compatibility: world/worlds/ashfallTextures.ts
+// (not this lane's file) imports lavaCrackTexture from here; the generator
+// itself now lives in overlayTextures.ts (see that file's header — it needed
+// no hero-texture deferral, so it moved out to make room for the phase-1
+// split below without breaching the 300-line cap). Both this file and
+// overlayTextures.ts get makeCanvas/finalize from canvasUtil.ts rather than
+// from each other, so this re-export doesn't create an import cycle.
+export { lavaCrackTexture } from './overlayTextures.js';
+export { makeCanvas, finalize };
 
 // Bake a seeded longitudinal lit→dark gradient so MeshBasicMaterial bodies
 // read like painted, self-lit planets rather than flat unlit spheres.
@@ -107,9 +112,19 @@ function paintCraters(
   }
 }
 
+/** Common phase-1 return shape: the canvas painted so far (missing only
+ *  grain/limb/terminator), the seeded terminator direction, and whether this
+ *  is a hero-detail (>=512px) generation. */
+export interface Phase1Result {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  lightU: number;
+  hero: boolean;
+}
+
 // ── Rocky / cratered ───────────────────────────────────────────────────────────
 
-export function rockyTexture(rng: Rng, size: number): THREE.CanvasTexture {
+export function rockyPhase1(rng: Rng, size: number): Phase1Result {
   const { canvas, ctx } = makeCanvas(size);
   const lightU = seedLightU(rng);
   const hero = size >= 512;
@@ -143,6 +158,11 @@ export function rockyTexture(rng: Rng, size: number): THREE.CanvasTexture {
     { stop: 0.85, rgb: '160,150,138', alphaMul: 0.5 },
   ]);
 
+  return { canvas, ctx, lightU, hero };
+}
+
+export function rockyTexture(rng: Rng, size: number): THREE.CanvasTexture {
+  const { canvas, ctx, lightU, hero } = rockyPhase1(rng, size);
   applyGrain(canvas, ctx, rng, hero ? 0.09 : 0.06);
   applyLimbDarkening(canvas, ctx);
   applyTerminator(canvas, ctx, lightU);
@@ -151,7 +171,7 @@ export function rockyTexture(rng: Rng, size: number): THREE.CanvasTexture {
 
 // ── Ice world ──────────────────────────────────────────────────────────────────
 
-export function iceTexture(rng: Rng, size: number): THREE.CanvasTexture {
+export function icePhase1(rng: Rng, size: number): Phase1Result {
   const { canvas, ctx } = makeCanvas(size);
   const lightU = seedLightU(rng);
   const hero = size >= 512;
@@ -182,6 +202,11 @@ export function iceTexture(rng: Rng, size: number): THREE.CanvasTexture {
     ctx.stroke();
   }
 
+  return { canvas, ctx, lightU, hero };
+}
+
+export function iceTexture(rng: Rng, size: number): THREE.CanvasTexture {
+  const { canvas, ctx, lightU, hero } = icePhase1(rng, size);
   applyGrain(canvas, ctx, rng, hero ? 0.07 : 0.05);
   applyLimbDarkening(canvas, ctx, 0.5);
   applyTerminator(canvas, ctx, lightU);
@@ -190,7 +215,7 @@ export function iceTexture(rng: Rng, size: number): THREE.CanvasTexture {
 
 // ── Lava base (dark) — cracks are a separate overlay texture ───────────────────
 
-export function lavaBaseTexture(rng: Rng, size: number): THREE.CanvasTexture {
+export function lavaBasePhase1(rng: Rng, size: number): Phase1Result {
   const { canvas, ctx } = makeCanvas(size);
   const lightU = seedLightU(rng);
   const hero = size >= 512;
@@ -210,75 +235,20 @@ export function lavaBaseTexture(rng: Rng, size: number): THREE.CanvasTexture {
     ctx.arc(bx, by, br, 0, Math.PI * 2);
     ctx.fill();
   }
+  return { canvas, ctx, lightU, hero };
+}
+
+export function lavaBaseTexture(rng: Rng, size: number): THREE.CanvasTexture {
+  const { canvas, ctx, lightU, hero } = lavaBasePhase1(rng, size);
   applyGrain(canvas, ctx, rng, hero ? 0.12 : 0.08);
   applyLimbDarkening(canvas, ctx, 0.4);
   applyTerminator(canvas, ctx, lightU);
   return finalize(canvas);
 }
 
-/** Transparent crack network in orange (alpha texture for the emissive overlay). */
-export function lavaCrackTexture(rng: Rng, size: number): THREE.CanvasTexture {
-  const { canvas, ctx } = makeCanvas(size);
-  ctx.clearRect(0, 0, size, size);
-  ctx.lineCap = 'round';
-  const hero = size >= 512;
-
-  const seams = hero ? rng.int(12, 20) : rng.int(8, 14);
-  for (let i = 0; i < seams; i++) {
-    let x = rng() * size;
-    let y = rng() * size;
-    const segs = rng.int(6, 12);
-    ctx.strokeStyle = rng() < 0.5 ? '#C7641E' : '#ff7a2a';
-    ctx.lineWidth = rng.range(1.2, 3.5);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    for (let s = 0; s < segs; s++) {
-      x += rng.signed(size * 0.1);
-      y += rng.signed(size * 0.1);
-      ctx.lineTo(x, y);
-      // occasional branch
-      if (rng() < 0.3) {
-        ctx.lineTo(x + rng.signed(size * 0.06), y + rng.signed(size * 0.06));
-        ctx.moveTo(x, y);
-      }
-    }
-    ctx.stroke();
-  }
-  return finalize(canvas);
-}
-
-// ── Ring annulus (alpha texture for the ring plane) ────────────────────────────
-
-/** Concentric translucent tan/cream bands+gaps + fine grain (Saturn-like). */
-export function ringTexture(rng: Rng, size: number): THREE.CanvasTexture {
-  const { canvas, ctx } = makeCanvas(size);
-  ctx.clearRect(0, 0, size, size);
-  const cx = size / 2;
-  const cy = size / 2;
-  const maxR = size / 2;
-
-  const bands = rng.int(16, 26);
-  for (let i = 0; i < bands; i++) {
-    const r0 = (i / bands) * maxR;
-    const r1 = ((i + 1) / bands) * maxR;
-    const isGap = rng() < 0.35;
-    if (isGap) continue;
-    const shade = rng.choice(['#C8894A', '#D4A052', '#E8E2D4', '#b87040']);
-    ctx.globalAlpha = rng.range(0.25, 0.7);
-    ctx.strokeStyle = shade;
-    ctx.lineWidth = (r1 - r0) * 0.9;
-    ctx.beginPath();
-    ctx.arc(cx, cy, (r0 + r1) / 2, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-  applyGrain(canvas, ctx, rng, 0.22, 0.4);
-  return finalize(canvas);
-}
-
 // ── Moon (reuse of the v0.3 grey cratered approach) ────────────────────────────
 
-export function moonTexture(rng: Rng, size: number): THREE.CanvasTexture {
+export function moonPhase1(rng: Rng, size: number): Phase1Result {
   const { canvas, ctx } = makeCanvas(size);
   const lightU = seedLightU(rng);
   const hero = size >= 512;
@@ -292,6 +262,11 @@ export function moonTexture(rng: Rng, size: number): THREE.CanvasTexture {
     { stop: 0.6, rgb: '60,62,66', alphaMul: 0.5 },
   ]);
 
+  return { canvas, ctx, lightU, hero };
+}
+
+export function moonTexture(rng: Rng, size: number): THREE.CanvasTexture {
+  const { canvas, ctx, lightU, hero } = moonPhase1(rng, size);
   applyGrain(canvas, ctx, rng, hero ? 0.06 : 0.04);
   applyLimbDarkening(canvas, ctx);
   applyTerminator(canvas, ctx, lightU);
