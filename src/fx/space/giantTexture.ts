@@ -12,7 +12,7 @@
  * ~144-224ms at hero size (1024px) — a once-a-minute main-thread stutter a
  * p95 perf gate can't see (ultrareview r2 P3). Split into gasGiantParams()
  * (every rng draw, exactly today's order, storm draws included) + a PURE
- * paintGasGiantRows()/finishGasGiant() pair so bodies.ts can run the params
+ * paintGasGiantPixels()/finishGasGiant() pair so bodies.ts can run the params
  * synchronously at spawn (rng sequence untouched) and time-slice the actual
  * painting across frames via heroTextureJobs.ts. gasGiantTexture() below is
  * the original one-shot entry point, unchanged in behaviour, now composed
@@ -55,7 +55,7 @@ export interface GasGiantStorm {
 }
 
 /** Every rng-drawn value gasGiantTexture needs, captured up front so the
- *  actual painting (paintGasGiantRows / finishGasGiant) is a pure function
+ *  actual painting (paintGasGiantPixels / finishGasGiant) is a pure function
  *  of `size` alone — safe to run now, later, or at a different size (the
  *  placeholder). */
 export interface GasGiantParams {
@@ -119,43 +119,46 @@ export function gasGiantParams(
 }
 
 /**
- * PURE — paint rows [y0,y1) of a `size`×`size` RGBA buffer from already-drawn
- * `p`. No rng, no canvas calls: safe to call once for the whole image or in
- * row chunks spread across frames (heroTextureJobs.ts).
+ * PURE — paint the flat pixel-index range [i0,i1) (row-major, i = y*size+x)
+ * of a `size`×`size` RGBA buffer from already-drawn `p`. No rng, no canvas
+ * calls: safe to call once for the whole image, or in small slices spread
+ * across frames (heroTextureJobs.ts) — a flat range (rather than whole rows)
+ * is what lets that slicing use a small, fixed pixel count regardless of
+ * `size`, keeping one slice's own cost roughly constant.
  */
-export function paintGasGiantRows(data: Uint8ClampedArray, size: number, p: GasGiantParams, y0: number, y1: number): void {
-  for (let y = y0; y < y1; y++) {
+export function paintGasGiantPixels(data: Uint8ClampedArray, size: number, p: GasGiantParams, i0: number, i1: number): void {
+  for (let i = i0; i < i1; i++) {
+    const x = i % size;
+    const y = (i - x) / size;
+    const u = x / size;
     const v = y / size;
-    for (let x = 0; x < size; x++) {
-      const u = x / size;
 
-      const warp = fbmWrap(p.warpGrid, p.warpN, u, v, p.warpCyclesX, WARP_V_SCALE, 2);
-      const vw = Math.min(0.999, Math.max(0, v + warp * p.warpAmp));
+    const warp = fbmWrap(p.warpGrid, p.warpN, u, v, p.warpCyclesX, WARP_V_SCALE, 2);
+    const vw = Math.min(0.999, Math.max(0, v + warp * p.warpAmp));
 
-      const bandPos = vw * p.bandCount;
-      const bi = Math.floor(bandPos);
-      const frac = bandPos - bi;
-      const g = Math.min(1, Math.max(0, (frac - (1 - EDGE_FRAC)) / EDGE_FRAC));
-      const t = g * g * (3 - 2 * g);
-      const c0 = p.bandCols[((bi % p.bandCols.length) + p.bandCols.length) % p.bandCols.length];
-      const c1 = p.bandCols[(((bi + 1) % p.bandCols.length) + p.bandCols.length) % p.bandCols.length];
-      const band = lerpRgb(c0, c1, t);
-      const base = baseColorAt(p.baseStops, vw);
+    const bandPos = vw * p.bandCount;
+    const bi = Math.floor(bandPos);
+    const frac = bandPos - bi;
+    const g = Math.min(1, Math.max(0, (frac - (1 - EDGE_FRAC)) / EDGE_FRAC));
+    const t = g * g * (3 - 2 * g);
+    const c0 = p.bandCols[((bi % p.bandCols.length) + p.bandCols.length) % p.bandCols.length];
+    const c1 = p.bandCols[(((bi + 1) % p.bandCols.length) + p.bandCols.length) % p.bandCols.length];
+    const band = lerpRgb(c0, c1, t);
+    const base = baseColorAt(p.baseStops, vw);
 
-      const flow = fbmWrap(p.flowGrid, p.flowN, u, v, p.flowCyclesX, p.flowCyclesX * 1.6, 3);
-      const shade = 1 + flow * 0.14;
+    const flow = fbmWrap(p.flowGrid, p.flowN, u, v, p.flowCyclesX, p.flowCyclesX * 1.6, 3);
+    const shade = 1 + flow * 0.14;
 
-      const idx = (y * size + x) * 4;
-      data[idx] = clampByte((base.r + (band.r - base.r) * BAND_MIX) * shade);
-      data[idx + 1] = clampByte((base.g + (band.g - base.g) * BAND_MIX) * shade);
-      data[idx + 2] = clampByte((base.b + (band.b - base.b) * BAND_MIX) * shade);
-      data[idx + 3] = 255;
-    }
+    const idx = i * 4;
+    data[idx] = clampByte((base.r + (band.r - base.r) * BAND_MIX) * shade);
+    data[idx + 1] = clampByte((base.g + (band.g - base.g) * BAND_MIX) * shade);
+    data[idx + 2] = clampByte((base.b + (band.b - base.b) * BAND_MIX) * shade);
+    data[idx + 3] = 255;
   }
 }
 
 /**
- * PURE tail — MUST run after paintGasGiantRows has covered the whole image
+ * PURE tail — MUST run after paintGasGiantPixels has covered the whole image
  * AND that image has been committed via ctx.putImageData (storm/limb/
  * terminator all paint ON TOP of the canvas's current pixels; putImageData
  * is a raw replace, so painting these before it would erase them). Cheap
@@ -209,7 +212,7 @@ export function gasGiantTexture(
   const { canvas, ctx } = makeCanvas(size);
   const p = gasGiantParams(rng, family, size, pinnedLightU);
   const img = ctx.createImageData(size, size);
-  paintGasGiantRows(img.data, size, p, 0, size);
+  paintGasGiantPixels(img.data, size, p, 0, size * size);
   ctx.putImageData(img, 0, 0);
   return finishGasGiant(canvas, ctx, p);
 }
@@ -223,7 +226,7 @@ export function gasGiantTexture(
 export function placeholderGasGiantTexture(p: GasGiantParams, size: number, fullSize: number): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(size);
   const img = ctx.createImageData(size, size);
-  paintGasGiantRows(img.data, size, p, 0, size);
+  paintGasGiantPixels(img.data, size, p, 0, size * size);
   ctx.putImageData(img, 0, 0);
   return finishGasGiant(canvas, ctx, p, size / fullSize);
 }

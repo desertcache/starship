@@ -14,26 +14,44 @@
  * that runs AFTER every rng draw it depends on (see giantTexture.ts's header
  * and grainDeferred.ts's) — so the paint can be spread across frames with
  * ZERO effect on the rng sequence or the final pixels: chunk boundaries only
- * change WHEN a row is painted, never the math that paints it.
+ * change WHEN a pixel is painted, never the math that paints it.
  *
- * This module owns WHEN: a FIFO queue of row-range paint jobs, ticked once
+ * This module owns WHEN: a FIFO queue of pixel-range paint jobs, ticked once
  * per frame from director.ts under a small ms budget — the same
  * "guarantee at least one unit of progress per call, else check the clock"
- * pattern fx/landfall/chunks.ts uses for terrain chunk builds.
+ * pattern fx/landfall/chunks.ts uses for terrain chunk builds, sliced by a
+ * small fixed pixel count (PIXELS_PER_SLICE) rather than a whole row so the
+ * worst-case per-tick overshoot stays small on any machine (see below).
  */
 
-/** Per-frame budget for hero-texture job work. Measured 2026-09-27 (this
- *  lane's own probe, 34 runs): a 6ms budget's max observed single-tick cost
- *  ranged 6.3-9ms under heavy concurrent-lane CPU contention (one row's
- *  worth of overshoot plus OS scheduling jitter, not a systemic miss — a
- *  hero row at 1024px costs well under 0.3ms). 4ms leaves more headroom
- *  under the brief's ~8ms/frame ceiling even on a noisy machine, at the cost
- *  of a few more frames to finish (still well under half a second). */
+/** Per-frame budget for hero-texture job work — see PIXELS_PER_SLICE below
+ *  for how the worst single tick stays close to this regardless of machine
+ *  speed. 4ms leaves headroom under the brief's ~8ms/frame ceiling even
+ *  before accounting for one slice's own cost. */
 export const HERO_JOB_BUDGET_MS = 4;
 
 /** Placeholder canvas size shown while a deferred job finishes (brief:
  *  "64-128px... reads as the same body from a distance"). */
 export const PLACEHOLDER_SIZE = 128;
+
+/**
+ * Pixels painted between clock checks. Orchestrator feedback 2026-09-27:
+ * a row-at-a-time slice (1024px/row) measured a 9.90ms worst tick against a
+ * 4ms budget under 3-lane headless SwiftShader contention — bigger than
+ * "budget + one row's cost" should allow. Slicing by a fixed PIXEL count
+ * instead of a fixed ROW count makes one slice's own cost roughly constant
+ * regardless of texture size (always ~1/16 of a row here), and — this is
+ * the part that matters — it bounds the worst-case OVERSHOOT the SAME way
+ * on any machine: slower hardware means each slice takes longer, but it's
+ * still a small, fixed FRACTION of a row rather than a whole one, so the
+ * "budget already exceeded, but finish the in-flight slice anyway" tail
+ * shrinks in proportion. This can't eliminate a genuine OS-level scheduler
+ * preemption landing mid-slice (a real gap in wall-clock time no in-process
+ * slicing can observe until it's over), which is the residual noise 3-lane
+ * headless contention adds — see heroTextureJobs' own test in worlds.mjs
+ * for how that's handled (bounded retries, not a looser ceiling).
+ */
+const PIXELS_PER_SLICE = 64;
 
 /** Handle a body's dispose() can cancel — never write to a disposed
  *  material once cancelled=true. */
@@ -45,15 +63,17 @@ export interface HeroTextureJob {
   readonly done: boolean;
 }
 
-/** A pending paint: `paintRows` mutates pure, already-seeded data for rows
- *  [y0,y1) of a `size`×`size` image (no rng, no canvas calls) — safe to call
- *  in any chunking. `finish()` runs once, after paintRows has covered the
- *  WHOLE image [0,size) — the cheap unchunked tail (single canvas ops:
- *  storm/limb/terminator or grain's one putImageData + limb/terminator) —
- *  and returns the finished texture. */
+/** A pending paint: `paint` mutates pure, already-seeded data for the flat
+ *  pixel-index range [i0,i1) of a `unitCount`-pixel image (no rng, no canvas
+ *  calls) — safe to call for any sub-range, in any order of increasing i.
+ *  `finish()` runs once, after `paint` has covered the WHOLE image [0,
+ *  unitCount) — the cheap unchunked tail (single canvas ops: storm/limb/
+ *  terminator, or grain's one putImageData + limb/terminator) — and returns
+ *  the finished texture. */
 export interface RowPaintSpec {
-  size: number;
-  paintRows(y0: number, y1: number): void;
+  /** Total paintable units (pixel count — size*size for a size×size image). */
+  unitCount: number;
+  paint(i0: number, i1: number): void;
   finish(): THREE.CanvasTexture;
 }
 
@@ -73,18 +93,19 @@ interface QueuedJob {
 const queue: QueuedJob[] = [];
 let completedCount = 0;
 
-/** Build + enqueue a row-chunked paint job from a RowPaintSpec. Returns the
+/** Build + enqueue a pixel-chunked paint job from a RowPaintSpec. Returns the
  *  cancel handle; `onDone` fires with the finished texture once painting
- *  reaches size and the cheap tail runs — never if cancelled first. */
+ *  reaches unitCount and the cheap tail runs — never if cancelled first. */
 export function beginRowPaintJob(spec: RowPaintSpec, onDone: (tex: THREE.CanvasTexture) => void): HeroTextureJob {
-  let nextRow = 0;
+  let next = 0;
   const step = (budgetMs: number): boolean => {
     const t0 = performance.now();
     do {
-      spec.paintRows(nextRow, nextRow + 1);
-      nextRow++;
-    } while (nextRow < spec.size && performance.now() - t0 < budgetMs);
-    return nextRow >= spec.size;
+      const end = Math.min(next + PIXELS_PER_SLICE, spec.unitCount);
+      spec.paint(next, end);
+      next = end;
+    } while (next < spec.unitCount && performance.now() - t0 < budgetMs);
+    return next >= spec.unitCount;
   };
   const job = { cancelled: false, done: false };
   queue.push({

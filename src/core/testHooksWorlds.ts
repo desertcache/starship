@@ -101,14 +101,12 @@ export interface WorldsTestHooks {
     width: number;
     height: number;
   };
-  /** Lane D: spawn ONE real deferred hero body (bodies.ts's createBody with
-   *  deferred=true, the exact path director.ts's runtime hero spawns use)
-   *  and drive the SAME shared tickHeroTextureJobs() the real frame loop
-   *  calls, budgeted at `budgetMs`, measuring the wall-clock cost of every
-   *  tick with performance.now(). Returns the worst single-tick cost (must
-   *  stay near budgetMs, never balloon to the old synchronous number),
-   *  how many ticks/frames it took, and — for the record — the old
-   *  synchronous gas-giant generation time measured the same run. */
+  /** Lane D: spawn ONE real deferred hero body (bodies.ts's createBody,
+   *  deferred=true — director.ts's own runtime-hero-spawn path) and drive
+   *  the SAME shared tickHeroTextureJobs() the real frame loop calls,
+   *  budgeted at `budgetMs`, timing every tick. Returns the worst single-
+   *  tick cost, how many ticks it took, and the old sync generation time
+   *  measured the same run (for the record). */
   measureDeferredHeroSpawnBudget(budgetMs: number): {
     frames: number;
     maxFrameMs: number;
@@ -204,14 +202,24 @@ export function buildWorldsTestHooks(deps: TestApiDeps): WorldsTestHooks {
         beginMoonDeferred(makeRng(SEED), 1024, onDone);
       }
       drainAllHeroTextureJobs();
-      if (!deferredTex) {
+      if (deferredTex === null) {
+        syncTex.dispose();
         return { equal: false, diffCount: -1, syncLength: 0, deferredLength: 0, width: 0, height: 0 };
       }
+      // Cast, not a re-check: TS won't carry non-null narrowing on a
+      // closure-mutated `let` past a later statement; onDone already ran
+      // synchronously inside drainAllHeroTextureJobs() above.
+      const finalTex = deferredTex as THREE.CanvasTexture;
       const a = canvasBytesOf(syncTex);
-      const b = canvasBytesOf(deferredTex);
+      const b = canvasBytesOf(finalTex);
       let diffCount = 0;
       const len = Math.min(a.data.length, b.data.length);
       for (let i = 0; i < len; i++) if (a.data[i] !== b.data[i]) diffCount++;
+      // Test-only textures, never attached to a material — dispose here
+      // rather than leaking a 1024² canvas pair per call (CLAUDE.md: dispose
+      // what you replace).
+      syncTex.dispose();
+      finalTex.dispose();
       return {
         equal: diffCount === 0 && a.data.length === b.data.length && a.width === b.width && a.height === b.height,
         diffCount,

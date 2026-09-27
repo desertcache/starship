@@ -11,7 +11,7 @@
  * octaves 2, same shade formula) split into a params stage (grainParams —
  * draws rng, identical to applyGrain's internal makeNoiseGrid(rng,40) call,
  * at the same point in the sequence) and a pure per-row paint stage
- * (paintGrainRows). If noise.ts's applyGrain ever changes, this must change
+ * (paintGrainPixels). If noise.ts's applyGrain ever changes, this must change
  * with it — flagged for the orchestrator; the clean fix is moving this split
  * into noise.ts itself once a lane owns that file.
  *
@@ -34,7 +34,7 @@ import {
   type Phase1Result,
 } from './bodyTextures.js';
 import {
-  gasGiantParams, paintGasGiantRows, finishGasGiant, placeholderGasGiantTexture,
+  gasGiantParams, paintGasGiantPixels, finishGasGiant, placeholderGasGiantTexture,
 } from './giantTexture.js';
 import {
   beginRowPaintJob, PLACEHOLDER_SIZE,
@@ -63,19 +63,22 @@ function clampByte(v: number): number {
 }
 
 /** PURE — bit-for-bit identical to one pass of noise.ts applyGrain's loop
- *  body over rows [y0,y1), for the SAME grid/cyclesX/ampColor. No rng. */
-function paintGrainRows(data: Uint8ClampedArray, size: number, gp: GrainParams, ampColor: number, y0: number, y1: number): void {
-  for (let y = y0; y < y1; y++) {
+ *  body over the flat pixel-index range [i0,i1) (row-major, i = y*size+x),
+ *  for the SAME grid/cyclesX/ampColor. No rng. A flat range (rather than
+ *  whole rows) is what lets heroTextureJobs.ts slice by a small, fixed pixel
+ *  count regardless of `size` (see that file's header). */
+function paintGrainPixels(data: Uint8ClampedArray, size: number, gp: GrainParams, ampColor: number, i0: number, i1: number): void {
+  for (let i = i0; i < i1; i++) {
+    const x = i % size;
+    const y = (i - x) / size;
+    const u = x / size;
     const v = y / size;
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      const u = x / size;
-      const n1 = fbmWrap(gp.grid, gp.n, u, v, gp.cyclesX, gp.cyclesX, 2);
-      const shade = 1 + n1 * ampColor;
-      data[idx] = clampByte(data[idx] * shade);
-      data[idx + 1] = clampByte(data[idx + 1] * shade);
-      data[idx + 2] = clampByte(data[idx + 2] * shade);
-    }
+    const idx = i * 4;
+    const n1 = fbmWrap(gp.grid, gp.n, u, v, gp.cyclesX, gp.cyclesX, 2);
+    const shade = 1 + n1 * ampColor;
+    data[idx] = clampByte(data[idx] * shade);
+    data[idx + 1] = clampByte(data[idx + 1] * shade);
+    data[idx + 2] = clampByte(data[idx + 2] * shade);
   }
 }
 
@@ -103,8 +106,8 @@ function beginGrainDeferredCore(
   const gp = grainParams(rng); // rng draw — same position applyGrain's would occupy
   const img = p1.ctx.getImageData(0, 0, size, size); // snapshot of phase-1 pixels
   const job = beginRowPaintJob({
-    size,
-    paintRows: (y0, y1) => paintGrainRows(img.data, size, gp, ampColor, y0, y1),
+    unitCount: size * size,
+    paint: (i0, i1) => paintGrainPixels(img.data, size, gp, ampColor, i0, i1),
     finish: () => {
       p1.ctx.putImageData(img, 0, 0);
       applyLimbDarkening(p1.canvas, p1.ctx, limbFloor);
@@ -151,8 +154,8 @@ export function beginGasGiantDeferred(
   const { canvas, ctx } = makeCanvas(size);
   const img = ctx.createImageData(size, size);
   const job = beginRowPaintJob({
-    size,
-    paintRows: (y0, y1) => paintGasGiantRows(img.data, size, p, y0, y1),
+    unitCount: size * size,
+    paint: (i0, i1) => paintGasGiantPixels(img.data, size, p, i0, i1),
     finish: () => {
       ctx.putImageData(img, 0, 0);
       return finishGasGiant(canvas, ctx, p);
