@@ -97,8 +97,6 @@ export function buildLoreInteractables(): Interactable[] {
 
 // ── 2. Breaker Cabinet ────────────────────────────────────────────────────────
 
-let _breakerKeyHandler: ((e: KeyboardEvent) => void) | null = null;
-
 /**
  * Test hook: drive the breaker [2] "Boost Reactor" path headlessly (the real
  * path needs an overlay + Digit2 keypress that headlessInteract can't reach).
@@ -126,19 +124,17 @@ export function buildBreakerCabinetInteractable(): Interactable {
     position: v3(-2.89, 1.35, 3.8),
     onInteract(_ctx: InteractContext): void {
       playOneShot('ui');
-      showOverlay('BREAKER PANEL', [
-        'System status: NOMINAL',
-        '',
-        '[1]  Vent Coolant   — energy -20',
-        '[2]  Boost Reactor  — energy +30, clock +15 min',
-        '',
-        'Press [ESC] to close.',
-      ]);
 
-      if (_breakerKeyHandler) {
-        window.removeEventListener('keydown', _breakerKeyHandler);
-      }
-      _breakerKeyHandler = (e: KeyboardEvent): void => {
+      // v1.2.1 (r1 P2): the [ESC] label only called hideOverlay(), so this
+      // Escape-branch-only teardown survived it and leaked (stray 1/2
+      // presses). onClose now goes to every showOverlay() — see hudOverlay.ts.
+      let keyHandler: ((e: KeyboardEvent) => void) | null = null;
+      const onClose = (): void => {
+        if (keyHandler) window.removeEventListener('keydown', keyHandler);
+        keyHandler = null;
+      };
+
+      keyHandler = (e: KeyboardEvent): void => {
         if (e.code === 'Digit1') {
           const s = getState();
           setEnergy(s.energy - 20);
@@ -152,7 +148,7 @@ export function buildBreakerCabinetInteractable(): Interactable {
             '[2]  Boost Reactor  — energy +30, clock +15 min',
             '',
             'Press [ESC] to close.',
-          ]);
+          ], onClose);
         } else if (e.code === 'Digit2') {
           const s = getState();
           setEnergy(s.energy + 30);
@@ -177,7 +173,7 @@ export function buildBreakerCabinetInteractable(): Interactable {
               '[2]  Boost Reactor  — energy +30, clock +15 min',
               '',
               'Press [ESC] to close.',
-            ]);
+            ], onClose);
           } else {
             playOneShot('ui');
             showOverlay('BREAKER PANEL', [
@@ -190,17 +186,22 @@ export function buildBreakerCabinetInteractable(): Interactable {
               '[2]  Boost Reactor  — energy +30, clock +15 min',
               '',
               'Press [ESC] to close.',
-            ]);
+            ], onClose);
           }
         } else if (e.code === 'Escape') {
           hideOverlay();
-          if (_breakerKeyHandler) {
-            window.removeEventListener('keydown', _breakerKeyHandler);
-            _breakerKeyHandler = null;
-          }
         }
       };
-      window.addEventListener('keydown', _breakerKeyHandler);
+      window.addEventListener('keydown', keyHandler);
+
+      showOverlay('BREAKER PANEL', [
+        'System status: NOMINAL',
+        '',
+        '[1]  Vent Coolant   — energy -20',
+        '[2]  Boost Reactor  — energy +30, clock +15 min',
+        '',
+        'Press [ESC] to close.',
+      ], onClose);
     },
   };
 }
@@ -273,7 +274,12 @@ export function buildCoffeeCupInteractable(): Interactable {
     id: 'coffee-cup',
     prompt: 'Drink Coffee',
     radius: 1.5,
-    position: v3(2.675, 0.945, -2.90),
+    // v1.2.1: was (2.675, 0.945, -2.90) — 4.47m from the real 'coffee-cup'
+    // mesh (galleyDressing.ts's buildMessTable). Reconciled to the mesh's own
+    // world position (TX-0.42, TH+0.045, TZ+0.18 at galley worldPos (0,0,-1)
+    // = -1.52, 0.825, -1.22); the old numbers matched no galley fixture and
+    // looked like a stale value from an earlier layout pass.
+    position: v3(-1.52, 0.825, -1.22),
     onInteract(_ctx: InteractContext): void {
       const s = getState();
       setEnergy(Math.min(100, s.energy + 15));

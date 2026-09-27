@@ -184,16 +184,24 @@ export interface CockpitPropsResult {
 export function addCockpitProps(group: THREE.Group): CockpitPropsResult {
   const colliders: AABB[] = [];
 
-  const { collider: consoleColl, levers } = buildConsoleBank(group);
+  // v1.2.1 (ship lane, ultrareview finding): this named group used to be
+  // created EMPTY and added beside the console — buildConsoleBank() built
+  // every console mesh straight onto `group` (the room), so 'console-bank'
+  // named nothing a ray could ever hit and the real E key (name-only
+  // resolution) could never reach NAV/SYSTEMS/PLANET SCAN. Creating it FIRST
+  // and passing IT to buildConsoleBank() instead nests every console mesh
+  // (and the throttle levers) under the named group for free — its own
+  // local transform is identity, so nothing moves. mergeStaticSiblings(group)
+  // (below, cockpit.ts) still recurses into it and merges within it, same as
+  // any other named sub-group (see staticMerge.ts).
+  const consoleBankGroup = new THREE.Group();
+  consoleBankGroup.name = 'console-bank';
+  const { collider: consoleColl, levers } = buildConsoleBank(consoleBankGroup);
+  group.add(consoleBankGroup);
   colliders.push(consoleColl);
 
   colliders.push(buildSeat(group, -0.90,  0.07, 'seat-port'));
   colliders.push(buildSeat(group,  0.90, -0.07, 'seat-starboard'));
-
-  // Named console bank group (container)
-  const consoleBankGroup = new THREE.Group();
-  consoleBankGroup.name = 'console-bank';
-  group.add(consoleBankGroup);
 
   colliders.push(buildCenterPedestal(group));
 

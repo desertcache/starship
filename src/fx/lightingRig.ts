@@ -68,6 +68,37 @@ function configureSpotShadow(light: THREE.SpotLight): void {
 
 // ── Exported lights the caller may need (e.g. for animation access) ────────────
 
+// v1.2.1 (ship lane): module-level handle + freeze override for
+// tickReactorBreath(), below buildLightingRig(). See that function's doc.
+let _reactorSpot: THREE.PointLight | null = null;
+let _reactorBreathFreezeWave: number | null = null;
+
+/**
+ * Test-only (core/testHooksShip.ts): force the breath's sine term to a fixed
+ * value in [-1,1] instead of tracking the live phase, so the A7 art check
+ * can capture a stable PEAK/TROUGH shot instead of an arbitrary mid-phase
+ * frame. Pass null to release back to the live phase.
+ */
+export function setReactorBreathFreezeForTest(wave: number | null): void {
+  _reactorBreathFreezeWave = wave;
+}
+
+/**
+ * v1.2.1 (ship lane, ultrareview r1 P1): drives reactorSpot's breathing
+ * intensity (2.4-4.4, 2.1 rad/s — the v0.9 R2 tuned amplitude). Previously
+ * fired from `reactorDummy`'s onBeforeRender, a visible:false dummy mesh —
+ * three.js's WebGLRenderer.projectObject() never adds an invisible-material
+ * mesh to the render list, so this has been dead (frozen at the base 3.4)
+ * since v0.2a; only the teal emissive strips (on visible meshes) actually
+ * pulsed. Call once per frame from world/shipTicks.ts while the ship world
+ * is active.
+ */
+export function tickReactorBreath(nowMs: number): void {
+  if (!_reactorSpot) return;
+  const wave = _reactorBreathFreezeWave ?? Math.sin((nowMs / 1000) * 2.1);
+  _reactorSpot.intensity = 3.4 + wave * 1.0;
+}
+
 export interface LightingRigHandles {
   hemi: THREE.HemisphereLight;
   ambient: THREE.AmbientLight;
@@ -195,17 +226,10 @@ export function buildLightingRig(scene: THREE.Scene): LightingRigHandles {
   reactorSpot.position.set(0, 1.85, 5.5);
   scene.add(reactorSpot);
 
-  // Animate reactor intensity via self-animating invisible mesh (no main.ts edit).
-  const reactorDummy = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.001, 0.001),
-    new THREE.MeshBasicMaterial({ visible: false }),
-  );
-  reactorDummy.position.set(0, 2.4, 5.5);
-  reactorDummy.onBeforeRender = (): void => {
-    const t = performance.now() / 1000;
-    reactorSpot.intensity = 3.4 + Math.sin(t * 2.1) * 1.0;
-  };
-  scene.add(reactorDummy);
+  // v1.2.1: intensity is now driven live by tickReactorBreath() (above),
+  // called every frame from world/shipTicks.ts. See that function's doc for
+  // why the old self-animating dummy mesh never actually ran.
+  _reactorSpot = reactorSpot;
 
   // ── 7. Corridor threshold — POOL B (fore, near cockpit door ~Z=-19) ───────
   // Stage D boost: 1.8→2.0 (+15%).

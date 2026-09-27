@@ -154,6 +154,12 @@ export function tickDoors(dt: number): void {
 
       const eased = easeInOutQuad(rec.animT);
       rec.mesh.position.y = rec.pivotY + eased * OPEN_TRAVEL_Y;
+
+      // v1.2.1: track the slab's live Y so the shared collider (pushed into
+      // the ship's collider array by reference, assembly.ts) only blocks
+      // while the slab actually overlaps the controller's 0.1-1.9 body band.
+      rec.collider.minY = rec.mesh.position.y;
+      rec.collider.maxY = rec.mesh.position.y + SLAB_H;
     }
 
     // ── Auto-close check ───────────────────────────────────────────────────────
@@ -178,37 +184,37 @@ export function tickDoors(dt: number): void {
   }
 }
 
-/**
- * Test hook: run the auto-close check immediately, with the 8s dwell timer
- * overridden so it fires this frame. Any armed, fully-open door whose player
- * distance exceeds the 3m threshold is closed at once. Mirrors the production
- * logic in tickDoors() minus the elapsed-time gate. Returns the ids it closed.
- */
-export function forceDoorAutoCloseCheck(): string[] {
-  const closed: string[] = [];
-  for (const rec of doorRecords) {
-    // Fully-open + armed is the trigger condition. We intentionally do NOT
-    // require animDir===0 (as tickDoors does): animT>=1 already means the slab
-    // is visually open, and the reset-to-idle frame may not have run yet when
-    // the camera-facing dummy that drives tickDoors is frustum-culled.
-    if (!(rec.autoCloseArmed && rec.open && rec.animT >= 1)) continue;
-    const dx = _playerPos.x - rec.worldX;
-    const dz = _playerPos.z - rec.worldZ;
-    if (dx * dx + dz * dz > 9.0) { // 3.0^2
-      setDoorOpen(rec.id, false);
-      playOneShot('door-auto');
-      closed.push(rec.id);
-    }
-  }
-  return closed;
+/** Test hook (v1.2.1): rewind a door's dwell timer so tickDoors()'s next real
+ *  call sees it elapsed — replaces forceDoorAutoCloseCheck(), which skipped
+ *  tickDoors() entirely; the close itself still only happens inside it. */
+export function debugExpireDoorDwell(id: string): void {
+  const rec = doorRecords.find((r) => r.id === id);
+  if (rec) rec.openedAt = performance.now() - 8001;
+}
+
+/** Test hook: a door's live world-space slab Y — proves it actually moves. */
+export function getDoorSlabY(id: string): number | null {
+  const rec = doorRecords.find((r) => r.id === id);
+  return rec ? rec.mesh.position.y : null;
+}
+
+/** Test hook: a door's live collider Y bounds, for asserting blocking when
+ *  the harness can't hold a real pointer lock to drive WASD into it. */
+export function getDoorColliderBounds(id: string): { minY: number; maxY: number } | null {
+  const rec = doorRecords.find((r) => r.id === id);
+  return rec ? { minY: rec.collider.minY, maxY: rec.collider.maxY } : null;
 }
 
 /**
- * Get the active collider list for closed doors only.
- * Used by assembly to provide to the player controller.
+ * Test-only fast-forward (core/testHooksShip.ts): call tickDoors() `times`
+ * with a fixed per-call dtMs, synchronously — dt is capped at 50ms/real-frame
+ * in production (main.ts), so a real-time sleep can't reliably bound a 480ms
+ * animation under headless SwiftShader. Same pattern as testApiFlight.ts's
+ * flightTickN/approachTickN/landingTickN.
  */
-export function getClosedDoorColliders(): AABB[] {
-  return doorRecords.filter((r) => r.animT < 0.05).map((r) => r.collider);
+export function tickDoorsN(times: number, dtMs: number): void {
+  const dt = dtMs / 1000;
+  for (let i = 0; i < times; i++) tickDoors(dt);
 }
 
 // ── Build ──────────────────────────────────────────────────────────────────────
@@ -226,6 +232,16 @@ export function buildDoors(scene: THREE.Scene, specs: DoorEntry[]): void {
     const grp = new THREE.Group();
     grp.name = `door-${spec.id}`;
 
+    // v1.2.1 (ultrareview r3 P1): the real E key resolves by walking mesh
+    // ancestors for name === interactable.id, and interactWiring.ts registers
+    // this door under `spec.id`, not `door-${id}` — so no door was ever
+    // E-reachable. This nested group (named spec.id) holds every hittable
+    // part; the outer `door-${id}` name is kept (nothing looks doors up by
+    // it — verified by grep).
+    const hitGroup = new THREE.Group();
+    hitGroup.name = spec.id;
+    grp.add(hitGroup);
+
     // Slab — centre at local (0, SLAB_H/2, 0)
     const slab = new THREE.Mesh(
       new THREE.BoxGeometry(
@@ -236,7 +252,7 @@ export function buildDoors(scene: THREE.Scene, specs: DoorEntry[]): void {
       matSlab(),
     );
     slab.position.y = SLAB_H / 2;
-    grp.add(slab);
+    hitGroup.add(slab);
 
     // Center seam strip (0.04 x 2.0 x 0.075) proud of slab face
     const seam = new THREE.Mesh(
@@ -248,7 +264,7 @@ export function buildDoors(scene: THREE.Scene, specs: DoorEntry[]): void {
       matSeam(),
     );
     seam.position.y = SEAM_H / 2;
-    grp.add(seam);
+    hitGroup.add(seam);
 
     // Status pip — sphere at slab-local (0.55, 0.95, 0.04) for Z-facing doors
     const pip = new THREE.Mesh(
@@ -261,7 +277,7 @@ export function buildDoors(scene: THREE.Scene, specs: DoorEntry[]): void {
       // X-facing: pip at slab-local (+Z side of slab)
       pip.position.set(PIP_LOC_Z, PIP_LOC_Y, PIP_LOC_X);
     }
-    grp.add(pip);
+    hitGroup.add(pip);
 
     // Place group at world position (slab bottom = spec.position.y)
     grp.position.set(spec.position.x, pivotY, spec.position.z);
@@ -277,9 +293,14 @@ export function buildDoors(scene: THREE.Scene, specs: DoorEntry[]): void {
           maxX: spec.position.x + SLAB_D / 2, maxY: spec.position.y + SLAB_H, maxZ: spec.position.z + SLAB_W / 2,
         };
 
-    // Start OPEN — slab parked up, collider cleared
+    // Start OPEN — slab parked up. v1.2.1: the collider (pushed into the
+    // ship's shared array by reference, assembly.ts) must reflect this OPEN
+    // pose now, not the closed footprint above, or a fresh ship would have
+    // every door blocking before tickDoors ever runs.
     const animT = 1.0;
     grp.position.y = pivotY + easeInOutQuad(animT) * OPEN_TRAVEL_Y;
+    collider.minY = grp.position.y;
+    collider.maxY = grp.position.y + SLAB_H;
 
     const record: DoorRecord = {
       id:       spec.id,

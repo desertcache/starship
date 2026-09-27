@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
-import { addCockpitProps, liveScreenTick, dustMoteTick } from './cockpitProps.js';
+import { addCockpitProps } from './cockpitProps.js';
 import { addCockpitUnderglow } from './cockpitUnderglow.js';
 import { mergeStaticSiblings } from './staticMerge.js';
 import type { RoomModule } from './types.js';
@@ -48,17 +48,13 @@ export function buildCockpit(): RoomModule {
   // see staticMerge.ts for the safety model.
   mergeStaticSiblings(group);
 
-  // Per-frame tick for live screens and dust motes (onBeforeRender on the group)
-  let _lastFrame = 0;
-  group.onBeforeRender = (): void => {
-    const elapsed = performance.now();
-    // Gate dust mote tick to ~30fps update (every ~33ms)
-    if (elapsed - _lastFrame > 16) {
-      dustMoteTick();
-      liveScreenTick(elapsed);
-      _lastFrame = elapsed;
-    }
-  };
+  // v1.2.1 (ship lane, ultrareview r1 P1): the live-screen/dust-mote tick
+  // used to live here as `group.onBeforeRender`. three.js's WebGLRenderer
+  // only calls onBeforeRender from renderObject(), reached only for a
+  // Mesh/Line/Points/Sprite whose material is visible — never for a Group —
+  // so this has been dead since v0.2a (the cockpit waveform/radar/bargraph
+  // screens and dust motes were frozen). Moved to world/shipTicks.ts,
+  // ticked for real every frame while the ship world is active.
 
   // cockpit cam — from aft looking fore; eye level sees seats mid-frame,
   // console bank in lower-mid, canopy + planet above

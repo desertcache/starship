@@ -7,7 +7,7 @@ import { buildGalley } from './galley.js';
 import { buildEngineering } from './engineering.js';
 import { buildCargoBay } from './cargoBay.js';
 import { buildPortalRoom } from './portalRoom.js';
-import { buildDoors, tickDoors } from './doors.js';
+import { buildDoors, doorRecords } from './doors.js';
 import type { DoorEntry } from './doors.js';
 import { buildStarfield } from '../fx/starfield.js';
 import { wrapDirectorAsPlanetResult } from '../fx/planet.js';
@@ -150,6 +150,17 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
 
   buildDoors(scene, doorSpecs);
 
+  // v1.2.1 (ship lane, ultrareview finding): push every door's AABB into the
+  // ship's shared collider array, BY REFERENCE — `allColliders` is what
+  // main.ts hands to both initController() and bootWorlds()'s ship World
+  // adapter, so mutating this same array (and doors.ts's tickDoors()
+  // mutating each collider object's Y bounds in place every frame the slab
+  // moves) reaches every consumer with no further wiring. Previously
+  // getClosedDoorColliders() had 0 callers, so a closed door never blocked.
+  for (const rec of doorRecords) {
+    allColliders.push(rec.collider);
+  }
+
   // ── Space environment ──────────────────────────────────────────────────────
   // NEAR streaming starfield — driven by main's tickStarfield(ship.starfield).
   const starfield = buildStarfield();
@@ -202,20 +213,12 @@ export function assembleShip(scene: THREE.Scene): ShipAssembly {
   // Lighting values tuned for new mid-cream (#C6BFAF) wall panels + glossier floors.
   buildLightingRig(scene);
 
-  // ── Door tick via self-animating dummy ────────────────────────────────────
-  let lastDoorTime = performance.now();
-  const doorDummy = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.001, 0.001),
-    new THREE.MeshBasicMaterial({ visible: false }),
-  );
-  doorDummy.position.set(0, 0, 0);
-  doorDummy.onBeforeRender = (): void => {
-    const now = performance.now();
-    const dt  = Math.min((now - lastDoorTime) / 1000, 0.05);
-    lastDoorTime = now;
-    tickDoors(dt);
-  };
-  scene.add(doorDummy);
+  // v1.2.1 (ship lane, ultrareview r1 P1): the door tick used to run from a
+  // self-animating `doorDummy` — a visible:false mesh. three.js's
+  // WebGLRenderer.projectObject() never adds an invisible-material mesh to
+  // the render list, so onBeforeRender never fired and doors have never
+  // moved or auto-closed since v0.2a. tickDoors() now runs for real every
+  // frame from world/shipTicks.ts, called from main.ts's animate() loop.
 
   // Default-on: flag room meshes to cast/receive shadows. No-op when ?quality=low.
   enableMeshShadows(groups);

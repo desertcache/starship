@@ -31,7 +31,7 @@ import {
   buildConsoleSystemsLines,
   buildConsolePlanetLines,
 } from './interactItems.js';
-import { getCrateBGroup } from './engineeringProps.js';
+import { getCrateBGroup, getCrateBBodyMesh } from './engineeringProps.js';
 import { createPropTween } from './propTween.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -145,6 +145,9 @@ function buildConsoleLinesForMode(mode: 0 | 1 | 2): string[] {
 }
 
 let _consoleModeKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+// v1.2.1: reused across E-press cycles (see onInteract below) so re-shows
+// read as the same owner and don't fire cleanup mid-cycle.
+let _consoleModeOnClose: (() => void) | null = null;
 
 function buildConsoleBankInteractable(): Interactable {
   return {
@@ -158,22 +161,27 @@ function buildConsoleBankInteractable(): Interactable {
       const s = getState();
       const next = ((s.consoleMode + 1) % 3) as 0 | 1 | 2;
       setConsoleMode(next);
-      showOverlay(`CONSOLE — ${CONSOLE_LABELS[next]}`, buildConsoleLinesForMode(next));
 
-      if (_consoleModeKeyHandler) {
-        window.removeEventListener('keydown', _consoleModeKeyHandler);
-      }
-      _consoleModeKeyHandler = (e: KeyboardEvent): void => {
-        if (e.code === 'Escape') {
-          hideOverlay();
+      // v1.2.1 (r1 P2): the [ESC] label only called hideOverlay(), so this
+      // handler (torn down only in its own Escape branch) survived and fired
+      // a stray setConsoleMode(0) on any later Escape. Set up once, reuse the
+      // SAME onClose across cycles: showOverlay() fires it only when THIS
+      // owner's overlay actually closes, not on a same-reference re-show —
+      // so cycling NAV→SYSTEMS→PLANET SCAN no longer resets mode mid-cycle.
+      if (!_consoleModeOnClose) {
+        _consoleModeOnClose = (): void => {
           setConsoleMode(0);
-          if (_consoleModeKeyHandler) {
-            window.removeEventListener('keydown', _consoleModeKeyHandler);
-            _consoleModeKeyHandler = null;
-          }
-        }
-      };
-      window.addEventListener('keydown', _consoleModeKeyHandler);
+          if (_consoleModeKeyHandler) window.removeEventListener('keydown', _consoleModeKeyHandler);
+          _consoleModeKeyHandler = null;
+          _consoleModeOnClose = null;
+        };
+        _consoleModeKeyHandler = (e: KeyboardEvent): void => {
+          if (e.code === 'Escape') hideOverlay();
+        };
+        window.addEventListener('keydown', _consoleModeKeyHandler);
+      }
+
+      showOverlay(`CONSOLE — ${CONSOLE_LABELS[next]}`, buildConsoleLinesForMode(next), _consoleModeOnClose);
     },
   };
 }
@@ -243,6 +251,16 @@ function buildCrateBInteractables(): Interactable[] {
       _crateTween = createPropTween(400, (v) => {
         if (cg) cg.position.x = v * CRATE_B_SLIDE_DIST;
       });
+      // v1.2.1 (found while planning): nothing ever called this tween's
+      // tick() — "Slide Crate" flipped flags but never moved, so the hidden
+      // panel (quest 0→1) was unreachable outside the test hook. Hang tick()
+      // on the crate's VISIBLE shell (fridge/locker pattern), never on `cg`
+      // (a Group never fires onBeforeRender — world/shipTicks.ts).
+      const bodyMesh = getCrateBBodyMesh();
+      if (bodyMesh) {
+        const tw = _crateTween;
+        bodyMesh.onBeforeRender = (): void => { tw.tick(); };
+      }
     }
     return _crateTween;
   }

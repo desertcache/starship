@@ -99,7 +99,7 @@ function b(geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh {
 // ── Bunk ───────────────────────────────────────────────────────────────────────
 
 export interface BunkResult {
-  /** Group root — mesh.name = 'bunk' for Phase 4 interaction hook. */
+  /** Group root — named 'bunk-a' / 'bunk-b' per room (v1.2.1; see buildBunk). */
   group: THREE.Group;
   /** AABB in group-local space. */
   collider: AABB;
@@ -111,10 +111,20 @@ export interface BunkResult {
  * Posts run Y = 0..0.76. Mattress top at Y ≈ 0.96.
  *
  * @param blanketMat - room-specific blanket material.
+ *
+ * v1.2.1 (r3 P1): was named the literal 'bunk' regardless of caller, so with
+ * both rooms sharing this builder, no object was ever named 'bunk-a'/'bunk-b'
+ * and the real E key (name-only) could never reach Sleep. quarters.ts (not
+ * owned by this lane) already calls this with the room's own blanket
+ * singleton (matBlanketA/B, both defined here), so that identity derives the
+ * name instead of threading an id through the unowned caller. 'bunk' stays a
+ * substring of both so the shadow-cast keyword match still hits.
  */
 export function buildBunk(blanketMat: THREE.MeshLambertMaterial): BunkResult {
   const g = new THREE.Group();
-  g.name = 'bunk';
+  g.name = blanketMat === matBlanketA ? 'bunk-a'
+         : blanketMat === matBlanketB ? 'bunk-b'
+         : 'bunk';
 
   // Corner posts — X=±0.93, Z=±0.46
   const postXZ: [number, number][] = [[-0.93, -0.46], [0.93, -0.46], [-0.93, 0.46], [0.93, 0.46]];

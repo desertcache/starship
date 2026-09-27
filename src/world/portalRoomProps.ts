@@ -244,9 +244,12 @@ function buildHolotable(group: THREE.Group, x: number, z: number): AABB {
 // ── Survey console (geometry only — Interactable built by portalRoom.ts) ───
 
 function buildConsoleHousing(group: THREE.Group, x: number, z: number): AABB {
+  // v1.2.1: was 'survey-console'; the Interactable registers
+  // 'dimensional-survey-console' — renamed. `screen` (5mm proud, below) gets
+  // the same name: it's where a natural aim lands first.
   const housing = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.3, 0.3), matConsoleHousing);
   housing.position.set(x, 0.65, z);
-  housing.name = 'survey-console';
+  housing.name = 'dimensional-survey-console';
   group.add(housing);
 
   // Emissive readout screen on the room-facing (+Z) face, tilted back slightly
@@ -256,6 +259,7 @@ function buildConsoleHousing(group: THREE.Group, x: number, z: number): AABB {
   );
   screen.position.set(x, 0.98, z + 0.155);
   screen.rotation.x = -0.12;
+  screen.name = 'dimensional-survey-console';
   group.add(screen);
   addUnderglow(group, {
     x, y: 0.72, z: z + 0.20, width: 0.5, length: 0.3,
