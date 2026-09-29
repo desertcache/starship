@@ -23,7 +23,8 @@ import { playOneShot } from '../fx/audio.js';
 import { setHelmActive, setFlightMode, setFlightInput } from './flightState.js';
 import { attachHelmInput, detachHelmInput, tickHelmInput } from './helmInput.js';
 import { forceInteriorKeepPose } from './chaseCam.js';
-import { setFlightStripText } from '../ui/hud.js';
+import { hideFlightHud } from '../ui/flightHud.js';
+import { setHelmTeardownProvider } from './landfall.js'; // v1.2.1 B1 — see registration at file end
 
 // Seat-port positions — byte-identical to the plain seat this replaces in
 // world/interactWiring.ts's buildSeatInteractables() (same id/radius so the
@@ -48,7 +49,14 @@ function teardown(): void {
   detachHelmInput();
   setFlightMode('CRUISE');
   setHelmActive(false);
-  setFlightStripText(null);
+  // v1.2.1 B7 fix: hide the panel/strip/LAND-prompt HERE, not just via the
+  // next tickFlightHud() tick — that tick only ever runs from
+  // tickShipFrame(), gated to activeId==='ship' (main.ts). A landing taken
+  // FROM the helm (v1.2.1 B1) reaches this teardown ALREADY off-ship, so
+  // "wait for next tick" never arrives: the panel was stuck showing stale
+  // ship-frame speed/heading/throttle/HOLD-distance for the rest of the walk
+  // (found reviewing the B7 headed hatch shot).
+  hideFlightHud();
   // Standing up while in the chase view: force interior (V is detached now),
   // keeping the standing pose the E-stand just restored — see chaseCam.ts.
   forceInteriorKeepPose();
@@ -103,3 +111,24 @@ export function helmExitForTest(): void {
   exitAnchor();
   teardown();
 }
+
+/**
+ * v1.2.1 B1 fix — a real L-key landing is taken FROM THE HELM, and nothing on
+ * the pre-fix landing route ever tore it down: the watchdog above only fires
+ * once `getState().seated` goes false, but the ONLY thing that ever wrote
+ * that was E (exitAnchor's hardcoded ship-pose teleport, wrong once the
+ * active scene is 'landfall') — so on the surface, helm.ts stayed "active"
+ * forever with its listeners still attached (helmInput.ts's keys are
+ * world-agnostic: W/S drove throttle, V toggled view, and L re-ran
+ * requestLanding() since HOLD reads frozen true off-ship — restarting the
+ * descent). flight/landfall.ts's requestLanding() must be able to tear this
+ * down atomically with the world switch, but importing it there directly
+ * would close a cycle (helmInput.ts already imports requestLanding FROM
+ * landfall.ts for the real L key, and this file imports helmInput.ts) — so
+ * this registers `teardown` as a provider instead (house pattern,
+ * core/cameras.ts's setWorldActivator), letting landfall.ts call it without
+ * ever importing this module. teardown() already guards on `active`, so this
+ * is a no-op when landing arrives without ever taking the helm
+ * (engageLanding(), Test 15).
+ */
+setHelmTeardownProvider(teardown);

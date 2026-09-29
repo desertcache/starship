@@ -30,6 +30,7 @@ import { LANDFALL_SEED, ROAM_RADIUS, ROAM_WARN_RADIUS, DESCENT_CHUNK_BUDGET_MS }
 import { attachDescent, getPhase, getSkidDeployProgress } from '../../fx/landfall/descent.js';
 import { attachClouds } from '../../fx/landfall/clouds.js';
 import { attachShip } from '../../fx/landfall/shipSurface.js';
+import type { ChunkManager } from '../../fx/landfall/chunks.js';
 
 const BOUNDARY_SEGMENTS = 48;
 const BOUNDARY_MIN_Y = -4;
@@ -96,6 +97,17 @@ function buildLandingPad(groundY: number, accentColor: string): LandingPad {
   };
 }
 
+// v1.2.1 B4 test hook — the single active landfall instance's chunk manager
+// (there's only ever one; same one-instance assumption core/testApiFlight.ts's
+// getGroundHeightAt() already makes via getActiveWorld(), and descent.ts's own
+// module-singleton `opts`). The frozen World contract (core/worldTypes.ts) has
+// no slot for this, so it's exposed as a plain module getter instead.
+let activeChunks: ChunkManager | null = null;
+/** core/testApiFlight.ts: resident LOD at world position (x,z), or null. */
+export function getLandfallChunkLod(x: number, z: number): number | null {
+  return activeChunks?.lodAt(new THREE.Vector3(x, 0, z)) ?? null;
+}
+
 export function buildLandfall(): World {
   const scene = new THREE.Scene();
   const biome = resolveBiome('ROCKY');
@@ -104,6 +116,7 @@ export function buildLandfall(): World {
 
   const field = makeHeightField(LANDFALL_SEED, biome.terrain);
   const chunks = createChunkManager(scene, field, biome);
+  activeChunks = chunks;
   // Force the pad + spawn neighbourhood fully resident before the first
   // frame ever renders — belt-and-suspenders on top of update()'s own
   // first-tick snapStream (see chunks.ts header for why the full-ring sync

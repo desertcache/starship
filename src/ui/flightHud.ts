@@ -108,20 +108,37 @@ export function initFlightHud(): void {
   document.body.appendChild(panelEl);
 }
 
+/**
+ * v1.2.1 B7 fix — hide the panel/strip/LAND-prompt outright. tickFlightHud()
+ * below is the ONLY thing that used to do this, but it runs exclusively from
+ * main.ts's tickShipFrame(), which is gated to activeId==='ship' — so once
+ * the v1.2.1 B1 fix made a real landing-from-helm correctly flip
+ * helmActive false WHILE ALREADY off-ship, tickFlightHud() never ran again
+ * to notice and hide the panel: it stayed on screen showing the STALE
+ * speed/heading/throttle/mode/HOLD-distance from the instant of landing,
+ * for the rest of the walk (found reviewing the B7 headed hatch shot).
+ * flight/helm.ts's teardown() now calls this directly so the panel comes
+ * down immediately regardless of which world is active. Idempotent/safe to
+ * call from anywhere, including before initFlightHud() has ever run.
+ */
+export function hideFlightHud(): void {
+  if (panelEl) panelEl.style.display = 'none';
+  setFlightStripText(null);
+  // v1.2 LANDFALL Stage 1 — helm-gated LAND prompt (see below): the
+  // autopilot can hold HOLD after an E-stand (stand-up autopilot, helm.ts),
+  // so this prompt must not linger over whatever the player walks up to.
+  if (landPromptShown) {
+    clearPrompt();
+    landPromptShown = false;
+  }
+}
+
 /** Per-frame tick (main.ts, right after tickFlight). Hides the panel and
  *  clears the flight-strip override the instant helm goes inactive. */
 export function tickFlightHud(): void {
   const snap = getFlight();
   if (!snap.helmActive) {
-    if (panelEl) panelEl.style.display = 'none';
-    setFlightStripText(null);
-    // v1.2 LANDFALL Stage 1 — helm-gated LAND prompt (see below): the
-    // autopilot can hold HOLD after an E-stand (stand-up autopilot, helm.ts),
-    // so this prompt must not linger over whatever the player walks up to.
-    if (landPromptShown) {
-      clearPrompt();
-      landPromptShown = false;
-    }
+    hideFlightHud();
     return;
   }
   if (panelEl) panelEl.style.display = 'flex';
@@ -155,11 +172,22 @@ export function tickFlightHud(): void {
   // covering the stand-up-during-hold case). requestLanding() itself still
   // declines while the 'landfall' world is unregistered — this prompt is
   // purely a UX seam, not a promise the press will do anything yet.
+  //
+  // v1.2.1 B3 fix (r1 P2) — main.ts's tickInteract() clears hud.ts's shared
+  // prompt element every frame BEFORE tickShipFrame() -> tickFlightHud() ever
+  // runs (main.ts's animate()). This used to call showPrompt() only on the
+  // RISING EDGE (landPromptShown false -> true), so on every frame AFTER
+  // that one, tickInteract()'s earlier clearPrompt() was the last write of
+  // the frame and the prompt vanished after exactly one frame. Re-asserting
+  // showPrompt() every frame the condition holds (not just on the edge) makes
+  // THIS the last write instead — which is also why "at the helm, LAND
+  // should win" falls out for free: tickFlightHud() always runs AFTER
+  // tickInteract() on the ship world, so this unconditionally overwrites
+  // whatever prompt tickInteract() found this frame (e.g. a console within
+  // 2.5m of the seated camera), with no need to inspect it.
   if (snap.approach?.holdEngaged) {
-    if (!landPromptShown) {
-      showPrompt('LAND  [L]');
-      landPromptShown = true;
-    }
+    showPrompt('LAND  [L]');
+    landPromptShown = true;
   } else if (landPromptShown) {
     clearPrompt();
     landPromptShown = false;

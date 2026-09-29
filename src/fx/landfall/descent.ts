@@ -18,7 +18,6 @@
  * 'landfall-descent' name, drives position+orientation exactly like a direct
  * write (see that file's own comment: "Stage 3's descent driver owns the
  * camera per-frame... it re-seeds this name then" — this is that re-seed).
- *
  * Fast-forward safety: tick() carries dt overflow past a phase boundary into
  * the next phase within the same call (≤3 hops) so a huge dt lands in the
  * correct end state. Timing is accumulated dt only — never wall clock.
@@ -31,12 +30,12 @@ import { setPointerLookEnabled } from '../../player/controller.js';
 import { fadeTransition } from '../../ui/hud.js';
 import { setEntryAmount, setFlashAmount } from '../bloom.js';
 import { makeRng } from '../space/rng.js';
+import { createDustBurst } from './descentDust.js'; // v1.2.1 B5 cap split
 import {
   DESCENT_START_ALT, DESCENT_BRAKE_ALT, DESCENT_TOUCHDOWN_ALT,
   DESCENT_ENTRY_SECS, DESCENT_BRAKE_SECS, DESCENT_TOUCHDOWN_SECS,
   DESCENT_ENTRY_OFFSET_X, DESCENT_ENTRY_OFFSET_Z, DESCENT_ENTRY_BOW,
   DESCENT_SHAKE_BASE, DESCENT_TOUCHDOWN_SETTLE_ALT,
-  DUST_BURST_COUNT, DUST_BURST_LIFE_SECS,
 } from '../../flight/landfallTuning.js';
 
 export type DescentPhase = 'NONE' | 'ENTRY' | 'BRAKE' | 'TOUCHDOWN' | 'WALK';
@@ -79,68 +78,26 @@ let shakeF1 = 0, shakeP1 = 0, shakeF2 = 0, shakeP2 = 0, shakeF3 = 0, shakeP3 = 0
 const _pos = new THREE.Vector3();
 const _look = new THREE.Vector3();
 
-interface DustBurst {
-  points: THREE.Points;
-  velocities: Float32Array;
-  startedAt: number;
+// v1.2.1 B5 cap split — the dust-burst system lives in descentDust.ts; these
+// thin wrappers keep the call sites below unchanged, passing opts/
+// elapsedTotal explicitly so descentDust.ts never imports this file (no cycle).
+const dust = createDustBurst();
+function disposeDust(): void {
+  if (!opts) return;
+  dust.dispose(opts.scene);
 }
-let activeDust: DustBurst | null = null;
+function triggerDustBurst(): void {
+  if (!opts) return;
+  dust.trigger(opts.scene, opts.groundY, elapsedTotal);
+}
+function tickDust(dt: number): void {
+  if (!opts) return;
+  dust.tick(dt, elapsedTotal, opts.scene);
+}
 
 function smooth01(t: number): number {
   const c = THREE.MathUtils.clamp(t, 0, 1);
   return c * c * (3 - 2 * c);
-}
-
-function disposeDust(): void {
-  if (!activeDust || !opts) return;
-  opts.scene.remove(activeDust.points);
-  activeDust.points.geometry.dispose();
-  (activeDust.points.material as THREE.PointsMaterial).dispose();
-  activeDust = null;
-}
-
-function triggerDustBurst(): void {
-  if (!opts) return;
-  disposeDust();
-  const rng = makeRng(DESCENT_SEED ^ 0xd057);
-  const positions = new Float32Array(DUST_BURST_COUNT * 3);
-  const velocities = new Float32Array(DUST_BURST_COUNT * 3);
-  for (let i = 0; i < DUST_BURST_COUNT; i++) {
-    positions[i * 3] = 0;
-    positions[i * 3 + 1] = opts.groundY + 0.2;
-    positions[i * 3 + 2] = 0;
-    const ang = rng() * Math.PI * 2;
-    const spd = rng.range(2, 7);
-    velocities[i * 3] = Math.cos(ang) * spd;
-    velocities[i * 3 + 1] = rng.range(1.5, 4);
-    velocities[i * 3 + 2] = Math.sin(ang) * spd;
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({
-    color: 0xcbb48a, size: 0.6, sizeAttenuation: true,
-    transparent: true, opacity: 0.6, depthWrite: false,
-  });
-  const points = new THREE.Points(geo, mat);
-  points.name = 'landfall-dust-burst';
-  opts.scene.add(points);
-  activeDust = { points, velocities, startedAt: elapsedTotal };
-}
-
-function tickDust(dt: number): void {
-  if (!activeDust) return;
-  const age = elapsedTotal - activeDust.startedAt;
-  const posAttr = activeDust.points.geometry.getAttribute('position') as THREE.BufferAttribute;
-  const arr = posAttr.array as Float32Array;
-  for (let i = 0; i < DUST_BURST_COUNT; i++) {
-    arr[i * 3] += activeDust.velocities[i * 3] * dt;
-    arr[i * 3 + 1] += activeDust.velocities[i * 3 + 1] * dt;
-    activeDust.velocities[i * 3 + 1] -= 9 * dt; // gravity
-    arr[i * 3 + 2] += activeDust.velocities[i * 3 + 2] * dt;
-  }
-  posAttr.needsUpdate = true;
-  (activeDust.points.material as THREE.PointsMaterial).opacity = 0.6 * Math.max(0, 1 - age / DUST_BURST_LIFE_SECS);
-  if (age >= DUST_BURST_LIFE_SECS) disposeDust();
 }
 
 function tickFlash(dt: number): void {
@@ -151,7 +108,9 @@ function tickFlash(dt: number): void {
 }
 
 /** Overwrite the 'landfall-descent' registry entry and teleport the shared
- *  camera onto it — see file header for why this is the camera-drive path. */
+ *  camera onto it — see file header for why this is the camera-drive path.
+ *  v1.2.1 B5 nit: registerCam() allocates 2 Vector3s + an entry object every
+ *  call (core/cameras.ts, not owned by this lane) — reported, not fixed. */
 function applyPoseWithShake(x: number, y: number, z: number, shakeAmp: number): void {
   const jitterYaw = shakeAmp > 0
     ? (Math.sin(elapsedTotal * shakeF1 + shakeP1) * 0.6 + Math.sin(elapsedTotal * shakeF2 + shakeP2) * 0.4) * shakeAmp
@@ -310,6 +269,16 @@ export function armDescent(): void {
 
 /** testApi.resetFlight() chain (flight/landfall.ts's resetLandfall()). */
 export function resetDescent(): void {
+  // v1.2.1 (Lane A debugging finding) — armDescent() disables pointer-look
+  // (disconnect() also drops PointerLockControls' OWN pointerlockchange
+  // listener), and normally only beginWalkHandoff() re-enables it. A reset
+  // that interrupts an ACTIVE descent (resetFlight() mid-phase — Test 15's
+  // repeatability check does this) skipped that re-enable: isLocked would
+  // never update again, so tickController swallows WASD for the rest of the
+  // run. Check the OLD phase before overwriting it below.
+  if (phase === 'ENTRY' || phase === 'BRAKE' || phase === 'TOUCHDOWN') {
+    setPointerLookEnabled(true); // connect() is idempotent if already connected
+  }
   phase = 'NONE';
   phaseT = 0;
   elapsedTotal = 0;

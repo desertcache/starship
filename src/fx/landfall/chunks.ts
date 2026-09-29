@@ -50,6 +50,11 @@ export interface ChunkManager {
    *  `pos` — the screenshot/test-determinism entry point (see file header). */
   snapStream(pos: THREE.Vector3): void;
   chunksResident(): number;
+  /** v1.2.1 B4 test hook: resident LOD (0=finest..2=coarsest) of the chunk
+   *  containing world position `pos`, or null if nothing is resident there
+   *  right now. Lets landing.mjs assert every chunk within ring 1 of the
+   *  player actually refined to LOD0 after walking onto it. */
+  lodAt(pos: THREE.Vector3): Lod | null;
   dispose(): void;
 }
 
@@ -64,14 +69,31 @@ function lodForRing(ring: number): Lod | null {
   return null;
 }
 
-/** A resident chunk only reclassifies once the player's ring distance to it
- *  moves ±1 PAST the bound that originally admitted its current LOD — this
- *  is the anti-thrash hysteresis the brief calls for. Returns the LOD to keep
- *  the chunk at, or null if it should despawn entirely. */
+/**
+ * v1.2.1 B4 fix (r2 P2) — the pre-fix version returned `currentLod` whenever
+ * `ring <= LOD_BOUNDS[currentLod] + 1`, with NO check on which direction the
+ * player was moving relative to the chunk. Since that bound is the chunk's
+ * OWN (possibly coarse) admit radius, a chunk that streamed in at the
+ * ring-6 edge as LOD2 stayed LOD2 forever as the player walked right on top
+ * of it (ring 0 <= bound(6)+1 keeps returning LOD2) — it could coarsen
+ * (ring growing past the bound) but never REFINE. The rendered 8m-grid
+ * surface then drifted off getGroundHeightAt()'s analytic height on the
+ * mesa terraces, because a chunk's hysteresis bound is about damping
+ * COARSENING thrash at a boundary, not about damping a genuine approach.
+ *
+ * Fix: only apply the hysteresis dwell when the ring's natural LOD is
+ * COARSER than the current one (moving away); refine immediately —
+ * `ring <= LOD_BOUNDS[finer]` — the instant the natural LOD is finer
+ * (moving closer). Despawn (`desired === null`) is never damped either way.
+ */
 function hysteresisLod(ring: number, currentLod: Lod): Lod | null {
+  const desired = lodForRing(ring);
+  if (desired === null) return null; // beyond every ring — despawn outright
+  if (desired <= currentLod) return desired; // same or REFINING: no dwell
+  // Coarsening: dwell at the current (finer) LOD until the ring moves 1 PAST
+  // its own bound (anti-thrash), exactly the pre-fix behavior for this case.
   const bound = LOD_BOUNDS[currentLod];
-  if (ring <= bound + 1) return currentLod;
-  return lodForRing(ring);
+  return ring <= bound + 1 ? currentLod : desired;
 }
 
 export function createChunkManager(scene: THREE.Scene, field: HeightField, biome: BiomePreset): ChunkManager {
@@ -191,6 +213,11 @@ export function createChunkManager(scene: THREE.Scene, field: HeightField, biome
     return resident.size;
   }
 
+  function lodAt(pos: THREE.Vector3): Lod | null {
+    const { cx, cz } = chunkOf(pos);
+    return resident.get(key(cx, cz))?.lod ?? null;
+  }
+
   function dispose(): void {
     for (const [, entry] of resident) {
       scene.remove(entry.mesh);
@@ -204,5 +231,5 @@ export function createChunkManager(scene: THREE.Scene, field: HeightField, biome
     material.dispose();
   }
 
-  return { update, snapStream, chunksResident, dispose };
+  return { update, snapStream, chunksResident, lodAt, dispose };
 }
