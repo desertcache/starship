@@ -353,40 +353,65 @@ async function run() {
     console.log('[verify] All Phase 4 functional tests PASSED ✓\n');
 
     // ── Test 3: Door toggle (corridor-galley door at world 0,0,-7) ──────────────
-    // Door starts OPEN. Teleport player next to it, interact → should close.
-    // Then interact again → should re-open.
-    console.log('[verify] Test 3: Door toggle (corridor-galley)');
+    // v1.2.1 (ship lane): was __test.interact()'s proximity fallback, which
+    // never exercises the NAME-only resolution the real E key depends on
+    // (player/interact.ts) — the exact gap that shipped 7 doors unreachable
+    // (doors.ts's nested per-id hitGroup fixes it). Real aim + a real
+    // keydown this time. `aimAndPressERealE` (declared once, here) is reused
+    // by Test 6 below — both are this lane's blocks.
+    console.log('[verify] Test 3: Door toggle (corridor-galley) — real E key');
     const doorId = 'corridor-galley';
+
+    async function aimAndPressERealE(from, at, expectId, label) {
+      await page.evaluate(
+        ([f, a]) => window.__test.aimFrom(f[0], f[1], f[2], a[0], a[1], a[2]),
+        [from, at],
+      );
+      await waitFrame();
+      const probe = await page.evaluate(() => ({
+        id: window.__test.getInteractTarget(),
+        prompt: window.__test.getPromptText(),
+      }));
+      console.log(`  ${label}: real E targets '${probe.id}' (prompt '${probe.prompt}')`);
+      assert(probe.id === expectId, `${label}: real E key should target '${expectId}'; got '${probe.id}'`);
+      assert(probe.prompt.startsWith('[E]'), `${label}: a live [E] prompt should show for '${expectId}'; got '${probe.prompt}'`);
+      await page.keyboard.press('KeyE');
+      await waitFrame();
+    }
+
+    // tickDoors() advances animT by dt/ANIM_DURATION, and main.ts clamps dt at
+    // 50ms/frame — so a FIXED real-time sleep does not reliably bound when a
+    // 480ms door animation actually finishes under headless SwiftShader's
+    // irregular (sometimes far slower than 20fps, and slower still under
+    // concurrent-lane CPU contention) frame delivery. Fast-forward
+    // deterministically instead — same pattern as Test 11/13a/14's
+    // flightTickN/approachTickN (testApiFlight.ts) for the identical reason.
+    async function waitForDoorSettled() {
+      await page.evaluate(() => window.__test.tickDoorsN(60, 16.6)); // ~1000ms simulated, real animation logic
+      await waitFrame();
+    }
 
     const preToggleOpen = await page.evaluate((id) => window.__test.getDoorOpen(id), doorId);
     console.log(`  pre-toggle: isDoorOpen=${preToggleOpen}`);
     assert(preToggleOpen === true, `Door '${doorId}' should start OPEN; got closed`);
 
-    // Teleport adjacent to door
-    await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
-    await waitFrame();
-    await sleep(150);
-
-    const interacted3a = await page.evaluate(() => window.__test.interact());
-    assert(interacted3a, 'interact() returned false — door interactable not found');
-    await sleep(600); // let animation run
+    // Open doors park up at ~2.15-4.23m (OPEN_TRAVEL_Y) — the real E key can
+    // only reach one by looking up (see the A2 finding in the lane report).
+    await aimAndPressERealE([0, 1.7, -6.0], [0, 2.6, -7], doorId, 'corridor-galley (close)');
+    await waitForDoorSettled(); // let the real animation actually finish
 
     const afterClose = await page.evaluate((id) => window.__test.getDoorOpen(id), doorId);
     console.log(`  after close interact: isDoorOpen=${afterClose}`);
     assert(afterClose === false, `Door should be CLOSED after first interact; got open`);
 
-    // Toggle back open
-    await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
-    await waitFrame();
-    await sleep(150);
-    const interacted3b = await page.evaluate(() => window.__test.interact());
-    assert(interacted3b, 'interact() returned false on second door interact');
-    await sleep(600);
+    // Closed doors sit at their normal waist-height footprint.
+    await aimAndPressERealE([0, 1.7, -6.0], [0, 1.1, -7], doorId, 'corridor-galley (reopen)');
+    await waitForDoorSettled();
 
     const afterReopen = await page.evaluate((id) => window.__test.getDoorOpen(id), doorId);
     console.log(`  after reopen interact: isDoorOpen=${afterReopen}`);
     assert(afterReopen === true, `Door should be OPEN after second interact; got closed`);
-    console.log('[verify] Test 3 PASSED ✓ (door toggled closed then re-opened)');
+    console.log('[verify] Test 3 PASSED ✓ (door toggled closed then re-opened via the REAL E key)');
 
     // ── Test 4: Fridge ration restores DRAINED hunger (strict) ───────────────────
     // Hunger sits near 100 after Test 2, which made a delta assertion vacuous.
@@ -490,48 +515,49 @@ async function run() {
     console.log('[verify] All 5 functional tests PASSED ✓\n');
 
     // ── Test 6: Door auto-close regression (corridor-galley) ────────────────────
-    // Open + arm the door via interact, walk far away (cockpit), then run the
-    // auto-close check with the dwell-timer overridden and assert the door shut.
-    console.log('[verify] Test 6: Door auto-close regression (corridor-galley)');
+    // v1.2.1 (ship lane): forceDoorAutoCloseCheck() (deleted — see doors.ts)
+    // duplicated the close logic and never called tickDoors() at all, which
+    // is exactly how this regression test kept passing while the real door
+    // tick was dead since v0.2a (onBeforeRender on a visible:false dummy).
+    // Real E key opens+arms it; debugExpireDoorDwell() only fast-forwards
+    // the 8s dwell CLOCK — the close itself now happens inside a REAL
+    // tickDoors() call (world/shipTicks.ts, ticked every frame from
+    // main.ts's animate() loop while the ship world is active).
+    console.log('[verify] Test 6: Door auto-close regression (corridor-galley) — real tick');
     const acDoorId = 'corridor-galley';
 
-    // Ensure the door is OPEN and ARMED. Interacting arms auto-close; after the
-    // prior tests the door is open, so toggle twice to land on open+armed.
-    await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
-    await waitFrame();
-    await sleep(150);
+    // Test 3 left this door OPEN. Toggle closed then open again via the real
+    // E key so it ends OPEN and ARMED (any manual interact arms auto-close).
     if (await page.evaluate((id) => window.__test.getDoorOpen(id), acDoorId)) {
-      // It's open — close then reopen so it ends open AND armed.
-      await page.evaluate(() => window.__test.interact()); // close + arm
-      await sleep(600);
-      await page.evaluate(() => window.__test.teleport(0, 1.7, -6.0));
-      await waitFrame();
-      await sleep(150);
-      await page.evaluate(() => window.__test.interact()); // reopen (still armed)
-      await sleep(600);
+      await aimAndPressERealE([0, 1.7, -6.0], [0, 2.6, -7], acDoorId, 'corridor-galley (close+arm)');
+      await waitForDoorSettled();
+      await aimAndPressERealE([0, 1.7, -6.0], [0, 1.1, -7], acDoorId, 'corridor-galley (reopen, stays armed)');
+      await waitForDoorSettled();
     } else {
-      await page.evaluate(() => window.__test.interact()); // open + arm
-      await sleep(600);
+      await aimAndPressERealE([0, 1.7, -6.0], [0, 1.1, -7], acDoorId, 'corridor-galley (open+arm)');
+      await waitForDoorSettled();
     }
     const acOpenBefore = await page.evaluate((id) => window.__test.getDoorOpen(id), acDoorId);
     console.log(`  door open + armed before walk-away: isDoorOpen=${acOpenBefore}`);
     assert(acOpenBefore === true, 'Test 6: door should be OPEN (and armed) before auto-close check');
 
-    // Walk far away (cockpit). Wait a couple frames so tickInteract threads the
-    // new player position into doors.ts before we force the check.
+    // Walk far away (cockpit) — real tickDoors() reads this via
+    // tickInteract()'s per-frame setPlayerPosForDoors(), same as a player
+    // actually walking away.
     await page.evaluate(() => window.__test.teleport(0, 1.7, -22.5));
     await waitFrame();
     await sleep(250);
 
-    const acClosed = await page.evaluate(() => window.__test.forceDoorAutoCloseCheck());
-    console.log(`  forceDoorAutoCloseCheck() closed: [${acClosed.join(', ')}]`);
-    await sleep(600); // let the close animation run
+    // Fast-forward the dwell CLOCK only; the close happens on the very next
+    // real tickDoors() call, not from this hook. Poll (not a fixed sleep)
+    // until the real close animation actually finishes.
+    await page.evaluate((id) => window.__test.debugExpireDoorDwell(id), acDoorId);
+    await waitForDoorSettled();
 
     const acOpenAfter = await page.evaluate((id) => window.__test.getDoorOpen(id), acDoorId);
-    console.log(`  after auto-close check: isDoorOpen=${acOpenAfter}`);
-    assert(acClosed.includes(acDoorId), `Test 6: ${acDoorId} should have auto-closed; closed=[${acClosed.join(', ')}]`);
-    assert(acOpenAfter === false, 'Test 6: door should be CLOSED after auto-close check');
-    console.log('[verify] Test 6 PASSED ✓ (armed door auto-closed when player walked away)');
+    console.log(`  after real auto-close tick: isDoorOpen=${acOpenAfter}`);
+    assert(acOpenAfter === false, 'Test 6: door should be CLOSED after the real auto-close tick fired');
+    console.log('[verify] Test 6 PASSED ✓ (armed door auto-closed for real when player walked away)');
 
     // ── Test 7: Scan API smoke ──────────────────────────────────────────────────
     // getScan() returns null or a well-formed ScanData. With the deterministic
@@ -1334,6 +1360,7 @@ async function run() {
     const landfallWalkShot = resolve(SHOTS_DIR, 'landfall-walk.png');
     await page.screenshot({ path: landfallWalkShot });
     console.log(`[verify] Shot saved: ${landfallWalkShot}`);
+
 
     // v1.2.1: state wait — the handoff teleport moves the eye off the pad
     // centre (touchdown pose is x=z=0; the walk spawn is ~27 m out).

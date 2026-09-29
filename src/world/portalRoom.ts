@@ -17,11 +17,13 @@
  * (worldBoot.getScene returns null — see fx/portalSurface.ts renderLive).
  * The one path this can't intercept is Stage A's own walk-through plane-cross
  * trigger inside portalSurface.ts (consumed, not modified, per project
- * rules) — a tiny self-ticking guard mesh calls the exported
- * resetPortalTraversalLatch() every frame while none of the 3 worlds are
- * registered, so an accidental walk-through can never permanently wedge the
- * portal system. Once Stage C registers a world this guard's condition goes
- * false and stops firing — zero code changes needed here.
+ * rules) — tickPortalLatchGuard() (exported below, called every real frame
+ * from world/shipTicks.ts while the ship world is active — v1.2.1; it used
+ * to be a self-ticking dummy mesh that three.js never actually rendered)
+ * calls the exported resetPortalTraversalLatch() while none of the 3 worlds
+ * are registered, so an accidental walk-through can never permanently wedge
+ * the portal system. Once Stage C registers a world this guard's condition
+ * goes false and stops firing — zero code changes needed here.
  */
 import * as THREE from 'three';
 import { buildRoom } from './roomBuilder.js';
@@ -193,20 +195,9 @@ export function buildPortalRoom(): RoomModule {
     interactables.push(makeGracefulPortalInteractable(gate.worldId, gate.portal.interactable));
   }
 
-  // Self-healing latch guard — see file header. Cheap: one visibility-gated
-  // no-op mesh, ticked only while the annex room is in the render frustum
-  // (same acceptable-imperfection tradeoff as doors.ts's own dummy pattern).
-  const latchGuard = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.001, 0.001),
-    new THREE.MeshBasicMaterial({ visible: false }),
-  );
-  latchGuard.position.set(0, 1.6, 0);
-  latchGuard.onBeforeRender = (): void => {
-    if (!hasWorld('verdant') && !hasWorld('ashfall') && !hasWorld('rift')) {
-      resetPortalTraversalLatch();
-    }
-  };
-  group.add(latchGuard);
+  // Self-healing latch guard — v1.2.1: was a dead visible:false dummy mesh
+  // (see world/shipTicks.ts header); tickPortalLatchGuard() below now runs
+  // for real every frame from world/shipTicks.ts.
 
   // ── Holotable hologram: additive-teal ship-hull miniature, dormant until
   // all 3 relics are held. Built once at room-build time; visibility +
@@ -285,6 +276,21 @@ export function buildPortalRoom(): RoomModule {
  * assembly.ts registers for this module.
  */
 export const ANNEX_ROOM_WORLD_OFFSET = new THREE.Vector3(0, 0, 21.5);
+
+/**
+ * v1.2.1 (ship lane): the self-healing fallback formerly on `latchGuard` (see
+ * the file header and buildPortalRoom() above) — call once per frame from
+ * world/shipTicks.ts while the ship world is active. Still an edge case in
+ * practice: core/worlds.ts already resets the latch at switch end, and
+ * core/worldBoot.ts registers all 3 pocket worlds unconditionally at boot,
+ * so `!hasWorld(...)` is false by the time a player can ever reach this
+ * room. Kept as the same cheap insurance the original comment described.
+ */
+export function tickPortalLatchGuard(): void {
+  if (!hasWorld('verdant') && !hasWorld('ashfall') && !hasWorld('rift')) {
+    resetPortalTraversalLatch();
+  }
+}
 
 export function getAnnexArrivalSpawn(): { position: THREE.Vector3; lookAt: THREE.Vector3 } {
   return {

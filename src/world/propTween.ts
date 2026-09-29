@@ -8,7 +8,18 @@
  *   tween.start(1, 0); // close
  *   // attach to a mesh via mesh.onBeforeRender = () => tween.tick();
  *
- * All tweens are self-ticked via onBeforeRender on an invisible driver mesh.
+ * v1.2.1 (ship lane): that last line matters more than it looks. three.js
+ * calls Object3D.onBeforeRender from exactly one place
+ * (WebGLRenderer.renderObject()), reached only for a Mesh/Line/Points/Sprite
+ * whose material is visible. Hang tick() on a REAL, VISIBLE mesh that's
+ * already part of the animated prop (the fridge/locker door panel, the
+ * crate shell) — every working tween in this codebase already does this.
+ * NEVER on a THREE.Group, and never on an invisible dummy mesh: this header
+ * used to say tweens are "self-ticked via onBeforeRender on an invisible
+ * driver mesh," which was never true of any tween here and describes
+ * exactly the pattern the v1.2.1 ultrareview found dead everywhere it DID
+ * appear (doors.ts's tickDoors, the cockpit screens, the reactor breath, the
+ * portal latch guard — all fixed in world/shipTicks.ts).
  */
 
 export interface PropTween {

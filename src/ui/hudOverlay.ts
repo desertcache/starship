@@ -122,6 +122,18 @@ let overlayEl: HTMLDivElement | null = null;
 let overlayTitleEl: HTMLDivElement | null = null;
 let overlayBodyEl: HTMLDivElement | null = null;
 
+// v1.2.1 (ship lane, ultrareview r1 P2): the single close path every overlay
+// owner routes through now. An owner that needs cleanup on close (removing
+// its own keydown listener, resetting a mode) passes onClose to showOverlay
+// and gets it called back from exactly one place: hideOverlay(). That covers
+// every way an overlay can go away — the internal Escape listener below, the
+// [ESC] label click, or a DIFFERENT owner's showOverlay() replacing this one
+// — where previously an owner's cleanup ran ONLY from inside its own
+// Escape-key branch, so the breaker cabinet's and console-bank's keydown
+// handlers survived every other close path and kept firing on stray 1/2/
+// Escape presses forever after (interactItems.ts, interactWiring.ts).
+let _activeCloseHandler: (() => void) | null = null;
+
 export function initOverlay(): void {
   overlayEl = makeDiv([
     'position:fixed',
@@ -142,6 +154,7 @@ export function initOverlay(): void {
     `color:${CREAM}`,
     'box-shadow:0 0 24px rgba(70,224,216,0.15)',
   ].join(';'));
+  overlayEl.id = 'ship-overlay';
 
   overlayTitleEl = makeDiv([
     `color:${TEAL}`,
@@ -193,9 +206,25 @@ export function initOverlay(): void {
  *
  * @param title     - Overlay header (monospace teal)
  * @param bodyLines - Plain-text paragraphs (no HTML injection)
+ * @param onClose   - Optional cleanup, called exactly once when THIS
+ *                    overlay closes (Escape, the [ESC] label, or a
+ *                    different owner's showOverlay() replacing it).
+ *                    Re-showing with the SAME onClose reference (e.g.
+ *                    cycling console-bank modes on repeated E, or the
+ *                    breaker re-rendering its panel after a Digit1/Digit2
+ *                    press) is treated as the same owner and does NOT fire it.
  */
-export function showOverlay(title: string, bodyLines: string[]): void {
+export function showOverlay(title: string, bodyLines: string[], onClose?: () => void): void {
   if (!overlayEl || !overlayTitleEl || !overlayBodyEl) return;
+
+  const incoming = onClose ?? null;
+  if (_activeCloseHandler && _activeCloseHandler !== incoming) {
+    const prev = _activeCloseHandler;
+    _activeCloseHandler = null; // clear first — prev() may itself show/hide
+    prev();
+  }
+  _activeCloseHandler = incoming;
+
   overlayTitleEl.textContent = title;
 
   while (overlayBodyEl.firstChild) overlayBodyEl.removeChild(overlayBodyEl.firstChild);
@@ -208,8 +237,24 @@ export function showOverlay(title: string, bodyLines: string[]): void {
   overlayEl.style.display = 'block';
 }
 
-/** Hide the overlay panel. */
+/** Hide the overlay panel and fire the active owner's onClose (if any), once. */
 export function hideOverlay(): void {
   if (!overlayEl) return;
   overlayEl.style.display = 'none';
+  const cb = _activeCloseHandler;
+  _activeCloseHandler = null;
+  if (cb) cb();
+}
+
+/** Test-only (core/testHooksShip.ts): whether the lore/console overlay is
+ *  currently visible — for proving a close path actually closed it. */
+export function isOverlayVisibleForTest(): boolean {
+  return !!overlayEl && overlayEl.style.display !== 'none';
+}
+
+/** Test-only: the overlay's current title, '' while hidden — e.g. asserting
+ *  the console-bank cycle actually shows 'CONSOLE — NAV/SYSTEMS/PLANET SCAN'. */
+export function getOverlayTitleForTest(): string {
+  if (!overlayEl || overlayEl.style.display === 'none') return '';
+  return overlayTitleEl?.textContent ?? '';
 }

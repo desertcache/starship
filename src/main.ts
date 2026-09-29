@@ -27,6 +27,7 @@ import { installTestApi } from './core/testApi.js';
 import { getView } from './flight/flightState.js';
 import { tickHelm } from './flight/helm.js'; // v1.1 SOVEREIGN Stage 2 (Lane B)
 import { initFlightBoot, tickShipFrame } from './flight/flightBoot.js'; // v1.2 LANDFALL Stage 0 (Lane P1a)
+import { tickShipInterior } from './world/shipTicks.js'; // v1.2.1 (ship lane)
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -249,6 +250,9 @@ function animate(now: number): void {
     // (v1.2 LANDFALL Stage 0, Lane P1a). Internal order is LOAD-BEARING
     // (tickFlight first, then its consumers) — see that file.
     tickShipFrame(dtSeconds, elapsed);
+    // Doors, cockpit screens/dust, reactor breath, portal latch fallback —
+    // see world/shipTicks.ts (v1.2.1, replaces four dead onBeforeRender hooks).
+    tickShipInterior(dtSeconds, now);
   } else {
     activeWorld.update(dtSeconds, camera.position);
   }
