@@ -10,11 +10,12 @@ import type { TestApiDeps } from './testApi.js';
 import { getFridgeStateForTest, resetFridgeForTest, questAdvanceViaBreaker } from '../world/interactItems.js';
 import { questRevealAndReadPanel } from '../world/interactWiring.js';
 import {
-  isDoorOpen, debugExpireDoorDwell, getDoorSlabY, getDoorColliderBounds, tickDoorsN,
+  isDoorOpen, debugExpireDoorDwell, disarmDoorAutoCloseForTest, getDoorSlabY, getDoorColliderBounds, tickDoorsN,
 } from '../world/doors.js';
 import { setReactorBreathFreezeForTest } from '../fx/lightingRig.js';
 import { getCrateBGroup } from '../world/engineeringProps.js';
 import { isOverlayVisibleForTest, getOverlayTitleForTest } from '../ui/hudOverlay.js';
+import { isMoving } from '../player/controller.js';
 
 export interface ShipTestHooks {
   getDoorOpen(id: string): boolean;
@@ -24,6 +25,8 @@ export interface ShipTestHooks {
    *  auto-closes it — replaces forceDoorAutoCloseCheck(), which skipped
    *  tickDoors() entirely (see doors.ts for why that hid the real bug). */
   debugExpireDoorDwell(id: string): void;
+  /** Test-only suite cleanup after a door is open through the real E path. */
+  disarmDoorAutoClose(id: string): void;
   /** A door's live world-space slab Y — proves the real tick actually moves it. */
   getDoorSlabY(id: string): number | null;
   /** A door's live collider Y bounds — for asserting blocking at the
@@ -46,9 +49,14 @@ export interface ShipTestHooks {
   isOverlayVisible(): boolean;
   /** The overlay's current title, '' while hidden. */
   getOverlayTitle(): string;
+  /** Diagnostic (A2 WASD-block proof): whether tickController currently
+   *  considers the player as walking (pointer-locked + a movement key
+   *  held), plus the camera's current yaw — for isolating why a real WASD
+   *  hold produced no position change. */
+  getMoveDiag(): { moving: boolean; locked: boolean; yaw: number };
 }
 
-export function buildShipTestHooks(_deps: TestApiDeps): ShipTestHooks {
+export function buildShipTestHooks(deps: TestApiDeps): ShipTestHooks {
   return {
     getDoorOpen(id: string): boolean {
       return isDoorOpen(id);
@@ -61,6 +69,9 @@ export function buildShipTestHooks(_deps: TestApiDeps): ShipTestHooks {
     },
     debugExpireDoorDwell(id: string): void {
       debugExpireDoorDwell(id);
+    },
+    disarmDoorAutoClose(id: string): void {
+      disarmDoorAutoCloseForTest(id);
     },
     getDoorSlabY(id: string): number | null {
       return getDoorSlabY(id);
@@ -88,6 +99,13 @@ export function buildShipTestHooks(_deps: TestApiDeps): ShipTestHooks {
     },
     getOverlayTitle(): string {
       return getOverlayTitleForTest();
+    },
+    getMoveDiag(): { moving: boolean; locked: boolean; yaw: number } {
+      return {
+        moving: isMoving(),
+        locked: document.pointerLockElement !== null,
+        yaw: deps.camera.rotation.y,
+      };
     },
   };
 }

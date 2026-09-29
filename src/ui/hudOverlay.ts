@@ -154,6 +154,7 @@ export function initOverlay(): void {
     `color:${CREAM}`,
     'box-shadow:0 0 24px rgba(70,224,216,0.15)',
   ].join(';'));
+  overlayEl.id = 'ship-overlay';
 
   overlayTitleEl = makeDiv([
     `color:${TEAL}`,

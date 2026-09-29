@@ -33,6 +33,12 @@ export async function runShipSuite(ctx) {
     await waitFrame();
   }
 
+  async function clickEscCloseLabel() {
+    const closeLabel = page.locator('#ship-overlay').getByText('[ESC]', { exact: true });
+    assert(await closeLabel.count() === 1, 'overlay should contain exactly one [ESC] close label');
+    await closeLabel.click();
+  }
+
   // ── Contract: normalize entry state ────────────────────────────────────
   await page.evaluate(() => window.__test.switchWorld('ship'));
   await sleep(150);
@@ -75,13 +81,9 @@ export async function runShipSuite(ctx) {
     // Closed doors must collide. Pointer lock needs a real user gesture, and
     // cross-lane confirms it IS reliably acquirable in this exact harness
     // (Lane B, landing.mjs B6.6: a real held KeyW moved their camera ~1.9m).
-    // First attempt used page.keyboard.down()+sleep(700)+up(): that produced
-    // IDENTICAL zero movement whether the door was open or closed — dt is
-    // accumulated PER REAL FRAME (capped 50ms, same as tickDoors' animT), so
-    // a wall-clock sleep can starve under multi-lane CPU load exactly like
-    // the door-animation bug above; it doesn't guarantee tickController ever
-    // sees the key held across a rendered frame. waitFrames() (a real rAF
-    // chain, inside the page) guarantees the frame count instead.
+    // Lane B reconnects PointerLockControls in resetDescent() at the source;
+    // this assertion still proves the real canvas gesture and held KeyW path
+    // cross the threshold only when the door is open.
     const faceDoor = async () => {
       // aimFrom sets the camera position itself, so this doesn't need (and
       // must not redundantly fight) a separate teleport() first. Target is
@@ -95,10 +97,11 @@ export async function runShipSuite(ctx) {
       const before = await page.evaluate(() => window.__test.getPlayerPos());
       await page.keyboard.down('KeyW');
       await waitFrames(page, 10);
+      const midDiag = await page.evaluate(() => window.__test.getMoveDiag());
       await page.keyboard.up('KeyW');
       await waitFrames(page, 2);
       const after = await page.evaluate(() => window.__test.getPlayerPos());
-      console.log(`  ${id}: real WASD ${label}: z ${before.z.toFixed(2)} -> ${after.z.toFixed(2)}`);
+      console.log(`  ${id}: real WASD ${label}: z ${before.z.toFixed(2)} -> ${after.z.toFixed(2)} (mid-hold: moving=${midDiag.moving} locked=${midDiag.locked} yaw=${midDiag.yaw.toFixed(3)})`);
       return after.z;
     };
 
@@ -201,7 +204,13 @@ export async function runShipSuite(ctx) {
   //    real Escape (the A5 regression below re-uses this same interactable).
   {
     const from = [0, 1.7, -23.5];
-    const at = [0, 1.0, -24.98];
+    // The registered interactable position (0,1.0,-24.98) is the console
+    // body's OUTER/fore edge, not a point ON it — the merged body+cap only
+    // spans world Y up to ~24.47 (BH+TH=0.97) and the screens sit at world Z
+    // ~-24.43 to -24.98; aiming (1.0, -24.98) sails clean over the top the
+    // whole way through that Z range. This targets the body's true centre
+    // (world Y 0.5, Z -24.7) instead.
+    const at = [0, 0.5, -24.7];
     const probe = await aimProbe(page, from, at);
     console.log(`  console-bank probe: id=${probe.id} prompt='${probe.prompt}'`);
     assert(probe.id === 'console-bank', `console-bank should resolve via the real E key; got '${probe.id}'`);
@@ -229,7 +238,10 @@ export async function runShipSuite(ctx) {
   //    comment in portalRoomProps.ts for why the screen needed it too.
   {
     const from = [-1.8, 1.7, 18.8];
-    const at = [-2.6, 1.0, 18.4];
+    // Housing spans world Z 18.10-18.40 (local -3.40..-3.10 at annex worldPos
+    // 21.5) — 18.4 sits right on that near edge, a borderline graze; aim at
+    // the housing's true centre (world Z 18.25) instead.
+    const at = [-2.6, 0.65, 18.25];
     const probe = await aimProbe(page, from, at);
     console.log(`  dimensional-survey-console probe: id=${probe.id} prompt='${probe.prompt}'`);
     assert(probe.id === 'dimensional-survey-console', `survey console should resolve via the real E key; got '${probe.id}'`);
@@ -289,7 +301,7 @@ export async function runShipSuite(ctx) {
     // Close by clicking the [ESC] label — NOT the Escape key — the exact
     // path that used to leak (hudOverlay.ts's closeBtn only ever called
     // hideOverlay(), never the owner's own cleanup).
-    await page.getByText('[ESC]').click();
+    await clickEscCloseLabel();
     await waitFrames(page, 2);
     assert((await page.evaluate(() => window.__test.isOverlayVisible())) === false, 'breaker overlay should be closed after the [ESC] label click');
 
@@ -297,8 +309,13 @@ export async function runShipSuite(ctx) {
     await page.keyboard.press('Digit1'); // would drain -20 energy if the handler leaked
     await waitFrames(page, 2);
     const energyAfter = (await page.evaluate(() => window.__test.getState())).energy;
-    console.log(`  post-[ESC]-label-close, stray Digit1 — energy ${energyBefore.toFixed(1)} -> ${energyAfter.toFixed(1)} (expect unchanged)`);
-    assert(Math.abs(energyAfter - energyBefore) < 0.01, `breaker handler leaked: a stray Digit1 changed energy (${energyBefore} -> ${energyAfter})`);
+    console.log(`  post-[ESC]-label-close, stray Digit1 — energy ${energyBefore.toFixed(1)} -> ${energyAfter.toFixed(1)} (expect ~unchanged, not -20)`);
+    // Energy decays continuously in real time (~0.1/s, per Test 1's own
+    // comment) regardless of any interaction, so a few real-clock frames
+    // between the two reads naturally drifts it a little. A leaked handler
+    // would drain a full -20 on this keypress; assert far below that, not
+    // bit-for-bit equality.
+    assert(Math.abs(energyAfter - energyBefore) < 2, `breaker handler leaked: a stray Digit1 changed energy (${energyBefore} -> ${energyAfter})`);
     assert((await page.evaluate(() => window.__test.isOverlayVisible())) === false, 'no overlay should have re-appeared from a leaked handler');
     console.log('[ship-suite] A5 PASSED (breaker handler does not survive an [ESC]-label close)');
   }
@@ -310,9 +327,9 @@ export async function runShipSuite(ctx) {
     const from = [0, 1.7, -23.5];
     await page.evaluate((p) => window.__test.teleport(p[0], 1.7, p[2]), from);
     await waitFrame();
-    await aimAndPressE(page, assert, from, [0, 1.0, -24.98], 'console-bank', 'console-bank (A5 regression, open)');
+    await aimAndPressE(page, assert, from, [0, 0.5, -24.7], 'console-bank', 'console-bank (A5 regression, open)');
     await waitFrames(page, 2);
-    await page.getByText('[ESC]').click();
+    await clickEscCloseLabel();
     await waitFrames(page, 2);
     assert((await page.evaluate(() => window.__test.isOverlayVisible())) === false, 'console-bank overlay should close on the [ESC] label click');
 
@@ -320,7 +337,7 @@ export async function runShipSuite(ctx) {
     await waitFrames(page, 2);
     assert((await page.evaluate(() => window.__test.isOverlayVisible())) === false, 'a stray Escape after an [ESC]-label close should be a harmless no-op');
 
-    await aimAndPressE(page, assert, from, [0, 1.0, -24.98], 'console-bank', 'console-bank (A5 regression, reopen)');
+    await aimAndPressE(page, assert, from, [0, 0.5, -24.7], 'console-bank', 'console-bank (A5 regression, reopen)');
     await waitFrames(page, 2);
     const title = await page.evaluate(() => window.__test.getOverlayTitle());
     console.log(`  console-bank re-opened after the stray Escape: '${title}' (expect SYSTEMS — mode correctly reset to 0 by the label-click close)`);
@@ -374,12 +391,41 @@ export async function runShipSuite(ctx) {
   }
 
   // ── Contract: leave the shared page in the state the next suite expects ─
-  await page.evaluate((n) => window.__setCam(n), 'cockpit'); // also forces flight view back to 'interior' (Test 13b)
+  await page.evaluate((n) => window.__setCam(n), 'cockpit');
   await waitFrame();
   await page.evaluate(() => window.__test.resetFlight());
   await waitFrame();
-  for (const id of ['cockpit-aft', 'corridor-galley']) {
-    assert((await page.evaluate((i) => window.__test.getDoorOpen(i), id)) === true, `end-of-suite: ${id} should be OPEN`);
+
+  // The suite takes longer than the 8-second auto-close dwell, so earlier
+  // real-E reopens can close again while later checks run. Restore every door
+  // through the real raycast and E path immediately before returning.
+  const finalDoorTargets = [
+    { id: 'cockpit-aft', from: [0, 1.7, -19.0], at: [0, 1.1, -20] },
+    ...otherDoors.map(({ id, pos, from }) => ({
+      id,
+      from,
+      at: [pos[0], 0.8, pos[2]],
+    })),
+    { id: 'corridor-galley', from: [0, 1.7, -6.0], at: [0, 1.1, -7] },
+  ];
+  for (const { id, from, at } of finalDoorTargets) {
+    const disarmIfOpen = () => page.evaluate((i) => {
+      const open = window.__test.getDoorOpen(i);
+      if (open) window.__test.disarmDoorAutoClose(i);
+      return open;
+    }, id);
+    if (!(await disarmIfOpen())) {
+      await aimAndPressE(page, assert, from, at, id, id + ' (suite-exit reopen)');
+      await waitForDoorSettled();
+      assert(await disarmIfOpen(), 'suite-exit: ' + id + ' should be OPEN after real E');
+    }
+  }
+  await page.evaluate((n) => window.__setCam(n), 'cockpit');
+  await waitFrame();
+  await page.evaluate(() => window.__test.resetFlight());
+  await waitFrame();
+  for (const { id } of finalDoorTargets) {
+    assert((await page.evaluate((i) => window.__test.getDoorOpen(i), id)) === true, 'final suite state: ' + id + ' should remain OPEN');
   }
   console.log('[ship-suite] All Lane A checks PASSED ✓\n');
 }

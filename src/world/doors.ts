@@ -192,6 +192,18 @@ export function debugExpireDoorDwell(id: string): void {
   if (rec) rec.openedAt = performance.now() - 8001;
 }
 
+/** Test-only suite cleanup: disarm auto-close for a door already restored by
+ *  the real E interaction path. This preserves gameplay auto-close behavior
+ *  while returning shared verification state to all doors open.
+ */
+export function disarmDoorAutoCloseForTest(id: string): void {
+  const rec = doorRecords.find((r) => r.id === id);
+  if (rec && rec.open) {
+    rec.autoCloseArmed = false;
+    rec.openedAt = performance.now();
+  }
+}
+
 /** Test hook: a door's live world-space slab Y — proves it actually moves. */
 export function getDoorSlabY(id: string): number | null {
   const rec = doorRecords.find((r) => r.id === id);
