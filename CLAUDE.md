@@ -23,8 +23,8 @@ Rules:
 - No file exceeds 300 lines. If it does, split it before continuing.
 - No `any`. Explicit return types on exported functions.
 - Rooms expose a typed interface: `{ group: THREE.Group, colliders: AABB[], interactables: Interactable[], cameras: NamedCamera[] }`. assembly.ts consumes only this interface.
-- Pocket worlds are separate THREE.Scenes implementing the `World` contract in src/core/worldTypes.ts (docs/design-v1.0-threshold.md). Only the active scene renders; the WorldManager owns switching, composer rebinding, and the controller's collider/groundHeight swap. World camera names are prefixed `<worldId>-` and `__setCam` activates the owning world.
-- No globals except the verification contract: `window.__ready` (Promise resolving when scene is loaded), `window.__setCam(name)` (teleports view to a named camera), `window.__perf.sample(ms)` (Promise<PerfReport>), `window.__test` (hooks for functional tests).
+- Pocket worlds are separate THREE.Scenes implementing the `World` contract in src/core/worldTypes.ts (docs/design-v1.0-threshold.md). Only the active scene renders; the WorldManager owns switching, composer rebinding, and the controller's collider/groundHeight swap. World camera records carry an owning `worldId` tag; hero camera names stay unprefixed, and `__setCam` activates the owning world.
+- No globals except the verification contract: `window.__ready` (Promise resolving when scene is loaded), `window.__setCam(name)` (teleports view to a named camera), `window.__camNames` (registered camera names), `window.__perf.sample(ms)` (Promise<PerfReport>), and `window.__test` (hooks for functional tests).
 - Dispose of geometries/materials you replace. Leaks count as bugs.
 
 ## Verification protocol — non-negotiable

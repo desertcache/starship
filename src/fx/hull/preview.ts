@@ -135,9 +135,20 @@ function setMode(mode: number): void {
 }
 
 function updateMeshes(): void {
-  if (clayMesh) scene.remove(clayMesh);
-  if (holoMesh) scene.remove(holoMesh);
-  if (wireframeObj) scene.remove(wireframeObj);
+  if (clayMesh) {
+    scene.remove(clayMesh);
+    clayMesh.geometry.dispose();
+    (clayMesh.material as THREE.Material).dispose();
+  }
+  if (holoMesh) {
+    scene.remove(holoMesh);
+    holoMesh.geometry.dispose(); // holoMat is shared across preview rebuilds
+  }
+  if (wireframeObj) {
+    scene.remove(wireframeObj);
+    wireframeObj.geometry.dispose();
+    (wireframeObj.material as THREE.Material).dispose();
+  }
 
   const build = buildHullGeometry(currentSeed, interiorAnchors);
 

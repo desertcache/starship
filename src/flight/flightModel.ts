@@ -127,7 +127,7 @@ export function tickFlightModel(state: InternalFlightState, dt: number): void {
     state.velocityW.copy(scratchNose).multiplyScalar(state.speed);
   } else {
     scratchDir.copy(state.velocityW).normalize();
-    const bledDir = dampVec3(scratchDir, scratchNose, LATERAL_BLEED_LAMBDA, dt).normalize();
+    const bledDir = dampVec3(scratchDir, scratchNose, LATERAL_BLEED_LAMBDA, dt, scratchDir).normalize();
     state.velocityW.copy(bledDir).multiplyScalar(state.speed);
   }
 

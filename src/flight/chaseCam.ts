@@ -34,25 +34,28 @@ import {
   setFlightView,
 } from './flightState.js';
 
-// ── Tuning (design §9) ──────────────────────────────────────────────────────
-const CAM_ROT_LAMBDA = 3;
-const CAM_POS_LAMBDA = 6;
-const CHASE_ARM = new THREE.Vector3(0, 10, 40);
-const ARM_STRETCH_MAX = 0.25;   // +25% arm length at speedFrac 1
-const ARM_STRETCH_LAMBDA = 2.5;
-const LEAD_DIST = 25;
-const LEAD_Y = 2;
-const CHASE_FOV_BASE = 62;
-const FOV_BOOST = 16;
-const FOV_WIDEN_LAMBDA = 4;
-const FOV_NARROW_LAMBDA = 2.5;
+import {
+  CAM_POS_LAMBDA,
+  CAM_ROT_LAMBDA,
+  CHASE_ARM as CHASE_ARM_OFFSET,
+  CHASE_ARM_BOOST_MULT,
+  CHASE_ARM_LAMBDA,
+  CHASE_FOV_BASE,
+  CHASE_FOV_BOOST,
+  CHASE_FOV_NARROW_LAMBDA,
+  CHASE_FOV_WIDEN_LAMBDA,
+  LEAD_DIST,
+  LEAD_Y,
+} from './flightTuning.js';
 
+const CHASE_ARM = new THREE.Vector3(...CHASE_ARM_OFFSET);
+const armWorldScratch = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 const LEAD_TARGET = new THREE.Vector3(0, LEAD_Y, -LEAD_DIST);
 
 // ── World-frame lag state ────────────────────────────────────────────────────
-let qCam = new THREE.Quaternion();
-let pCam = new THREE.Vector3();
+const qCam = new THREE.Quaternion();
+const pCam = new THREE.Vector3();
 let armStretch = 1;
 let currentFov = CHASE_FOV_BASE;
 let seeded = false; // has qCam/pCam ever been seeded from a real attitude?
@@ -70,15 +73,15 @@ export function initChaseCam(camera: THREE.PerspectiveCamera): void {
 }
 
 function targetArmScale(speedFrac: number): number {
-  return 1 + ARM_STRETCH_MAX * speedFrac;
+  return 1 + (CHASE_ARM_BOOST_MULT - 1) * speedFrac;
 }
 
 function targetFov(speedFrac: number): number {
-  return CHASE_FOV_BASE + FOV_BOOST * THREE.MathUtils.smoothstep(speedFrac, 0.4, 1.0);
+  return CHASE_FOV_BASE + CHASE_FOV_BOOST * THREE.MathUtils.smoothstep(speedFrac, 0.4, 1.0);
 }
 
-function armWorld(): THREE.Vector3 {
-  return CHASE_ARM.clone().multiplyScalar(armStretch).applyQuaternion(qCam);
+function armWorld(out: THREE.Vector3): THREE.Vector3 {
+  return out.copy(CHASE_ARM).multiplyScalar(armStretch).applyQuaternion(qCam);
 }
 
 /** Apply the current lag state (qCam/pCam/armStretch/currentFov) onto `camera`. */
@@ -104,7 +107,7 @@ function enterExterior(camera: THREE.PerspectiveCamera): void {
     const speedFrac = getSpeedFrac();
     qCam.copy(getAttitude());
     armStretch = targetArmScale(speedFrac);
-    pCam.copy(armWorld());
+    pCam.copy(armWorld(armWorldScratch));
     currentFov = targetFov(speedFrac);
     seeded = true;
   }
@@ -144,12 +147,12 @@ export function tickChaseCam(dt: number): void {
   const q = getAttitude();
   const speedFrac = getSpeedFrac();
 
-  qCam = slerpDamp(qCam, q, CAM_ROT_LAMBDA, dt);
-  armStretch = damp(armStretch, targetArmScale(speedFrac), ARM_STRETCH_LAMBDA, dt);
-  pCam = dampVec3(pCam, armWorld(), CAM_POS_LAMBDA, dt);
+  slerpDamp(qCam, q, CAM_ROT_LAMBDA, dt, qCam);
+  armStretch = damp(armStretch, targetArmScale(speedFrac), CHASE_ARM_LAMBDA, dt);
+  dampVec3(pCam, armWorld(armWorldScratch), CAM_POS_LAMBDA, dt, pCam);
 
   const wantFov = targetFov(speedFrac);
-  currentFov = damp(currentFov, wantFov, wantFov > currentFov ? FOV_WIDEN_LAMBDA : FOV_NARROW_LAMBDA, dt);
+  currentFov = damp(currentFov, wantFov, wantFov > currentFov ? CHASE_FOV_WIDEN_LAMBDA : CHASE_FOV_NARROW_LAMBDA, dt);
 
   applyPose(cam);
 }
@@ -189,7 +192,7 @@ export function snapChaseConverged(): void {
   const speedFrac = getSpeedFrac();
   qCam.copy(getAttitude());
   armStretch = targetArmScale(speedFrac);
-  pCam.copy(armWorld());
+  pCam.copy(armWorld(armWorldScratch));
   currentFov = targetFov(speedFrac);
   seeded = true;
   applyPose(cam);
