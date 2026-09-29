@@ -8,6 +8,17 @@
  *
  * Bodies do NOT move themselves laterally — the director owns world velocity.
  * tick(dt) only advances the local self-spin.
+ *
+ * v1.2.1 Lane D (HERO TEXTURE HITCH): `deferred=true` (RUNTIME hero spawns
+ * only — see cast.ts's HeroOpts.deferred / director.ts's trySpawnHero) time-
+ * slices the body-core texture's expensive per-pixel paint across frames
+ * instead of blocking the spawning frame for ~35-224ms. Every rng draw the
+ * texture depends on still happens HERE, synchronously, in today's exact
+ * order (see giantTexture.ts / grainDeferred.ts headers) — deferred only
+ * changes WHEN the pixels get painted, never the rng sequence or the final
+ * bytes. Boot-time bodies (spawnSignatureHeroes) and destinationVisual.ts's
+ * createBody('ROCKY',...) call omit the 6th arg, so they're unaffected:
+ * always the original fully-synchronous path.
  */
 
 import * as THREE from 'three';
@@ -19,10 +30,19 @@ import {
   rockyTexture,
   iceTexture,
   lavaBaseTexture,
-  lavaCrackTexture,
-  ringTexture,
   moonTexture,
 } from './bodyTextures.js';
+import { ringTexture, lavaCrackTexture } from './overlayTextures.js';
+import {
+  beginGasGiantDeferred,
+  beginRockyDeferred,
+  beginIceDeferred,
+  beginLavaBaseDeferred,
+  beginMoonDeferred,
+  type DeferredHeroTexture,
+} from './grainDeferred.js';
+import { cancelHeroTextureJob, type HeroTextureJob } from './heroTextureJobs.js';
+import { addAtmosphere } from './atmosphere.js';
 
 export type BodyKind = 'GAS_GIANT' | 'ROCKY' | 'ICE' | 'LAVA' | 'RINGED' | 'MOON';
 
@@ -64,73 +84,39 @@ function disposeAll(d: Disposables): void {
   for (const t of d.texs) t.dispose();
 }
 
-// Additive fresnel-rim atmosphere shell (gas giants, ringed giants, hero ice
-// worlds). DoubleSide rasterizes both hemispheres of the (slightly larger)
-// shell: the front hemisphere sits just outside the opaque core across the
-// whole visible disc and is depth-tested in front of it, so its own rim term
-// (bright at the grazing silhouette, ~0 dead-centre) paints a soft glow that
-// blends inward over the core's limb-darkened edge; the back hemisphere is
-// occluded by the core everywhere except the thin annulus beyond its
-// silhouette, painting the matching outward feather into space. Both use the
-// same symmetric rim term (1 - |N·V|), so one mesh/material covers both.
-const ATMO_VERT = /* glsl */ `
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  void main() {
-    vNormal = normalize(normalMatrix * normal);
-    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-    vViewDir = normalize(-mvPos.xyz);
-    gl_Position = projectionMatrix * mvPos;
+/** Build the body-core mesh + material from either a one-shot sync texture
+ *  or a deferred job. `begin` is null for the sync path (destination/boot
+ *  bodies, ambients, and any hero whose caller didn't ask for deferred).
+ *  `onTex`/`onJob` let the caller (createBody) stash the CURRENT texture
+ *  (placeholder, then whatever it gets swapped to) and the cancel handle for
+ *  dispose() — see this file's header for why the rng sequence never moves. */
+function buildCoreMesh(
+  mainGeo: THREE.SphereGeometry,
+  sync: () => THREE.CanvasTexture,
+  begin: ((onDone: (tex: THREE.CanvasTexture) => void) => DeferredHeroTexture) | null,
+  onTex: (tex: THREE.Texture) => void,
+  onJob: (job: HeroTextureJob) => void,
+): { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial } {
+  let mat!: THREE.MeshBasicMaterial;
+  let tex: THREE.Texture;
+  if (begin) {
+    const deferred = begin((finalTex) => {
+      const old = mat.map;
+      mat.map = finalTex;
+      mat.needsUpdate = true;
+      old?.dispose();
+      onTex(finalTex);
+    });
+    tex = deferred.placeholder;
+    onJob(deferred.job);
+  } else {
+    tex = sync();
   }
-`;
-
-const ATMO_FRAG = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uIntensity;
-  uniform float uPower;
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  void main() {
-    float ndotv = dot(normalize(vNormal), normalize(vViewDir));
-    // Symmetric rim: 1 at the grazing silhouette (ndotv≈0) on EITHER
-    // hemisphere, falling to 0 at both the direct-facing near pole (ndotv=1,
-    // dead centre of the visible disc) and the hidden far pole (ndotv=-1).
-    float rim = clamp(1.0 - abs(ndotv), 0.0, 1.0);
-    // Steep power => the glow is only appreciable in a thin band right at
-    // the tangent and has already decayed to ~0 a modest way inward (over
-    // the core's own limb-darkened edge) and outward (before the shell's own
-    // silhouette), so neither side hard-cuts.
-    float fresnel = pow(rim, uPower);
-    float alpha = fresnel * uIntensity;
-    // Desaturate toward white at peak brightness so the line reads as a
-    // glow, not a saturated painted stroke.
-    vec3 color = mix(uColor, vec3(1.0), fresnel * 0.6);
-    gl_FragColor = vec4(color, alpha);
-  }
-`;
-
-/** Add a coloured additive fresnel atmosphere rim shell. */
-function addAtmosphere(group: THREE.Group, radius: number, colorHex: number, d: Disposables, rng: Rng): void {
-  const shellR = radius * (1 + rng.range(0.1, 0.14));
-  const geo = new THREE.SphereGeometry(shellR, 28, 20);
-  const mat = new THREE.ShaderMaterial({
-    uniforms: {
-      uColor: { value: new THREE.Color(colorHex) },
-      uIntensity: { value: rng.range(0.35, 0.5) },
-      uPower: { value: rng.range(3.0, 4.0) },
-    },
-    vertexShader: ATMO_VERT,
-    fragmentShader: ATMO_FRAG,
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.name = 'atmosphere';
-  group.add(mesh);
-  track(d, geo, mat);
+  mat = new THREE.MeshBasicMaterial({ map: tex });
+  onTex(tex);
+  const mesh = new THREE.Mesh(mainGeo, mat);
+  mesh.name = 'body-core';
+  return { mesh, mat };
 }
 
 /**
@@ -139,6 +125,11 @@ function addAtmosphere(group: THREE.Group, radius: number, colorHex: number, d: 
  * `familyIndex` optionally forces a gas-giant hue family (0..3); else seeded.
  * `pinnedLightU` overrides the seeded terminator direction for GAS_GIANT/RINGED
  * bodies; use 0.25 for a clearly visible terminator across the visible disc.
+ * `deferred` (default false): time-slice the body-core texture's paint step
+ * across frames instead of generating it synchronously — only meaningful
+ * for hero-size bodies (texSize=1024); ignored otherwise. RUNTIME hero
+ * spawns only (see this file's header) — never set for boot/destination
+ * bodies, whose textures must exist before __ready / the first screenshot.
  */
 export function createBody(
   rng: Rng,
@@ -146,29 +137,42 @@ export function createBody(
   radius: number,
   familyIndex?: number,
   pinnedLightU?: number,
+  deferred = false,
 ): Body {
   const group = new THREE.Group();
   group.name = `body-${kind}`;
   const d: Disposables = { geos: [], mats: [], texs: [] };
   const hero = radius >= 50;
   const texSize = hero ? 1024 : 256;
+  const useDeferred = deferred && hero;
 
   let cls = 'Unknown';
   let composition = 'unclassified';
   const spinSpeed = rng.range(0.01, 0.04);
+
+  // The body-core texture currently bound to the material — the placeholder
+  // until a deferred job's onDone swaps it, else always the final texture.
+  // dispose() releases whichever this is at the time it runs.
+  let mainTex: THREE.Texture | null = null;
+  let deferredJob: HeroTextureJob | null = null;
+  const onTex = (t: THREE.Texture): void => { mainTex = t; };
+  const onJob = (j: HeroTextureJob): void => { deferredJob = j; };
 
   const mainGeo = sphere(radius, hero);
 
   if (kind === 'GAS_GIANT' || kind === 'RINGED') {
     const fi = familyIndex ?? rng.int(0, HUE_FAMILIES.length - 1);
     const family = HUE_FAMILIES[fi];
-    const tex = gasGiantTexture(rng, family, texSize, pinnedLightU);
-    const mat = new THREE.MeshBasicMaterial({ map: tex });
-    const mesh = new THREE.Mesh(mainGeo, mat);
-    mesh.name = 'body-core';
+    const { mesh, mat } = buildCoreMesh(
+      mainGeo,
+      () => gasGiantTexture(rng, family, texSize, pinnedLightU),
+      useDeferred ? (onDone) => beginGasGiantDeferred(rng, family, texSize, pinnedLightU, onDone) : null,
+      onTex,
+      onJob,
+    );
     group.add(mesh);
-    track(d, mainGeo, mat, tex);
-    addAtmosphere(group, radius, family.accent, d, rng);
+    track(d, mainGeo, mat);
+    addAtmosphere(group, radius, family.accent, rng, (geo, m) => track(d, geo, m));
     cls = kind === 'RINGED' ? 'Ringed Giant' : 'Gas Giant — Class III';
     composition = 'hydrogen, helium, ammonia';
 
@@ -189,33 +193,43 @@ export function createBody(
       track(d, ringGeo, ringMat, ringTex);
     }
   } else if (kind === 'ROCKY') {
-    const tex = rockyTexture(rng, texSize);
-    const mat = new THREE.MeshBasicMaterial({ map: tex });
-    const mesh = new THREE.Mesh(mainGeo, mat);
-    mesh.name = 'body-core';
+    const { mesh, mat } = buildCoreMesh(
+      mainGeo,
+      () => rockyTexture(rng, texSize),
+      useDeferred ? (onDone) => beginRockyDeferred(rng, texSize, onDone) : null,
+      onTex,
+      onJob,
+    );
     group.add(mesh);
-    track(d, mainGeo, mat, tex);
+    track(d, mainGeo, mat);
     cls = 'Rocky / Terrestrial';
     composition = 'silicate, iron oxide';
   } else if (kind === 'ICE') {
-    const tex = iceTexture(rng, texSize);
-    const mat = new THREE.MeshBasicMaterial({ map: tex });
-    const mesh = new THREE.Mesh(mainGeo, mat);
-    mesh.name = 'body-core';
+    const { mesh, mat } = buildCoreMesh(
+      mainGeo,
+      () => iceTexture(rng, texSize),
+      useDeferred ? (onDone) => beginIceDeferred(rng, texSize, onDone) : null,
+      onTex,
+      onJob,
+    );
     group.add(mesh);
-    track(d, mainGeo, mat, tex);
-    if (hero) addAtmosphere(group, radius, ICE_ATMO_TINT, d, rng);
+    track(d, mainGeo, mat);
+    if (hero) addAtmosphere(group, radius, ICE_ATMO_TINT, rng, (geo, m) => track(d, geo, m));
     cls = 'Ice World';
     composition = 'water ice, ammonia';
   } else if (kind === 'LAVA') {
-    const baseTex = lavaBaseTexture(rng, texSize);
-    const baseMat = new THREE.MeshBasicMaterial({ map: baseTex });
-    const mesh = new THREE.Mesh(mainGeo, baseMat);
-    mesh.name = 'body-core';
+    const { mesh, mat } = buildCoreMesh(
+      mainGeo,
+      () => lavaBaseTexture(rng, texSize),
+      useDeferred ? (onDone) => beginLavaBaseDeferred(rng, texSize, onDone) : null,
+      onTex,
+      onJob,
+    );
     group.add(mesh);
-    track(d, mainGeo, baseMat, baseTex);
+    track(d, mainGeo, mat);
 
-    // Emissive crack overlay (toneMapped=false so cracks bloom).
+    // Emissive crack overlay (toneMapped=false so cracks bloom). Cheap
+    // (~1-2ms even at hero size — no per-pixel loop), always synchronous.
     const crackTex = lavaCrackTexture(rng, texSize);
     const crackGeo = sphere(radius * 1.001, hero);
     const crackMat = new THREE.MeshBasicMaterial({
@@ -233,12 +247,15 @@ export function createBody(
     composition = 'basalt, sulfur';
   } else {
     // MOON
-    const tex = moonTexture(rng, texSize);
-    const mat = new THREE.MeshBasicMaterial({ map: tex });
-    const mesh = new THREE.Mesh(mainGeo, mat);
-    mesh.name = 'body-core';
+    const { mesh, mat } = buildCoreMesh(
+      mainGeo,
+      () => moonTexture(rng, texSize),
+      useDeferred ? (onDone) => beginMoonDeferred(rng, texSize, onDone) : null,
+      onTex,
+      onJob,
+    );
     group.add(mesh);
-    track(d, mainGeo, mat, tex);
+    track(d, mainGeo, mat);
     cls = 'Moon';
     composition = 'silicate, regolith';
   }
@@ -256,7 +273,11 @@ export function createBody(
   }
 
   function dispose(): void {
+    // Cancel BEFORE disposing anything — a job whose onDone fires after this
+    // would otherwise write mat.map on a (soon to be) disposed material.
+    if (deferredJob) cancelHeroTextureJob(deferredJob);
     disposeAll(d);
+    mainTex?.dispose();
   }
 
   return { group, tick, dispose, scan };

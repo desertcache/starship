@@ -141,13 +141,19 @@ export interface HeroOpts {
    * Omit for seeded (random) direction used by scheduled/ambient bodies.
    */
   lightU?: number;
+  /** v1.2.1 Lane D (HERO TEXTURE HITCH): time-slice this body's texture
+   *  paint across frames instead of blocking the spawning frame. Only ever
+   *  set true for RUNTIME hero spawns (director.ts's trySpawnHero, once
+   *  signatureDone) — the deterministic t=0 signature cast omits it, so it
+   *  stays on the fully-synchronous boot path (see bodies.ts's header). */
+  deferred?: boolean;
 }
 
 /** Spawn a hero body (radius 60-140). */
 export function spawnHero(rng: Rng, o: HeroOpts = {}): BodyEntry {
   const k = o.kind ?? HERO_KINDS[rng.pick(HERO_WEIGHTS)];
   const r = o.radius ?? rng.range(60, 140);
-  const body = createBody(rng, k, r, o.familyIndex, o.lightU);
+  const body = createBody(rng, k, r, o.familyIndex, o.lightU, o.deferred);
   if (o.at) body.group.position.copy(o.at);
   else placeSpawn(body.group, rng);
   return {
