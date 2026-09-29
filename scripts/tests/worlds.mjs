@@ -249,16 +249,16 @@ export async function runWorldsSuite(ctx) {
   assert(Number.isFinite(heroTexMs) && heroTexMs >= 0, `C7: measured a non-finite/negative duration: ${heroTexMs}`);
 
   // ── Lane D (HERO TEXTURE HITCH): deferred hero-texture paint ─────────────
-  // D1: byte-identity — sync one-shot vs. the deferred params/paint split,
-  // same seed, drained to completion, for every hero body-class generator
-  // (constraint 2: final pixels must be byte-identical).
+  // D1: byte-identity and RNG-state equality — sync vs. deferred per hero
+  // class; compare final pixels and the next RNG value after each generator.
   console.log('[verify] Lane D / D1: hero-texture byte-identity (sync vs. deferred)');
   const oldSyncMsByKind = await page.evaluate(() => window.__test.measureAllHeroTextureGenMs());
   for (const kind of ['GAS_GIANT', 'ROCKY', 'ICE', 'LAVA', 'MOON']) {
     const cmp = await page.evaluate((k) => window.__test.compareHeroTextureByteIdentity(k), kind);
-    console.log(`[verify]   ${kind}: ${cmp.width}x${cmp.height}, diffCount=${cmp.diffCount}/${cmp.syncLength}`);
+    console.log('[verify]   ' + kind + ': ' + cmp.width + 'x' + cmp.height + ', diffCount=' + cmp.diffCount + '/' + cmp.syncLength + ', rngEqual=' + cmp.rngEqual);
     assert(cmp.syncLength > 0 && cmp.deferredLength > 0, `D1 ${kind}: byte-identity probe returned empty textures`);
     assert(cmp.equal === true, `D1 ${kind}: deferred texture is NOT byte-identical to the synchronous one (diffCount=${cmp.diffCount})`);
+    assert(cmp.rngEqual === true, 'D1 ' + kind + ': deferred generator advanced the RNG differently from the synchronous path');
   }
   console.log('[verify] Lane D / D1 PASSED (5/5 hero body classes byte-identical, sync vs. deferred)');
 
@@ -274,22 +274,26 @@ export async function runWorldsSuite(ctx) {
   // OS-level scheduler preemption landing mid-slice under this repo's own
   // 3-lane-concurrent-verify convention (brief-common.md) — no in-process
   // time-slicing can observe a wall-clock gap it wasn't scheduled through.
-  // So: up to 3 attempts, first one at/under budget wins; only fail if
-  // EVERY attempt exceeds it (real regressions fail every time; scheduler
-  // noise is transient by nature). Logged next to the old fully-synchronous
-  // number every attempt for the record.
+  // Keep up to 3 attempts for transient scheduler noise. Record each attempted
+  // maximum and the worst observed one so a passing retry cannot hide a spike.
+  // Systematic regressions still fail when every attempt exceeds the ceiling.
   console.log('[verify] Lane D / D2: deferred hero-spawn main-thread budget');
   console.log(`[verify]   old synchronous cost per generator (record): ${JSON.stringify(oldSyncMsByKind)}`);
   const BUDGET_CEILING_MS = 8;
   const D2_ATTEMPTS = 3;
   let bestBudget = null;
+  let worstBudget = null;
+  const d2AttemptMaxes = [];
   for (let attempt = 1; attempt <= D2_ATTEMPTS; attempt++) {
     const budget = await page.evaluate(() => window.__test.measureDeferredHeroSpawnBudget(4));
     console.log(`[verify]   attempt ${attempt}/${D2_ATTEMPTS}: old sync gasGiantTexture=${budget.oldSyncMs.toFixed(2)} ms  vs.  deferred worst single tick=${budget.maxFrameMs.toFixed(2)} ms over ${budget.frames} frames (total ${budget.totalMs.toFixed(2)} ms)`);
     assert(budget.frames > 0, 'D2: the deferred job should have taken at least one tick to finish');
+    d2AttemptMaxes.push(budget.maxFrameMs);
     if (!bestBudget || budget.maxFrameMs < bestBudget.maxFrameMs) bestBudget = budget;
+    if (!worstBudget || budget.maxFrameMs > worstBudget.maxFrameMs) worstBudget = budget;
     if (budget.maxFrameMs <= BUDGET_CEILING_MS) break;
   }
+  console.log('[verify]   all attempted maxima: [' + d2AttemptMaxes.map((ms) => ms.toFixed(2)).join(', ') + '] ms; worst observed=' + worstBudget.maxFrameMs.toFixed(2) + ' ms');
   assert(
     bestBudget.maxFrameMs <= BUDGET_CEILING_MS,
     `D2: every one of ${D2_ATTEMPTS} attempts exceeded the ~8ms/frame ceiling (best: ${bestBudget.maxFrameMs.toFixed(2)} ms)`,

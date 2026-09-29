@@ -95,6 +95,7 @@ export interface WorldsTestHooks {
    *  textures) against the REAL generators, not a reimplementation. */
   compareHeroTextureByteIdentity(kind: HeroBodyClass): {
     equal: boolean;
+    rngEqual: boolean;
     diffCount: number;
     syncLength: number;
     deferredLength: number;
@@ -182,29 +183,32 @@ export function buildWorldsTestHooks(deps: TestApiDeps): WorldsTestHooks {
     },
     compareHeroTextureByteIdentity(kind: HeroBodyClass) {
       const SEED = 0xbeef01;
+      const syncRng = makeRng(SEED);
+      const deferredRng = makeRng(SEED);
       let syncTex: THREE.CanvasTexture;
       let deferredTex: THREE.CanvasTexture | null = null;
       const onDone = (t: THREE.CanvasTexture): void => { deferredTex = t; };
       if (kind === 'GAS_GIANT') {
-        syncTex = gasGiantTexture(makeRng(SEED), HUE_FAMILIES[1], 1024);
-        beginGasGiantDeferred(makeRng(SEED), HUE_FAMILIES[1], 1024, undefined, onDone);
+        syncTex = gasGiantTexture(syncRng, HUE_FAMILIES[1], 1024);
+        beginGasGiantDeferred(deferredRng, HUE_FAMILIES[1], 1024, undefined, onDone);
       } else if (kind === 'ROCKY') {
-        syncTex = rockyTexture(makeRng(SEED), 1024);
-        beginRockyDeferred(makeRng(SEED), 1024, onDone);
+        syncTex = rockyTexture(syncRng, 1024);
+        beginRockyDeferred(deferredRng, 1024, onDone);
       } else if (kind === 'ICE') {
-        syncTex = iceTexture(makeRng(SEED), 1024);
-        beginIceDeferred(makeRng(SEED), 1024, onDone);
+        syncTex = iceTexture(syncRng, 1024);
+        beginIceDeferred(deferredRng, 1024, onDone);
       } else if (kind === 'LAVA') {
-        syncTex = lavaBaseTexture(makeRng(SEED), 1024);
-        beginLavaBaseDeferred(makeRng(SEED), 1024, onDone);
+        syncTex = lavaBaseTexture(syncRng, 1024);
+        beginLavaBaseDeferred(deferredRng, 1024, onDone);
       } else {
-        syncTex = moonTexture(makeRng(SEED), 1024);
-        beginMoonDeferred(makeRng(SEED), 1024, onDone);
+        syncTex = moonTexture(syncRng, 1024);
+        beginMoonDeferred(deferredRng, 1024, onDone);
       }
+      const rngEqual = syncRng() === deferredRng();
       drainAllHeroTextureJobs();
       if (deferredTex === null) {
         syncTex.dispose();
-        return { equal: false, diffCount: -1, syncLength: 0, deferredLength: 0, width: 0, height: 0 };
+        return { equal: false, rngEqual, diffCount: -1, syncLength: 0, deferredLength: 0, width: 0, height: 0 };
       }
       // Cast, not a re-check: TS won't carry non-null narrowing on a
       // closure-mutated `let` past a later statement; onDone already ran
@@ -222,6 +226,7 @@ export function buildWorldsTestHooks(deps: TestApiDeps): WorldsTestHooks {
       finalTex.dispose();
       return {
         equal: diffCount === 0 && a.data.length === b.data.length && a.width === b.width && a.height === b.height,
+        rngEqual,
         diffCount,
         syncLength: a.data.length,
         deferredLength: b.data.length,
