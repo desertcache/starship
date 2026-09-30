@@ -23,6 +23,14 @@ export async function waitFrames(page, n = 3) {
   }), n);
 }
 
+/** Wait until the HUD fade overlay is fully transparent before a screenshot. */
+export async function waitForFadeClear(page) {
+  await page.waitForFunction(() => {
+    const fade = document.getElementById('scene-fade');
+    return fade !== null && Number.parseFloat(getComputedStyle(fade).opacity) <= 0.01;
+  }, null, { timeout: 30000 });
+}
+
 /**
  * Pose the real camera at `from` looking at `at` ([x,y,z] arrays; pass eye
  * height for `from[1]` while standing — the controller re-clamps y every

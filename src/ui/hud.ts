@@ -195,6 +195,7 @@ export function initHud(): void {
     'z-index:1000',
     'transition:opacity 0.35s ease',
   ].join(';'));
+  fadeEl.id = 'scene-fade';
   document.body.appendChild(fadeEl);
 
   // ── Toast + overlay elements (delegated to hudOverlay.ts) ──────────────────

@@ -24,6 +24,7 @@ import { runSweeps } from './tests/sweeps.mjs';
 import { runShipSuite } from './tests/ship.mjs';
 import { runLandingSuite } from './tests/landing.mjs';
 import { runWorldsSuite } from './tests/worlds.mjs';
+import { waitForFadeClear } from './tests/helpers.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -1324,6 +1325,7 @@ async function run() {
     assert(postLand15.landing !== null && postLand15.landing.phase === 'ENTRY', `Test 15: descent phase should be ENTRY; got ${JSON.stringify(postLand15.landing)}`);
     assert(postLand15.landing.altitude > 600, `Test 15: ENTRY altitude should still be > 600 just after the landing fade; got ${postLand15.landing.altitude}`);
 
+    await waitForFadeClear(page);
     const landfallEntryShot = resolve(SHOTS_DIR, 'landfall-entry.png');
     await page.screenshot({ path: landfallEntryShot });
     console.log(`[verify] Shot saved: ${landfallEntryShot}`);
@@ -1357,15 +1359,14 @@ async function run() {
       );
     }
 
-    const landfallWalkShot = resolve(SHOTS_DIR, 'landfall-walk.png');
-    await page.screenshot({ path: landfallWalkShot });
-    console.log(`[verify] Shot saved: ${landfallWalkShot}`);
-
-
     // v1.2.1: state wait — the handoff teleport moves the eye off the pad
     // centre (touchdown pose is x=z=0; the walk spawn is ~27 m out).
     await page.waitForFunction(() => { const p = window.__test.getPlayerPos(); return Math.hypot(p.x, p.z) > 5; }, null, { timeout: 30000 });
     await waitFrame();
+    await waitForFadeClear(page);
+    const landfallWalkShot = resolve(SHOTS_DIR, 'landfall-walk.png');
+    await page.screenshot({ path: landfallWalkShot });
+    console.log(`[verify] Shot saved: ${landfallWalkShot}`);
 
     const walkPos15 = await page.evaluate(() => window.__test.getPlayerPos());
     const walkGround15 = await page.evaluate(
@@ -1409,6 +1410,7 @@ async function run() {
       `Test 15: trueDist should be preserved by the landing roundtrip; before=${trueDist0} after=${finalApproach15.trueDist}`,
     );
 
+    await waitForFadeClear(page);
     const shipReboardShot = resolve(SHOTS_DIR, 'landfall-reboard.png');
     await page.screenshot({ path: shipReboardShot });
     console.log(`[verify] Shot saved: ${shipReboardShot}`);
