@@ -1,23 +1,7 @@
 /**
- * src/world/portalRoomProps.ts — Dimensional Annex prop dressing.
- *
- * Three portal gates (burnt-orange chamfered frames on raised dais steps,
- * gunmetal conduit feeds, teal micro-LED accents), a dimensional survey
- * console anchor, a central holotable, and an arrival-pad marker.
- *
- * Livingness (T1): each gate's conduit carries a column of small emissive
- * segments whose opacity/color is `f(t - index*phaseStep)` — a charge pulse
- * that visibly TRAVELS up the conduit toward the gate. Each gate ticks at a
- * different speed/character so the room reads as three distinct living
- * systems (verdant slow+lush, ashfall fast+hot, rift erratic+prismatic).
- * Driven by onBeforeRender directly on each segment mesh (matches the
- * existing attachPulse pattern in engineeringProps.ts) — time-based, never
- * Math.random(). Segment meshes are excluded from mergeStaticSiblings
- * automatically (custom onBeforeRender).
- *
- * Geometry strategy: one canonical gate cluster built at a LOCAL origin (wall
- * at z=0, portal facing -Z), wrapped in a THREE.Group positioned+rotated per
- * gate — the chamfer/frame/conduit language is written once, identically.
+ * Dimensional Annex props: three canonical portal gates, survey console, holotable and arrival marker.
+ * Gate pulses are seeded and time-based on visible conduit segments. Local geometry is wrapped
+ * by per-biome transforms so all three portals keep a shared visual language.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';

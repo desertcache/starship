@@ -65,11 +65,22 @@ export async function runShipSuite(ctx) {
     const from = [0, 1.7, -19.0];
     const wasOpen = await page.evaluate((i) => window.__test.getDoorOpen(i), id);
     assert(wasOpen === true, `${id}: expected to start OPEN; got closed`);
+    const openSlabY = await page.evaluate((i) => window.__test.getDoorSlabY(i), id);
+    assert(openSlabY !== null && openSlabY > 1.9, id + ': expected open slab above the body band; got ' + openSlabY);
 
     const sweep = await aimSweep(page, [0, 0, -20], id, { r: 1.4, y: 1.7, n: 8 });
     console.log(`  ${id} aimSweep (open, parked up — expect low hits from eye height): ${sweep.hits}/${sweep.total}; misses=${JSON.stringify(sweep.misses)}`);
 
     await aimAndPressE(page, assert, from, [0, 2.6, -20], id, `${id} (close)`);
+    // Require a real render-loop tick to move the slab before test fast-forward.
+    await page.waitForFunction(
+      ({ doorId, startY }) => {
+        const currentY = window.__test.getDoorSlabY(doorId);
+        return currentY !== null && currentY < startY - 0.2;
+      },
+      { doorId: id, startY: openSlabY },
+      { timeout: 30000 },
+    );
     await waitForDoorSettled();
 
     const closedNow = await page.evaluate((i) => window.__test.getDoorOpen(i), id);
@@ -143,6 +154,8 @@ export async function runShipSuite(ctx) {
     await waitFrame();
     await sleep(250);
     await page.evaluate((i) => window.__test.debugExpireDoorDwell(i), id);
+    // Auto-close must run through the real main-loop tick before animation settling.
+    await page.waitForFunction((i) => window.__test.getDoorOpen(i) === false, id, { timeout: 30000 });
     await waitForDoorSettled();
     const autoClosedNow = await page.evaluate((i) => window.__test.getDoorOpen(i), id);
     console.log(`  ${id}: after real tickDoors auto-close — isDoorOpen=${autoClosedNow}`);

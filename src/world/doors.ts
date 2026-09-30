@@ -1,10 +1,5 @@
-/**
- * Sliding door slabs for all 6 ship doorways.
- * All doors start OPEN (slab parked up) so functional tests never hit a slab.
- *
- * Palette: gunmetal #1C1E22 slab, orange #C7641E seam strip, teal #46E0D8 status pip.
- * Materials: MeshLambertMaterial for slab (NOT MeshStandard — integration task), MeshBasicMaterial for pip.
- */
+/** Sliding door slabs; all start open with live colliders. */
+
 import * as THREE from 'three';
 import type { AABB } from './types.js';
 import { playOneShot } from '../fx/audio.js';
@@ -47,15 +42,9 @@ const matPip = (): THREE.MeshBasicMaterial =>
 export interface DoorEntry {
   /** Unique string id for this door (e.g. 'cockpit-aft'). */
   id: string;
-  /**
-   * World-space position of the slab centre when CLOSED (slab bottom at Y=0).
-   * Y here = slab vertical centre (0 + SLAB_H/2 = 1.04 for floor-mounted slabs).
-   */
+  /** Closed slab base position in world space. */
   position: THREE.Vector3;
-  /**
-   * Orientation: 'Z' = slab faces Z axis (fore/aft doors),
-   *              'X' = slab faces X axis (side/branch doors).
-   */
+  /** Doorway orientation. */
   facing: 'Z' | 'X';
 }
 
@@ -78,25 +67,20 @@ interface DoorRecord {
   worldZ: number;
 }
 
-// Module-level registry so the post-merge integration agent can wire E-interaction
 export const doorRecords: DoorRecord[] = [];
 
 // ── Player position threading (set from interact.ts each frame) ────────────────
 
 let _playerPos: THREE.Vector3 = new THREE.Vector3(0, 1.7, -19);
 
-/**
- * Store the player's current world-space position for auto-close logic.
- * Called each frame from tickInteract() in interact.ts.
- */
+/** Player position used by door auto-close checks. */
+
 export function setPlayerPosForDoors(p: THREE.Vector3): void {
   _playerPos.copy(p);
 }
 
-/**
- * Arm auto-close on a door after the player has manually interacted with it.
- * Called from interactWiring.ts door onInteract after toggling.
- */
+/** Arm a door's auto-close timer after manual interaction. */
+
 export function armDoorAutoClose(id: string): void {
   const rec = doorRecords.find((r) => r.id === id);
   if (rec) rec.autoCloseArmed = true;
@@ -110,11 +94,8 @@ function easeInOutQuad(t: number): number {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-/**
- * Set a door open or closed by id.
- * @param id  - door id string
- * @param open - true=open (slab up), false=closed (slab down)
- */
+/** Set door state; the slab and collider move on the next tick. */
+
 export function setDoorOpen(id: string, open: boolean): void {
   const rec = doorRecords.find((r) => r.id === id);
   if (!rec) return;
@@ -123,18 +104,15 @@ export function setDoorOpen(id: string, open: boolean): void {
   rec.animDir = open ? 1 : -1;
 }
 
-/**
- * Query whether a door is open (or in the process of opening).
- */
+/** Query whether a door is open or opening. */
+
 export function isDoorOpen(id: string): boolean {
   const rec = doorRecords.find((r) => r.id === id);
   return rec ? rec.open : false;
 }
 
-/**
- * Per-frame tick. Call from assembly animate loop.
- * @param dt - delta time in seconds
- */
+/** Advance door animation and auto-close checks by dt seconds. */
+
 export function tickDoors(dt: number): void {
   const now = performance.now();
 
@@ -184,18 +162,15 @@ export function tickDoors(dt: number): void {
   }
 }
 
-/** Test hook (v1.2.1): rewind a door's dwell timer so tickDoors()'s next real
- *  call sees it elapsed — replaces forceDoorAutoCloseCheck(), which skipped
- *  tickDoors() entirely; the close itself still only happens inside it. */
+/** Test hook: expire a door dwell timer for the next real tick. */
+
 export function debugExpireDoorDwell(id: string): void {
   const rec = doorRecords.find((r) => r.id === id);
   if (rec) rec.openedAt = performance.now() - 8001;
 }
 
-/** Test-only suite cleanup: disarm auto-close for a door already restored by
- *  the real E interaction path. This preserves gameplay auto-close behavior
- *  while returning shared verification state to all doors open.
- */
+/** Test cleanup: disarm auto-close on an already-open door. */
+
 export function disarmDoorAutoCloseForTest(id: string): void {
   const rec = doorRecords.find((r) => r.id === id);
   if (rec && rec.open) {
@@ -210,20 +185,15 @@ export function getDoorSlabY(id: string): number | null {
   return rec ? rec.mesh.position.y : null;
 }
 
-/** Test hook: a door's live collider Y bounds, for asserting blocking when
- *  the harness can't hold a real pointer lock to drive WASD into it. */
+/** Test hook: current live collider bounds. */
+
 export function getDoorColliderBounds(id: string): { minY: number; maxY: number } | null {
   const rec = doorRecords.find((r) => r.id === id);
   return rec ? { minY: rec.collider.minY, maxY: rec.collider.maxY } : null;
 }
 
-/**
- * Test-only fast-forward (core/testHooksShip.ts): call tickDoors() `times`
- * with a fixed per-call dtMs, synchronously — dt is capped at 50ms/real-frame
- * in production (main.ts), so a real-time sleep can't reliably bound a 480ms
- * animation under headless SwiftShader. Same pattern as testApiFlight.ts's
- * flightTickN/approachTickN/landingTickN.
- */
+/** Test-only synchronous fast-forward for deterministic slide settling. */
+
 export function tickDoorsN(times: number, dtMs: number): void {
   const dt = dtMs / 1000;
   for (let i = 0; i < times; i++) tickDoors(dt);
@@ -231,11 +201,8 @@ export function tickDoorsN(times: number, dtMs: number): void {
 
 // ── Build ──────────────────────────────────────────────────────────────────────
 
-/**
- * Build all 6 door slabs and add them to the scene.
- * All doors start OPEN (animT=1, slab parked up).
- * Returns 18 draw calls: 6 slabs + 6 seams + 6 pips.
- */
+/** Build the door slabs; they start open and return 18 draw calls. */
+
 export function buildDoors(scene: THREE.Scene, specs: DoorEntry[]): void {
   for (const spec of specs) {
     const pivotY = spec.position.y; // Y of slab group origin = slab bottom edge

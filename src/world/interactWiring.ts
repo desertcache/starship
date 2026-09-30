@@ -1,18 +1,7 @@
 /**
- * src/world/interactWiring.ts — v0.2 Integration: wire all named geometry
- * groups to Interactable entries and register them with the interact system.
- *
- * Covers:
- *   - 6 sliding doors (dynamic Open/Close prompt)
- *   - 3 plain seats (seat-starboard, bench-fore, bench-aft) — seat-port is
- *     now the HELM (v1.1 SOVEREIGN D2): see src/flight/helm.ts
- *   - console-bank (NAV/SYSTEMS/PLANET SCAN overlay, consoleMode 0→1→2→0)
- *
- * Items / lore / panels → interactItems.ts (split for 300-line limit).
- *
- * All positions are world-space (assembly.ts has already translated them).
+ * Wire ship doors, seats, consoles and crate props to interactables.
+ * Items/lore/panels live in interactItems.ts; positions here are world-space.
  */
-
 import * as THREE from 'three';
 import type { Interactable, InteractContext } from './types.js';
 import { doorRecords, setDoorOpen, isDoorOpen, armDoorAutoClose } from './doors.js';
@@ -42,11 +31,8 @@ function v3(x: number, y: number, z: number): THREE.Vector3 {
 
 // ── 1. Door Interactables ──────────────────────────────────────────────────────
 
-/**
- * Door interactable positions are world-space, slightly offset from the slab
- * to avoid overlapping nearby prop interactables.
- * Radius 1.5 keeps side doors from reaching into quarters rooms.
- */
+/** Offset door prompts from slabs so nearby props stay reachable. */
+
 const DOOR_POSITIONS: Record<string, THREE.Vector3> = {
   'cockpit-aft':         v3(0,    1.1, -20),
   'corridor-quarters-a': v3(-2.5, 1.1, -16),
@@ -83,12 +69,8 @@ function buildDoorInteractables(): Interactable[] {
 
 // ── 2. Seat Interactables ──────────────────────────────────────────────────────
 
-/**
- * Cockpit seats: world positions derived from room local + worldPos (0,0,-22.5).
- *   seat-port/stbd: local (±0.90, 0, 0.3), seat pan Y≈0.53. Look at canopy.
- * Galley benches: world positions derived from local + worldPos (0,0,-1).
- *   bench-fore/aft: look across table center at world (-1.10, 0.78, -1.40).
- */
+/** World-space prompt and anchor poses for cockpit seats and galley benches. */
+
 function buildSeatInteractables(): Interactable[] {
   const seats: Array<{
     id: string;
