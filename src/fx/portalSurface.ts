@@ -29,23 +29,9 @@ import * as THREE from 'three';
 import type { WorldId } from '../core/worldTypes.js';
 import type { Interactable } from '../world/types.js';
 import { createSwirlMaterial, type SwirlUniforms } from './portalShader.js';
-
-export interface PortalSurface {
-  mesh: THREE.Mesh;
-  interactable: Interactable;
-  update(dt: number, playerPos: THREE.Vector3, camera: THREE.PerspectiveCamera): void;
-  /** ~600ms high-energy burst (two-hue flash + filament arcs). Fired on traversal. */
-  discharge(): void;
-  dispose(): void;
-}
-
-interface PortalDeps {
-  renderer: THREE.WebGLRenderer;
-  getScene(id: string): THREE.Scene | null;
-  /** Destination "arrival portal" transform in the target scene, or null (→ identity). */
-  getDestination(id: string): THREE.Matrix4 | null;
-  requestSwitch(target: string): void;
-}
+import type { PortalDeps, PortalSurface } from './portalTypes.js';
+export type { PortalSurface } from './portalTypes.js';
+import { hashStr, rootScene } from './portalUtils.js';
 
 let deps: PortalDeps | null = null;
 export function configurePortals(d: PortalDeps): void { deps = d; }
@@ -85,18 +71,6 @@ const _plane = new THREE.Plane();
 const _dstPos = new THREE.Vector3();
 const _dstNormal = new THREE.Vector3();
 const EMPTY_PLANES: THREE.Plane[] = [];
-
-function hashStr(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return (h >>> 0) / 0xffffffff;
-}
-
-function rootScene(obj: THREE.Object3D): THREE.Scene | null {
-  let n: THREE.Object3D | null = obj;
-  while (n) { if ((n as THREE.Scene).isScene) return n as THREE.Scene; n = n.parent; }
-  return null;
-}
 
 class PortalImpl implements PortalSurface {
   mesh: THREE.Mesh;

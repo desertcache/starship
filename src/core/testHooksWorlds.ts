@@ -67,32 +67,19 @@ function canvasBytesOf(tex: THREE.Texture): { data: Uint8ClampedArray; width: nu
 export type HeroBodyClass = 'GAS_GIANT' | 'ROCKY' | 'ICE' | 'LAVA' | 'MOON';
 
 export interface WorldsTestHooks {
-  /** C2: mirrors the LIGHTFALL vertex shader's y computation for a given
-   *  (aY0, uTime) — see riftFeatures.ts's FALLS_VERT + lightfallYForTest(). */
+  /** C2: mirrors the LIGHTFALL vertex shader y computation. */
   lightfallYAt(aY0: number, uTime: number): number;
   /** C3: the ship's 3 persistent nebula sprites' live world positions. */
   getPersistentNebulaPositions(): Array<{ x: number; y: number; z: number }>;
-  /** C3: advance the real nebula.tick() n times at the given per-tick dt
-   *  (ms), using the LIVE flowW each call — same "loop the real per-frame
-   *  function" pattern as __test.flightTickN. */
+  /** C3: advance the real nebula tick n times using live flowW. */
   tickPersistentNebula(n: number, dtMs: number): void;
   /** C3: the wrap bounds [lo, hi) per axis, straight from nebula.ts. */
   getNebulaWrapBounds(): { x: [number, number]; y: [number, number]; z: [number, number] };
-  /** C7: one synchronous hero-scale (1024px) gas-giant texture generation,
-   *  timed with performance.now() — the SAME family/size real hero spawns
-   *  use (bodies.ts: texSize = hero ? 1024 : 256; HUE_FAMILIES[1] is the
-   *  deterministic t=0 signature canopy giant's family). Returns elapsed ms. */
+  /** C7: time one deterministic hero-scale gas-giant texture generation. */
   measureHeroTextureGenMs(): number;
-  /** v1.2.1 Lane D (HERO TEXTURE HITCH): synchronous hero-scale (1024px)
-   *  generation time for every hero body-class generator, isolated seeds
-   *  (never touches the director's own rng stream) — the "old synchronous
-   *  number" baseline the deferred job path is measured against. */
+  /** Lane D: record sync 1024px generator times with isolated seeds. */
   measureAllHeroTextureGenMs(): Record<string, number>;
-  /** Lane D: generate `kind` at hero size (1024px) from the SAME seed via
-   *  (a) the original one-shot sync generator and (b) the deferred
-   *  params/paint split, drained to completion — then byte-compare the two
-   *  CanvasTextures' ImageData. Proves constraint 2 (byte-identical final
-   *  textures) against the REAL generators, not a reimplementation. */
+  /** Lane D: compare sync/deferred texture bytes and next RNG state. */
   compareHeroTextureByteIdentity(kind: HeroBodyClass): {
     equal: boolean;
     rngEqual: boolean;
@@ -102,39 +89,21 @@ export interface WorldsTestHooks {
     width: number;
     height: number;
   };
-  /** Lane D: spawn ONE real deferred hero body (bodies.ts's createBody,
-   *  deferred=true — director.ts's own runtime-hero-spawn path) and drive
-   *  the SAME shared tickHeroTextureJobs() the real frame loop calls,
-   *  budgeted at `budgetMs`, timing every tick. Returns the worst single-
-   *  tick cost, how many ticks it took, and the old sync generation time
-   *  measured the same run (for the record). */
+  /** Lane D: measure real createBody setup and queued texture ticks. */
   measureDeferredHeroSpawnBudget(budgetMs: number): {
     frames: number;
     maxFrameMs: number;
     totalMs: number;
     oldSyncMs: number;
+    spawnSetupMs: number;
   };
-  /** Lane D: begin a deferred texture job directly (bypassing bodies.ts),
-   *  advance it partially (never to completion), then cancel it the way a
-   *  despawned body's dispose() does — proves onDone (the material/map
-   *  swap) never fires once cancelled, i.e. a despawn mid-job can never
-   *  write to a disposed material. */
+  /** Lane D: cancel a partial job and prove onDone stays silent. */
   testHeroTextureJobCancel(): { onDoneFiredAfterCancel: boolean; jobCancelledFlag: boolean };
-  /** Lane D: end-to-end version of the same proof through the REAL
-   *  createBody(..., deferred=true) + Body.dispose() path — ticks partially,
-   *  disposes mid-job, then keeps draining the shared queue and asserts
-   *  nothing throws. */
+  /** Lane D: dispose a real deferred body mid-job and drain safely. */
   testHeroBodyDisposeMidJob(): { threw: boolean; queueDrainedAfter: boolean };
-  /** Lane D: spawn a real deferred hero body, spy on the placeholder
-   *  texture's own dispose(), drain the job to completion, then check the
-   *  body-core mesh's material — proves the "Swap" contract: the material's
-   *  map is the full-resolution texture (not the 128px placeholder) AND the
-   *  placeholder's dispose() was actually called. */
+  /** Lane D: prove the final map swap disposes its placeholder. */
   testHeroTextureSwap(): { placeholderDisposed: boolean; matMapIsFinal: boolean; matMapWidth: number };
-  /** C8 (read-only — the annex room belongs to Lane A): is the holotable
-   *  hologram ignited? Reads the 'holotable-projection' anchor's children
-   *  directly rather than duplicating portalRoom.ts's ignition logic. Null
-   *  if the annex isn't built (should not happen post-boot). */
+  /** C8: report whether the holotable projection shows its hologram. */
   getHolotableIgnited(): boolean | null;
 }
 
@@ -239,21 +208,36 @@ export function buildWorldsTestHooks(deps: TestApiDeps): WorldsTestHooks {
       gasGiantTexture(makeRng(0xabcd), HUE_FAMILIES[1], 1024);
       const oldSyncMs = performance.now() - t0sync;
 
+      drainAllHeroTextureJobs();
       const before = getCompletedJobCount();
+      const totalStart = performance.now();
+      const setup0 = performance.now();
       const body = createBody(makeRng(0xabcd), 'GAS_GIANT', 120, 1, undefined, true);
+      let spawnSetupMs = performance.now() - setup0;
       let frames = 0;
-      let maxFrameMs = 0;
-      const t1 = performance.now();
-      while (getCompletedJobCount() === before && frames < 100000) {
+      let maxFrameMs = spawnSetupMs;
+
+      // Match director.tick order: advance an existing queued slice, then spawn.
+      const firstFrame = performance.now();
+      tickHeroTextureJobs(budgetMs);
+      const setup1 = performance.now();
+      const secondBody = createBody(makeRng(0xabce), 'GAS_GIANT', 120, 1, undefined, true);
+      spawnSetupMs = Math.max(spawnSetupMs, performance.now() - setup1);
+      maxFrameMs = Math.max(maxFrameMs, performance.now() - firstFrame);
+      frames++;
+
+      const targetCompletedCount = before + 2;
+      while (getCompletedJobCount() < targetCompletedCount && frames < 100000) {
         const f0 = performance.now();
         tickHeroTextureJobs(budgetMs);
         const dt = performance.now() - f0;
         if (dt > maxFrameMs) maxFrameMs = dt;
         frames++;
       }
-      const totalMs = performance.now() - t1;
+      const totalMs = performance.now() - totalStart;
       body.dispose();
-      return { frames, maxFrameMs, totalMs, oldSyncMs };
+      secondBody.dispose();
+      return { frames, maxFrameMs, totalMs, oldSyncMs, spawnSetupMs };
     },
     testHeroTextureJobCancel() {
       let fired = false;

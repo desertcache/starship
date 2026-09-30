@@ -286,8 +286,10 @@ export async function runWorldsSuite(ctx) {
   const d2AttemptMaxes = [];
   for (let attempt = 1; attempt <= D2_ATTEMPTS; attempt++) {
     const budget = await page.evaluate(() => window.__test.measureDeferredHeroSpawnBudget(4));
-    console.log(`[verify]   attempt ${attempt}/${D2_ATTEMPTS}: old sync gasGiantTexture=${budget.oldSyncMs.toFixed(2)} ms  vs.  deferred worst single tick=${budget.maxFrameMs.toFixed(2)} ms over ${budget.frames} frames (total ${budget.totalMs.toFixed(2)} ms)`);
+    console.log('[verify] attempt ' + attempt + '/' + D2_ATTEMPTS + ': old sync gasGiantTexture=' + budget.oldSyncMs.toFixed(2) + ' ms; spawn setup=' + budget.spawnSetupMs.toFixed(2) + ' ms; worst frame=' + budget.maxFrameMs.toFixed(2) + ' ms over ' + budget.frames + ' ticks (total ' + budget.totalMs.toFixed(2) + ' ms');
     assert(budget.frames > 0, 'D2: the deferred job should have taken at least one tick to finish');
+    assert(Number.isFinite(budget.spawnSetupMs) && budget.spawnSetupMs >= 0, 'D2: deferred hero spawn setup was not measured');
+    assert(budget.maxFrameMs >= budget.spawnSetupMs, 'D2: maxFrameMs excluded createBody setup');
     d2AttemptMaxes.push(budget.maxFrameMs);
     if (!bestBudget || budget.maxFrameMs < bestBudget.maxFrameMs) bestBudget = budget;
     if (!worstBudget || budget.maxFrameMs > worstBudget.maxFrameMs) worstBudget = budget;
