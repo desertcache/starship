@@ -82,6 +82,10 @@ export async function runLandingSuite(ctx) {
 
   // ── B6.4 — press the REAL L key, then fast-forward the descent ───────────
   await page.keyboard.press('KeyL');
+  await page.keyboard.press('KeyL'); // immediate duplicate while the first fade is pending
+  const duplicateAccepted = await page.evaluate(() => window.__test.engageLanding());
+  assert(duplicateAccepted === false, 'B6.4: a duplicate LAND request during the first fade should be rejected');
+  console.log('  B6.4: two real L taps sent; direct repeat was rejected ✓');
   await waitFrames(page, 2);
   await page.waitForFunction(() => window.__test.getActiveWorld() === 'landfall', null, { timeout: 30000 });
   await waitFrame();

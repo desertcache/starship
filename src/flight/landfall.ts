@@ -15,7 +15,7 @@
  */
 import * as THREE from 'three';
 import { getFlight, setFlightMode } from './flightState.js';
-import { hasWorld, switchWorld } from '../core/worlds.js';
+import { getActiveWorldId, hasWorld, switchWorld } from '../core/worlds.js';
 import { fadeTransition } from '../ui/hud.js';
 import { registerCam, teleportToCamera } from '../core/cameras.js';
 import { standUpInPlace } from '../player/controller.js';
@@ -42,6 +42,7 @@ export function setHelmTeardownProvider(fn: () => void): void {
 const SHIP_REBOARD_CAM = 'ship-reboard';
 const CARGO_BAY_POS = new THREE.Vector3(0, 1.7, 16);
 const CARGO_BAY_LOOK = new THREE.Vector3(0, 1.7, 15); // facing -Z
+let landingRequestPending = false; // one L request may be pending until the fade handoff
 
 /** testApi.getLandingInfo() shape — richer than FlightSnapshot needs, same
  *  "debug info" precedent as approach.ts's ApproachDebugInfo. */
@@ -54,56 +55,70 @@ export interface LandingDebugInfo {
 }
 
 /** L keybind (helmInput.ts) + testApi.engageLanding(): request descent.
- *  Guard: must be at HOLD (getFlight().approach.holdEngaged) AND the
- *  'landfall' world must be registered — both true since Stage 2. */
+ *  Guard: stay in the ship world, be at HOLD, have the landfall world registered,
+ *  and allow only one request until the fade handoff runs. */
 export function requestLanding(): boolean {
+  if (landingRequestPending || getActiveWorldId() !== 'ship') return false;
   const atHold = getFlight().approach?.holdEngaged === true;
   if (!atHold || !hasWorld('landfall')) return false;
+  landingRequestPending = true;
 
   // Own fadeTransition (not switchWorld's built-in one, via {instant:true})
   // so the world-switch AND the descent's start-pose seed both happen inside
   // the SAME black hold — one fade, no visible pop when it lifts.
-  void fadeTransition(() => {
-    switchWorld('landfall', { instant: true, teleport: false });
+  try {
+    void fadeTransition(() => {
+      try {
+        switchWorld('landfall', { instant: true, teleport: false });
 
-    // v1.2.1 B1 (r2 P1, the release headline) — after a REAL L-key landing,
-    // taking the helm called enterAnchor() -> setSeated(true), and nothing on
-    // the pre-fix route ever cleared it: player/controller.ts's
-    // tickController() early-outs on `seated` every frame on the surface (no
-    // WASD, no ground clamp), and helm.ts's watchdog only tears the helm down
-    // once `seated` goes false — which never happened here, so helm keys
-    // (world-agnostic, helmInput.ts) kept acting on the planet: W/S drove
-    // throttle, V toggled view, and L re-ran requestLanding() (HOLD reads
-    // frozen true off-ship, since tickApproach never runs there) and
-    // RESTARTED THE DESCENT. The only escape was E, via exitAnchor()'s
-    // hardcoded teleport back to the pre-helm SHIP pose (nonsensical once the
-    // active scene is 'landfall'), and even then the watchdog's teardown
-    // wrote CRUISE over LANDED on the very next frame.
-    //
-    // Fix: stand up IN PLACE (clear seated, no ship-pose teleport — the
-    // descent's own camera drive owns position/orientation from here on) and
-    // tear the helm down explicitly, BOTH before writing LANDED. Both are
-    // no-ops when landing arrives without ever taking the helm
-    // (engageLanding(), Test 15's own path) — standUpInPlace() checks
-    // `seated`, and helm.ts's registered teardown checks its own `active`.
-    standUpInPlace();
-    tearDownHelm?.();
+        // v1.2.1 B1 (r2 P1, the release headline) — after a REAL L-key landing,
+        // taking the helm called enterAnchor() -> setSeated(true), and nothing on
+        // the pre-fix route ever cleared it: player/controller.ts's
+        // tickController() early-outs on `seated` every frame on the surface (no
+        // WASD, no ground clamp), and helm.ts's watchdog only tears the helm down
+        // once `seated` goes false — which never happened here, so helm keys
+        // (world-agnostic, helmInput.ts) kept acting on the planet: W/S drove
+        // throttle, V toggled view, and L re-ran requestLanding() (HOLD reads
+        // frozen true off-ship, since tickApproach never runs there) and
+        // RESTARTED THE DESCENT. The only escape was E, via exitAnchor()'s
+        // hardcoded teleport back to the pre-helm SHIP pose (nonsensical once the
+        // active scene is 'landfall'), and even then the watchdog's teardown
+        // wrote CRUISE over LANDED on the very next frame.
+        //
+        // Fix: stand up IN PLACE (clear seated, no ship-pose teleport — the
+        // descent's own camera drive owns position/orientation from here on) and
+        // tear the helm down explicitly, BOTH before writing LANDED. Both are
+        // no-ops when landing arrives without ever taking the helm
+        // (engageLanding(), Test 15's own path) — standUpInPlace() checks
+        // `seated`, and helm.ts's registered teardown checks its own `active`.
+        standUpInPlace();
+        tearDownHelm?.();
 
-    // setFlightMode('LANDED') is INSIDE the callback, AFTER the switch
-    // (orchestrator loop-gate fix): during the fade-out the ship world still
-    // ticks, and tickApproach's HOLD-reassert (approach.ts:212-214) stomps any
-    // LANDED written before the switch — the same writer-conflict class agy
-    // caught in Stage 4. Off-ship, nothing ticks approach, so LANDED sticks.
-    // v1.2.1 B1 adds a SECOND writer LANDED must outlive: the helm teardown
-    // just above sets mode CRUISE, so this write must also come after THAT,
-    // not just after the switch.
-    setFlightMode('LANDED');
-    // armDescent() also disables pointer-look for the descent cinematic —
-    // must run after tearDownHelm() above, whose teardown() re-enables it
-    // (setPointerLookEnabled(true)), or the descent would start with
-    // pointer-look wrongly back on mid ENTRY/BRAKE/TOUCHDOWN.
-    armDescent();
-  });
+        // setFlightMode('LANDED') is INSIDE the callback, AFTER the switch
+        // (orchestrator loop-gate fix): during the fade-out the ship world still
+        // ticks, and tickApproach's HOLD-reassert (approach.ts:212-214) stomps any
+        // LANDED written before the switch — the same writer-conflict class agy
+        // caught in Stage 4. Off-ship, nothing ticks approach, so LANDED sticks.
+        // v1.2.1 B1 adds a SECOND writer LANDED must outlive: the helm teardown
+        // just above sets mode CRUISE, so this write must also come after THAT,
+        // not just after the switch.
+        setFlightMode('LANDED');
+        // armDescent() also disables pointer-look for the descent cinematic —
+        // must run after tearDownHelm() above, whose teardown() re-enables it
+        // (setPointerLookEnabled(true)), or the descent would start with
+        // pointer-look wrongly back on mid ENTRY/BRAKE/TOUCHDOWN.
+        armDescent();
+      } finally {
+        landingRequestPending = false;
+      }
+    }).catch((error: unknown) => {
+      landingRequestPending = false;
+      throw error;
+    });
+  } catch (error) {
+    landingRequestPending = false;
+    throw error;
+  }
   return true;
 }
 
@@ -137,5 +152,6 @@ export function getLandingDebug(): LandingDebugInfo | null {
 /** testApi.resetFlight() chain (mirrors approach.ts's resetApproach()) —
  *  boot-state reset so no test/session carries a stuck descent over. */
 export function resetLandfall(): void {
+  landingRequestPending = false;
   resetDescent();
 }
