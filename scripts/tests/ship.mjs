@@ -107,9 +107,27 @@ export async function runShipSuite(ctx) {
     const wasdProbe = async (label) => {
       const before = await page.evaluate(() => window.__test.getPlayerPos());
       await page.keyboard.down('KeyW');
-      await waitFrames(page, 10);
-      const midDiag = await page.evaluate(() => window.__test.getMoveDiag());
-      await page.keyboard.up('KeyW');
+      let midDiag;
+      try {
+        const holdStartedAt = await page.evaluate(() => performance.now());
+        await waitFrames(page, 10);
+        const elapsedMs = await page.evaluate((startedAt) => performance.now() - startedAt, holdStartedAt);
+        if (elapsedMs < 800) {
+          await page.evaluate((remainingMs) => new Promise((resolve) => {
+            const deadline = performance.now() + remainingMs;
+            const waitForDeadline = () => {
+              if (performance.now() >= deadline) resolve(undefined);
+              else requestAnimationFrame(waitForDeadline);
+            };
+            requestAnimationFrame(waitForDeadline);
+          }), 800 - elapsedMs);
+        }
+        const heldMs = await page.evaluate((startedAt) => performance.now() - startedAt, holdStartedAt);
+        assert(heldMs >= 800, id + ': KeyW hold should span at least 800ms; got ' + heldMs.toFixed(1));
+        midDiag = await page.evaluate(() => window.__test.getMoveDiag());
+      } finally {
+        await page.keyboard.up('KeyW');
+      }
       await waitFrames(page, 2);
       const after = await page.evaluate(() => window.__test.getPlayerPos());
       console.log(`  ${id}: real WASD ${label}: z ${before.z.toFixed(2)} -> ${after.z.toFixed(2)} (mid-hold: moving=${midDiag.moving} locked=${midDiag.locked} yaw=${midDiag.yaw.toFixed(3)})`);
