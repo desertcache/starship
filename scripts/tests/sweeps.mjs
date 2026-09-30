@@ -7,10 +7,10 @@
  *  HOOK  no onBeforeRender hook sits where three.js never calls it (a Group /
  *        Object3D, or a mesh whose material is visible:false).
  *
- * REPORT-ONLY until v1.2.1 integration: lanes watch their violations drop out
- * of the log; integration flips STRICT so any violation fails the gate.
+ * Strict integration gate: every registered world must satisfy both
+ * contracts before the build can pass.
  */
-const STRICT = false;
+const STRICT = true;
 
 export async function runSweeps({ page, assert }) {
   console.log('[verify] Sweep: interactable name contract + dead render hooks');

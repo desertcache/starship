@@ -1,8 +1,16 @@
 # Starship Explorer
 
+## v1.2.1 hardening
+
+Real keyboard paths now cover the interactions that older proximity-only hooks missed: sleep, all seven doors, cockpit and survey consoles, the crate panel, relic collection, and the surface hatch. Doors slide, collide, and auto-close; cockpit screens/dust and reactor breathing tick from the live loop; overlay close paths clean up keyboard handlers. Landing detaches the helm, restores surface walking, rejects duplicate requests during the fade, and refines terrain as you move.
+
+Hero planet textures paint across bounded frame slices with identical final pixels and seeded outcomes, including cancellation and disposal. All TypeScript source files fit the 300-line architecture limit. Strict name/dead-hook sweeps and real-input suites guard the two bug classes.
+
+Verified 2026-09-29: headed 16/16 functional tests plus all real-input suites, **131 FPS / p95 8.2 ms**, with a **6.2 ms** worst measured deferred spawn frame including setup. Detailed recovery and verification evidence: [resume-v1.2.1.md](docs/resume-v1.2.1.md).
+
 A first-person walkable starship built entirely in Three.js — no external assets, no frameworks. Every surface is procedurally generated at runtime: panel textures, grime overlays, emissive teal strips, animated console screens. The aesthetic is a worn industrial freighter lifted from *Alien* (1979) and rendered with ACES filmic tone-mapping, PBR materials with sRGB-honest 2K procedural textures, GTAO contact shadows, SMAA, filmic grain, and cinematic pooled lighting — warm fixture pools with real falloff, fixture halation, volumetric light shafts with drifting dust motes, and a reactor that breathes (v0.9 "RADIANCE").
 
-Outside the windows the ship is on a **Living Cruise**: a seeded encounter director streams a two-layer parallax starfield past the hull and schedules a rolling cast of procedurally-painted planets, moons, asteroid fields, and rare events (comets, nebulae, derelicts) — all named, all scannable from the cockpit console. Two persistent deep-field **nebula sprites** (teal and rust-red, additive, opacity 0.07-0.09) give space permanent color depth. Portholes are framed by thick **round bezels** — PBR gunmetal torus rings with bolt heads and cylindrical reveal tubes, matching the reference ship's porthole design.
+Outside the windows the ship is on a **Living Cruise**: a seeded encounter director streams a two-layer parallax starfield past the hull and schedules a rolling cast of procedurally-painted planets, moons, asteroid fields, and rare events (comets, nebulae, derelicts) — all named, all scannable from the cockpit console. Three persistent deep-field **nebula sprites** (teal, rust-red and magenta, additive, opacity 0.08-0.16) give space permanent color depth. Portholes are framed by thick **round bezels** — PBR gunmetal torus rings with bolt heads and cylindrical reveal tubes, matching the reference ship's porthole design.
 
 And the ship **flies** (v1.1 "SOVEREIGN"): take the port cockpit seat, grab the virtual stick, and steer the whole universe — the hull is pinned at the origin while a universe rig counter-rotates space around it. A chase camera reveals the full exterior hull with throttle-keyed engine plumes; an approach assist flies you to a seeded destination planet and parks you at proximity hold. From there (v1.2 "LANDFALL") press **L** and ride a cinematic atmosphere entry — heat glow, turbulence, cloud punch-through — down to a **streamed procedural desert planet**: kilometers of terraced mesas under a fog-matched sky, boulder fields and rock spires, roaming dune-strider herds and ridge gliders (scannable into the codex), an optional storm system with rain and lightning, and your own ship parked on the scorched landing pad. Walk out, explore, board the hatch, and you're back at hold — the whole loop repeatable, and the entire planet costs nothing measurable against the frame budget.
 
@@ -50,9 +58,9 @@ Open `http://localhost:5173` in a browser. Click the canvas to capture the mouse
 
 URL flags:
 
-- `?bloom=0` — disable post-processing bloom (maximum performance).
-- `?quality=high` — enable the high-quality path: SSAO contact shadows plus PCF-soft SpotLight shadow maps on the corridor junction and reactor lights. Costs a few ms; **off by default and a strict no-op when absent** (the verify budget is unaffected).
-- `?quality=low` — disable all shadow casting entirely (maximum compatibility / battery mode).
+- `?bloom=0` — disable bloom; AO and anti-aliasing retain their other configured settings.
+- `?quality=high` — explicitly select the default quality path: GTAO contact shadows, SMAA and shadow-mapped spotlights.
+- `?quality=low` — disable AO, SMAA and shadow casting for compatibility or battery use.
 
 ---
 
@@ -65,7 +73,7 @@ URL flags:
 | `npm run typecheck` | `tsc --noEmit` — must be clean before verify |
 | `npm run verify` | Headless Playwright: build, screenshot every camera, run all functional tests, write `verify/report.json` |
 | `npm run verify:headed` | Same harness, headed Chromium with GPU — fps numbers here are authoritative |
-| `node scripts/capture.mjs` | Records a ~40s showcase video tour to `verify/capture/showcase.webm` |
+| `node scripts/capture.mjs` | Records a ~72s showcase video tour to `verify/capture/showcase.webm` |
 
 ---
 
