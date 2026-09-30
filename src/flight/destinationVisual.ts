@@ -28,12 +28,12 @@ import {
   applyLimbDarkening,
 } from '../fx/space/bodyTextures.js';
 import { makeNoiseGrid, fbmWrap, applyGrain } from '../fx/space/noise.js';
+import { addDestinationHaze } from './destinationHaze.js';
 
 /** createBody's own baked sphere radius (radius>=50 → hero detail). Exported
  *  so approach.ts's renderScale math (renderScale / BAKED_RADIUS) shares the
  *  one definition. */
 export const BAKED_RADIUS = 100;
-const HAZE_SCALE = 1.16; // haze shell radius as a fraction of BAKED_RADIUS
 const CLOUD_SCALE = 1.03; // cloud shell radius as a fraction of BAKED_RADIUS
 const CLOUD_SPIN_RATE = 0.008; // rad/s — VERY slow, dt-accumulated (never wall-clock)
 const DEST_SURFACE_SIZE = 1024;
@@ -48,34 +48,6 @@ const DERIVED_SEED = 0xe57a ^ 0x5a5a; // independent stream — see header
 // from the approach geometry (see buildDestinationVisual) — deterministic by
 // construction, no rng draw involved.
 const LIT_OFFSET = 0.12;
-
-// Steeper than bodies.ts's addAtmosphere (2.4) — a shallower power washed
-// teal across the whole disc at HOLD's ~65%-of-FOV size (verify:headed
-// finding). Intensity + white-mix tuned down from the pre-art-pass 0.55/0.5
-// (task 2.4) — the brighter hero surface needs less rim wash to avoid
-// blowing out the limb.
-const HAZE_VERT = /* glsl */ `
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  void main() {
-    vNormal = normalize(normalMatrix * normal);
-    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-    vViewDir = normalize(-mvPos.xyz);
-    gl_Position = projectionMatrix * mvPos;
-  }
-`;
-const HAZE_FRAG = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uIntensity;
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  void main() {
-    float ndotv = dot(normalize(vNormal), normalize(vViewDir));
-    float rim = clamp(1.0 - abs(ndotv), 0.0, 1.0);
-    float alpha = pow(rim, 4.0) * uIntensity;
-    gl_FragColor = vec4(mix(uColor, vec3(1.0), rim * 0.35), alpha);
-  }
-`;
 
 interface SpotStop { stop: number; rgb: string; alphaMul: number; }
 
@@ -240,28 +212,6 @@ function addCloudShell(group: THREE.Group, rng: Rng): THREE.Mesh {
   return mesh;
 }
 
-/** Fresnel haze shell — ported verbatim from the pre-split approach.ts
- *  (task 2.4 retunes uIntensity/white-mix only; geometry/blending unchanged). */
-function addHaze(group: THREE.Group): void {
-  const hazeGeo = new THREE.SphereGeometry(BAKED_RADIUS * HAZE_SCALE, 64, 48);
-  const hazeMat = new THREE.ShaderMaterial({
-    uniforms: {
-      uColor: { value: new THREE.Color(0x9fd8c8) },
-      uIntensity: { value: 0.45 },
-    },
-    vertexShader: HAZE_VERT,
-    fragmentShader: HAZE_FRAG,
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false,
-  });
-  const haze = new THREE.Mesh(hazeGeo, hazeMat);
-  haze.name = 'destination-haze';
-  group.add(haze);
-}
-
 /** Build the destination planet + close-range art layers. `rng` MUST be the
  *  caller's own makeRng(0xE57A), passed at the same point in the sequence as
  *  the pre-split code (see header). `bearing` (approach.ts's BEARING) is used
@@ -293,7 +243,7 @@ export function buildDestinationVisual(rng: Rng, bearing: THREE.Vector3): Destin
   const drng = makeRng(DERIVED_SEED);
   applyHeroSurface(body, drng, lightU);
   cloudMesh = addCloudShell(body.group, drng);
-  addHaze(body.group);
+  addDestinationHaze(body.group, BAKED_RADIUS);
 
   return { group: body.group, body };
 }
