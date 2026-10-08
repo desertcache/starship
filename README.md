@@ -1,6 +1,18 @@
 # Starship Explorer
 
-## v1.2.1 hardening
+A first-person starship you can walk, fly and land, built in Three.js with no asset files: every panel, texture and planet is generated at runtime.
+
+**[Play it in your browser](https://desertcache.github.io/starship/)** (desktop, WebGL) · **[How it was built](https://desertcache.github.io/portfolio/work/starship-agent-fleet.html)**: directed by Samuel Bates and built by a fleet of Claude Code agents under typed contracts and verification gates. The rules they worked under are public: [CLAUDE.md](CLAUDE.md) and [KICKOFF.md](KICKOFF.md).
+
+![Cockpit canopy: a planet and the starfield through the forward window](docs/shots/cockpit-canopy.png)
+
+A first-person walkable starship built entirely in Three.js, with no external assets and no frameworks. Every surface is procedurally generated at runtime: panel textures, grime overlays, emissive teal strips, animated console screens. The aesthetic is a worn industrial freighter lifted from *Alien* (1979) and rendered with ACES filmic tone-mapping, PBR materials with sRGB-honest 2K procedural textures, GTAO contact shadows, SMAA, filmic grain, and cinematic pooled lighting: warm fixture pools with real falloff, fixture halation, volumetric light shafts with drifting dust motes, and a reactor that breathes (v0.9 "RADIANCE").
+
+Outside the windows the ship is on a **Living Cruise**: a seeded encounter director streams a two-layer parallax starfield past the hull and schedules a rolling cast of procedurally-painted planets, moons, asteroid fields, and rare events (comets, nebulae, derelicts), all named and all scannable from the cockpit console. Three persistent deep-field **nebula sprites** (teal, rust-red and magenta, additive, opacity 0.08-0.16) give space permanent color depth. Portholes are framed by thick **round bezels**: PBR gunmetal torus rings with bolt heads and cylindrical reveal tubes, matching the reference ship's porthole design.
+
+And the ship **flies** (v1.1 "SOVEREIGN"): take the port cockpit seat, grab the virtual stick, and steer the whole universe: the hull is pinned at the origin while a universe rig counter-rotates space around it. A chase camera reveals the full exterior hull with throttle-keyed engine plumes; an approach assist flies you to a seeded destination planet and parks you at proximity hold. From there (v1.2 "LANDFALL") press **L** and ride a cinematic atmosphere entry (heat glow, turbulence, cloud punch-through) down to a **streamed procedural desert planet**: kilometers of terraced mesas under a fog-matched sky, boulder fields and rock spires, roaming dune-strider herds and ridge gliders (scannable into the codex), an optional storm system with rain and lightning, and your own ship parked on the scorched landing pad. Walk out, explore, board the hatch, and you're back at hold. The whole loop repeats, and the entire planet costs nothing measurable against the frame budget.
+
+## v1.2.1 hardening (latest)
 
 Real keyboard paths now cover the interactions that older proximity-only hooks missed: sleep, all seven doors, cockpit and survey consoles, the crate panel, relic collection, and the surface hatch. Doors slide, collide, and auto-close; cockpit screens/dust and reactor breathing tick from the live loop; overlay close paths clean up keyboard handlers. Landing detaches the helm, restores surface walking, rejects duplicate requests during the fade, and refines terrain as you move.
 
@@ -8,17 +20,9 @@ Hero planet textures paint across bounded frame slices with identical final pixe
 
 Verified 2026-09-29: headed 16/16 functional tests plus all real-input suites, **131 FPS / p95 8.2 ms**, with a **6.2 ms** worst measured deferred spawn frame including setup. Detailed recovery and verification evidence: [resume-v1.2.1.md](docs/resume-v1.2.1.md).
 
-A first-person walkable starship built entirely in Three.js — no external assets, no frameworks. Every surface is procedurally generated at runtime: panel textures, grime overlays, emissive teal strips, animated console screens. The aesthetic is a worn industrial freighter lifted from *Alien* (1979) and rendered with ACES filmic tone-mapping, PBR materials with sRGB-honest 2K procedural textures, GTAO contact shadows, SMAA, filmic grain, and cinematic pooled lighting — warm fixture pools with real falloff, fixture halation, volumetric light shafts with drifting dust motes, and a reactor that breathes (v0.9 "RADIANCE").
-
-Outside the windows the ship is on a **Living Cruise**: a seeded encounter director streams a two-layer parallax starfield past the hull and schedules a rolling cast of procedurally-painted planets, moons, asteroid fields, and rare events (comets, nebulae, derelicts) — all named, all scannable from the cockpit console. Three persistent deep-field **nebula sprites** (teal, rust-red and magenta, additive, opacity 0.08-0.16) give space permanent color depth. Portholes are framed by thick **round bezels** — PBR gunmetal torus rings with bolt heads and cylindrical reveal tubes, matching the reference ship's porthole design.
-
-And the ship **flies** (v1.1 "SOVEREIGN"): take the port cockpit seat, grab the virtual stick, and steer the whole universe — the hull is pinned at the origin while a universe rig counter-rotates space around it. A chase camera reveals the full exterior hull with throttle-keyed engine plumes; an approach assist flies you to a seeded destination planet and parks you at proximity hold. From there (v1.2 "LANDFALL") press **L** and ride a cinematic atmosphere entry — heat glow, turbulence, cloud punch-through — down to a **streamed procedural desert planet**: kilometers of terraced mesas under a fog-matched sky, boulder fields and rock spires, roaming dune-strider herds and ridge gliders (scannable into the codex), an optional storm system with rain and lightning, and your own ship parked on the scorched landing pad. Walk out, explore, board the hatch, and you're back at hold — the whole loop repeatable, and the entire planet costs nothing measurable against the frame budget.
-
 ---
 
 ## Screenshots
-
-![Cockpit canopy — planet and starfield through the forward window](docs/shots/cockpit-canopy.png)
 
 ![Corridor — burnt-orange door frames, teal floor strips, ceiling light panels](docs/shots/corridor.png)
 
