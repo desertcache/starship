@@ -290,6 +290,7 @@ function animate(now: number): void {
   bloom.render();
   if (firstFrame) {
     firstFrame = false;
+    document.getElementById('boot')?.remove(); // index.html's told wait
     readyResolve();
   }
 }
