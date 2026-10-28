@@ -1,3 +1,4 @@
+import './core/webglGate.js'; // first: with no WebGL 2, index.html's wait becomes three.js's no-WebGL message
 import * as THREE from 'three';
 import { PMREMGenerator } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -290,6 +291,7 @@ function animate(now: number): void {
   bloom.render();
   if (firstFrame) {
     firstFrame = false;
+    document.getElementById('boot')?.remove(); // index.html's told wait
     readyResolve();
   }
 }
